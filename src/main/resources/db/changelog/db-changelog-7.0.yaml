@@ -1,0 +1,179 @@
+databaseChangeLog:
+  - changeSet:
+      id: add-collaborative-and-advanced-finance-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: budget_demande
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: departement_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: annee
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: compte_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: section_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+              - column:
+                  name: montant_demande
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: commentaires
+                  type: varchar(1000)
+
+        - createTable:
+            tableName: releve_bancaire
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: banque_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_import
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reference_releve
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_debut
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_fin
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ligne_releve_bancaire
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: releve_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ligne_releve_parent
+                    referencedTableName: releve_bancaire
+                    referencedColumnNames: id
+              - column:
+                  name: date_valeur
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: varchar(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut_rapprochement
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ecriture_id
+                  type: uuid
+
+        - createTable:
+            tableName: contrat_couverture
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: reference
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: devise_cible
+                  type: varchar(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_devise
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cours_garanti
+                  type: decimal(18,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_effet
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_echeance
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - addColumn:
+            tableName: budget_engagement
+            columns:
+              - column:
+                  name: statut_workflow
+                  type: varchar(100)
+                  defaultValue: PRE_ENGAGEMENT
+              - column:
+                  name: approbateur_courant_role
+                  type: varchar(100)

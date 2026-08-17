@@ -1,0 +1,20 @@
+[2026-08-13 23:25:33.876] [INFO] Using logs directory: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs
+[2026-08-13 23:25:33.876] [INFO] ================================================================================
+[2026-08-13 23:25:33.876] [INFO] Learning Flow Visualizer Plugin Started
+[2026-08-13 23:25:33.876] [INFO] Version: 1.0.679
+[2026-08-13 23:25:33.876] [INFO] Project: erp
+[2026-08-13 23:25:33.876] [INFO] Log file: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs\plugin_20260813_232533.log
+[2026-08-13 23:25:33.876] [INFO] ================================================================================
+[2026-08-13 23:25:33.909] [INFO] Project opened: erp
+[2026-08-13 23:25:33.910] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-13 23:25:33.910] [INFO] Logger already initialized for project: erp
+[2026-08-13 23:25:33.911] [INFO] Project opened: erp
+[2026-08-13 23:25:33.911] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-13 23:25:33.924] [INFO] Logger already initialized for project: erp
+[2026-08-13 23:25:33.925] [INFO] Project opened: erp
+[2026-08-13 23:25:33.925] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-13 23:32:25.809] [INFO] Logger already initialized for project: erp
+[2026-08-13 23:32:25.810] [INFO] Plugin startup activity started for project: erp
+[2026-08-13 23:32:25.810] [WARN] Tool window 'SequenceDiagramPython' not found
+[2026-08-13 23:32:25.811] [INFO] Plugin startup completed successfully
+[2026-08-14 08:58:34.595] [DEBUG] Tool window availability check for saranotificationsservices: true

@@ -1,0 +1,14 @@
+[2026-08-12 08:31:44.238] [INFO] Using logs directory: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs
+[2026-08-12 08:31:44.259] [INFO] ================================================================================
+[2026-08-12 08:31:44.259] [INFO] Learning Flow Visualizer Plugin Started
+[2026-08-12 08:31:44.263] [INFO] Version: 1.0.679
+[2026-08-12 08:31:44.263] [INFO] Project: erp
+[2026-08-12 08:31:44.263] [INFO] Log file: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs\plugin_20260812_083144.log
+[2026-08-12 08:31:44.264] [INFO] ================================================================================
+[2026-08-12 08:31:44.274] [INFO] Project opened: erp
+[2026-08-12 08:31:44.286] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-12 08:37:01.661] [INFO] Logger already initialized for project: erp
+[2026-08-12 08:37:01.667] [INFO] Plugin startup activity started for project: erp
+[2026-08-12 08:37:01.668] [WARN] Tool window 'SequenceDiagramPython' not found
+[2026-08-12 08:37:01.670] [INFO] Plugin startup completed successfully
+[2026-08-12 08:51:49.033] [DEBUG] Tool window availability check for be-sara-card-service: true

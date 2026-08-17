@@ -1,0 +1,100 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260810-create-keys-and-budgets-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: cles_repartition
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: details_cle_repartition
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: cle_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_detail_cle
+                    referencedTableName: cles_repartition
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: section_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_detail_section
+                    referencedTableName: sections_analytiques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: pourcentage
+                  type: numeric(5, 2)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: budgets
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: annee
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: section_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_budget_section
+                    referencedTableName: sections_analytiques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: compte_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_budget
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+        
+        - addUniqueConstraint:
+            tableName: budgets
+            columnNames: annee, section_id, compte_code
+            constraintName: uq_budget_period_section_account

@@ -1,0 +1,17 @@
+[2026-08-13 09:07:28.869] [INFO] Using logs directory: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs
+[2026-08-13 09:07:28.870] [INFO] ================================================================================
+[2026-08-13 09:07:28.870] [INFO] Learning Flow Visualizer Plugin Started
+[2026-08-13 09:07:28.870] [INFO] Version: 1.0.679
+[2026-08-13 09:07:28.870] [INFO] Project: erp
+[2026-08-13 09:07:28.870] [INFO] Log file: C:\Users\GLC\Documents\sodepa\erp\.pycharm_plugin\logs\plugin_20260813_090728.log
+[2026-08-13 09:07:28.870] [INFO] ================================================================================
+[2026-08-13 09:07:28.870] [INFO] Project opened: erp
+[2026-08-13 09:07:28.870] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-13 09:07:28.871] [INFO] Logger already initialized for project: erp
+[2026-08-13 09:07:28.871] [INFO] Project opened: erp
+[2026-08-13 09:07:28.872] [INFO] Project base path: C:/Users/GLC/Documents/sodepa/erp
+[2026-08-13 09:08:47.500] [INFO] Logger already initialized for project: erp
+[2026-08-13 09:08:47.500] [INFO] Plugin startup activity started for project: erp
+[2026-08-13 09:08:47.500] [WARN] Tool window 'SequenceDiagramPython' not found
+[2026-08-13 09:08:47.501] [INFO] Plugin startup completed successfully
+[2026-08-13 11:53:28.718] [DEBUG] Tool window availability check for bankaccountmanagement: true

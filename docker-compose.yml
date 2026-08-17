@@ -1,0 +1,114 @@
+services:
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    restart: always
+    ports:
+      - "1025:1025" #127.0.0.1:1025:1025
+      - "8025:8025"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.7
+    container_name: sodepa-clickhouse
+    ports:
+      - "8123:8123"
+      - "9010:9000"
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: sodepa-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+  minio:
+    image: minio/minio:latest
+    container_name: minio_saas
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "7004:9000"
+      - "7003:9001"
+  redis:
+    image: redis:7-alpine
+    container_name: redis_saas
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+  postgres:
+    image: postgres:15
+    container_name: keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: kcpassword
+      #ports:
+      # - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    container_name: keycloak
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: kcpassword
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+    ports:
+      - "8070:8080"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgressodepa:
+    image: postgres:15
+    container_name: sodepa_bd
+    environment:
+      POSTGRES_DB: sodepa
+      POSTGRES_USER: toto
+      POSTGRES_PASSWORD: 12345
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data_sodepa:/var/lib/postgresql/data
+    restart: unless-stopped
+
+
+volumes:
+  minio_data:
+  redis_data:
+  postgres_data:
+  postgres_data_sodepa:
+  db_data:
+  clickhouse_data:
+  rabbitmq_data:

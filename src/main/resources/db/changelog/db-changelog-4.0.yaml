@@ -1,0 +1,111 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260810-create-analytical-and-workflow-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: axes_analytiques
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: sections_analytiques
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: axe_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_section_axe
+                    referencedTableName: axes_analytiques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ventilation_analytique
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ligne_ecriture_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ventilation_ligne
+                    referencedTableName: lignes_ecriture
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: section_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ventilation_section
+                    referencedTableName: sections_analytiques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: pourcentage
+                  type: numeric(5, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+
+        - addColumn:
+            tableName: ecritures
+            columns:
+              - column:
+                  name: valide_par
+                  type: uuid
+              - column:
+                  name: date_validation
+                  type: timestamp

@@ -1,0 +1,304 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260810-create-core-ledger-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: journaux
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(20)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_journal
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: tiers
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(20)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_tiers
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: compte_collectif_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ecritures
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: journal_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ecriture_journal
+                    referencedTableName: journaux
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: numero_piece
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_comptable
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_saisie
+                  type: timestamp
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valide
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_devise
+                  type: varchar(10)
+                  defaultValue: XOF
+                  constraints:
+                    nullable: false
+              - column:
+                  name: taux_change
+                  type: numeric(15, 6)
+                  defaultValueNumeric: 1.0
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: lignes_ecriture
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ecriture_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ligne_ecriture
+                    referencedTableName: ecritures
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: compte_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tiers_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ligne_tiers
+                    referencedTableName: tiers
+                    referencedColumnNames: id
+                    nullable: true
+              - column:
+                  name: debit
+                  type: numeric(19, 4)
+                  defaultValueNumeric: 0.0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: credit
+                  type: numeric(19, 4)
+                  defaultValueNumeric: 0.0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle_ligne
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: immobilisations
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: designation
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valeur_origine
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_acquisition
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_mise_en_service
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mode_amortissement
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: duree_utile
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valeur_residuelle
+                  type: numeric(19, 4)
+                  defaultValueNumeric: 0.0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: releves_bancaires
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: banque_nom
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_releve
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_initial
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_final
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valide
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: lignes_releve_bancaire
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: releve_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_ligne_releve
+                    referencedTableName: releves_bancaires
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: date_transaction
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rapproche
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

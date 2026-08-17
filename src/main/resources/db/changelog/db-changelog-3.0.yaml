@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260810-create-banques-table
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: banques
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(20)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: nom
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: compte_comptable_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+
+        - addColumn:
+            tableName: releves_bancaires
+            columns:
+              - column:
+                  name: banque_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_releve_banque
+                    referencedTableName: banques
+                    referencedColumnNames: id
+                    nullable: true
+
+        - dropColumn:
+            tableName: releves_bancaires
+            columnName: banque_nom

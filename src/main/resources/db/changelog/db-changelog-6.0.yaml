@@ -1,0 +1,500 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20260811-create-budget-and-financial-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: budget_plan
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: annee
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: total_budget
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cree_le
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cree_par
+                  type: uuid
+              - column:
+                  name: modifie_le
+                  type: timestamp
+              - column:
+                  name: modifie_par
+                  type: uuid
+              - column:
+                  name: optimistic_version
+                  type: int
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: budget_item
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: budget_plan_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_item_plan
+                    referencedTableName: budget_plan
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: compte_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: section_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_item_section
+                    referencedTableName: sections_analytiques
+                    referencedColumnNames: id
+                    nullable: true
+              - column:
+                  name: montant_annuel
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_planned
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_engage
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_real
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: budget_item_periode
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: budget_item_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_periode_item
+                    referencedTableName: budget_item
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: periode_num
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_planned
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_real
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: budget_engagement
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: budget_item_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_engagement_item
+                    referencedTableName: budget_item
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: numero_engagement
+                  type: varchar(100)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: description
+                  type: varchar(255)
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_engagement
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: budget_reallocation
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: source_item_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_realloc_source
+                    referencedTableName: budget_item
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: dest_item_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_realloc_dest
+                    referencedTableName: budget_item
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_transfert
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valide_par
+                  type: uuid
+              - column:
+                  name: raison
+                  type: varchar(255)
+
+        - createTable:
+            tableName: prevision_tresorerie
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: date_echeance
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ligne_decouvert
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: banque_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_decouvert_banque
+                    referencedTableName: banques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: plafond
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: taux_interet
+                  type: numeric(5, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_utilise
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_debut
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: alerte_seuil_pourcent
+                  type: numeric(5, 2)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ligne_financement
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: banque_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_financement_banque
+                    referencedTableName: banques
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: capital_emprunte
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: taux_nominal
+                  type: numeric(5, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_effet
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: duree_mois
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: periodicite
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: echeance_financement
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ligne_financement_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_echeance_financement
+                    referencedTableName: ligne_financement
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: date_echeance
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: principal
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: interets
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_restant_du
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: engagement_hors_bilan
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: type
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tiers_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_engagement_tiers
+                    referencedTableName: tiers
+                    referencedColumnNames: id
+                    nullable: false
+              - column:
+                  name: montant
+                  type: numeric(19, 4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_effet
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_echeance
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: audit_trail
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: entite_nom
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entite_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: action
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: details
+                  type: text
+              - column:
+                  name: timestamp
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: utilisateur
+                  type: uuid

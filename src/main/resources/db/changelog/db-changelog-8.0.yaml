@@ -1,0 +1,97 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-user-management-tables
+      author: ELLA BELINGA Jean Paul
+      changes:
+        - createTable:
+            tableName: utilisateurs
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: iam
+                  type: uuid
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: username
+                  type: varchar(100)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: nom
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prenom
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: email
+                  type: varchar(150)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: photo_profile
+                  type: varchar(500)
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: utilisateur_telephones
+            columns:
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_tel_user
+                    referencedTableName: utilisateurs
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: telephone
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+
+        - addPrimaryKey:
+            tableName: utilisateur_telephones
+            columnNames: user_id, telephone
+            constraintName: pk_utilisateur_telephones
+
+        - createTable:
+            tableName: utilisateur_permissions
+            columns:
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_perm_user
+                    referencedTableName: utilisateurs
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: permission
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+
+        - addPrimaryKey:
+            tableName: utilisateur_permissions
+            columnNames: user_id, permission
+            constraintName: pk_utilisateur_permissions
