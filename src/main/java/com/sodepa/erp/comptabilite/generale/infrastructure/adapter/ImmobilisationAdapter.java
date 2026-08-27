@@ -3,6 +3,8 @@ package com.sodepa.erp.comptabilite.generale.infrastructure.adapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sodepa.erp.comptabilite.generale.application.inputs.CreateImmoInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.GenerateAmortisationInput;
+import com.sodepa.erp.comptabilite.generale.application.inputs.RechercheImmoInput;
+import com.sodepa.erp.comptabilite.generale.application.inputs.UpdateImmoInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.application.outputs.AmortissementLineOutput;
 import com.sodepa.erp.comptabilite.generale.application.outputs.ImmoOutput;
@@ -18,16 +20,23 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.ImmobilisationRe
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
 import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.MakerCheckerSmartOutput;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.CodeJournal;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.ModeAmortissement;
+import com.sodepa.erp.utils.PageRecord;
+import com.sodepa.erp.utils.PageableRecord;
 import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.utils.StatutImmobilisation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +58,21 @@ import java.util.UUID;
 @Slf4j
 public class ImmobilisationAdapter {
 
+    private final static int MAX_PAGE_SIZE = 100;
+
+    /**
+     * Préfixe des clés d'entité des campagnes d'amortissement.
+     *
+     * <p>
+     * Une campagne ne vise aucun bien en particulier : elle porte sur un compte
+     * d'immobilisation entier. Faute d'identifiant d'entité à lui donner, elle
+     * est déposée sous une clé technique — c'est ce préfixe qui, à la
+     * validation, la distingue d'une modification de fiche, les deux étant
+     * soumises en {@code UPDATE}.
+     * </p>
+     */
+    private final static String PREFIXE_CAMPAGNE = "SYSTEM-";
+
     private final MakerCheckerEnginePort makerCheckerEngine;
     private final ImmobilisationRepository immobilisationRepository;
     private final EcritureRepository ecritureRepository;
@@ -59,9 +83,13 @@ public class ImmobilisationAdapter {
 
     /**
      * Initialise la création d'une immobilisation (workflow Maker-Checker).
+     *
      * @param request les données de création.
+     * @return les deux identifiants dont le client a besoin ensuite : celui de
+     *         la demande, pour la trancher, et celui que portera le bien une
+     *         fois la demande acceptée.
      */
-    public void initCreateImmo(CreateImmoInput request) {
+    public SubmissionOutput initCreateImmo(CreateImmoInput request) {
         utilsService.hasPermission(Permissions.INIT_CREATE_IMMOBILISATION);
 
         if (immobilisationRepository.findByCode(request.code()).isPresent()) {
@@ -71,12 +99,54 @@ public class ImmobilisationAdapter {
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk);
 
-        makerCheckerEngine.submitChange(
+        UUID requestId = makerCheckerEngine.submitChange(
                 MakerCheckerEntityName.IMMOBILISATION,
                 entityPk.toString(),
                 payload,
                 MakerCheckerOperationType.CREATE
         );
+
+        return new SubmissionOutput(requestId, entityPk);
+    }
+
+    /**
+     * Initialise la modification d'une immobilisation (workflow Maker-Checker).
+     *
+     * <p>
+     * La demande porte l'état complet voulu, pas un delta : c'est ce que le
+     * moteur maker-checker sait rejouer, et cela évite qu'une acceptation
+     * tardive n'applique une modification partielle sur un bien qui a changé
+     * entre-temps.
+     * </p>
+     *
+     * @param request l'état voulu du bien.
+     * @return les identifiants de la demande et du bien visé.
+     */
+    public SubmissionOutput initUpdateImmo(UpdateImmoInput request) {
+        utilsService.hasPermission(Permissions.INIT_UPDATE_IMMOBILISATION);
+
+        ImmobilisationEntity existante = immobilisationRepository.findById(request.id())
+                .orElseThrow(() -> new IllegalArgumentException("Immobilisation introuvable"));
+
+        // Le code reste unique : on ne le refuse que s'il appartient déjà à un
+        // *autre* bien, sinon toute modification sans changement de code
+        // échouerait contre elle-même.
+        immobilisationRepository.findByCode(request.code()).ifPresent(homonyme -> {
+            if (!homonyme.getId().equals(existante.getId())) {
+                throw new IllegalArgumentException("Une immobilisation avec le code " + request.code() + " existe déjà.");
+            }
+        });
+
+        Map<String, Object> payload = toPayload(request);
+
+        UUID requestId = makerCheckerEngine.submitChange(
+                MakerCheckerEntityName.IMMOBILISATION,
+                request.id().toString(),
+                payload,
+                MakerCheckerOperationType.UPDATE
+        );
+
+        return new SubmissionOutput(requestId, request.id());
     }
 
     /**
@@ -89,18 +159,56 @@ public class ImmobilisationAdapter {
         ImmobilisationEntity entity = immobilisationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Immobilisation introuvable"));
 
-        return ImmoOutput.builder()
-                .id(entity.getId())
-                .code(entity.getCode())
-                .designation(entity.getDesignation())
-                .valeurOrigine(entity.getValeurOrigine())
-                .dateAcquisition(entity.getDateAcquisition())
-                .dateMiseEnService(entity.getDateMiseEnService())
-                .modeAmortissement(entity.getModeAmortissement())
-                .dureeUtile(entity.getDureeUtile())
-                .valeurResiduelle(entity.getValeurResiduelle())
-                .statut(entity.getStatut())
-                .build();
+        return map(entity);
+    }
+
+    /**
+     * Registre des immobilisations, paginé et filtré.
+     *
+     * <p>
+     * Sans ce point d'entrée, une immobilisation n'était atteignable que par
+     * son identifiant — lequel n'était rendu nulle part.
+     * </p>
+     *
+     * @param input pagination, fragment de recherche et statut, tous facultatifs.
+     * @return la page demandée.
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<ImmoOutput> getImmobilisationsByPage(RechercheImmoInput input) {
+        utilsService.hasPermission(Permissions.GET_FULL_IMMOBILISATION_INFO);
+
+        Pageable pageable = input.pageable();
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+
+        String recherche = (input.recherche() == null || input.recherche().isBlank())
+                ? null
+                : input.recherche().toLowerCase();
+
+        Page<ImmobilisationEntity> page = immobilisationRepository.rechercher(recherche, input.statut(), pageable);
+        boolean paged = page.getPageable().isPaged();
+
+        return new PageRecord<>(
+                page.getContent().stream().map(this::map).toList(),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
     }
 
     /**
@@ -121,19 +229,42 @@ public class ImmobilisationAdapter {
 
     /**
      * Initialise la génération des dotations aux amortissements (workflow Maker-Checker).
+     *
      * @param request les paramètres.
+     * @return l'identifiant de la demande. {@code entityId} est {@code null} :
+     *         la campagne porte sur un compte, pas sur un bien.
      */
-    public void initGenerateAmortisation(GenerateAmortisationInput request) {
+    public SubmissionOutput initGenerateAmortisation(GenerateAmortisationInput request) {
         utilsService.hasPermission(Permissions.INIT_UPDATE_IMMOBILISATION);
 
         Map<String, Object> payload = toPayload(request);
 
-        makerCheckerEngine.submitChange(
+        UUID requestId = makerCheckerEngine.submitChange(
                 MakerCheckerEntityName.IMMOBILISATION,
-                "SYSTEM-" + UUID.randomUUID(),
+                PREFIXE_CAMPAGNE + UUID.randomUUID(),
                 payload,
                 MakerCheckerOperationType.UPDATE
         );
+
+        return new SubmissionOutput(requestId, null);
+    }
+
+    /**
+     * Demandes d'immobilisation en attente de décision.
+     *
+     * <p>
+     * Les soumissions du demandeur lui-même sont écartées : la séparation
+     * maker-checker lui interdit de les trancher, et {@code validateOrReject}
+     * les refuse. Les lister quand même offrait un bouton qui ne pouvait
+     * qu'échouer.
+     * </p>
+     */
+    public PageRecord<MakerCheckerSmartOutput> findPendingRequests(Pageable pageable) {
+        utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_IMMOBILISATION);
+
+        String moi = utilsService.getCurrentUser().getUserData().get().userId();
+        return makerCheckerEngine.findAllAValiderParAutrui(
+                pageable, MakerCheckerEntityName.IMMOBILISATION, MakerCheckerStatus.PENDING, moi);
     }
 
     /**
@@ -164,9 +295,17 @@ public class ImmobilisationAdapter {
                 ImmoEventInput eventInput = objectMapper.convertValue(makerCheckerOutput.payload(), ImmoEventInput.class);
                 creation(eventInput, UUID.fromString(makerCheckerOutput.entityPk()));
             } else if (makerCheckerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
-                int annee = (Integer) makerCheckerOutput.payload().get("annee");
-                String compteImmoCode = (String) makerCheckerOutput.payload().get("compteImmoCode");
-                genererEcrituresAmortissement(annee, compteImmoCode);
+                // Deux demandes bien différentes voyagent en UPDATE : la campagne
+                // d'amortissement d'un compte, déposée sous une clé technique, et
+                // la modification d'une fiche, déposée sous l'identifiant du bien.
+                if (makerCheckerOutput.entityPk().startsWith(PREFIXE_CAMPAGNE)) {
+                    int annee = (Integer) makerCheckerOutput.payload().get("annee");
+                    String compteImmoCode = (String) makerCheckerOutput.payload().get("compteImmoCode");
+                    genererEcrituresAmortissement(annee, compteImmoCode);
+                } else {
+                    ImmoEventInput eventInput = objectMapper.convertValue(makerCheckerOutput.payload(), ImmoEventInput.class);
+                    modification(eventInput, UUID.fromString(makerCheckerOutput.entityPk()));
+                }
             }
         }
 
@@ -187,6 +326,50 @@ public class ImmobilisationAdapter {
                 .statut(request.statut())
                 .build();
         immobilisationRepository.save(immo);
+    }
+
+    /**
+     * Applique une modification acceptée.
+     *
+     * <p>
+     * L'amortissement cumulé n'est pas touché : il est le reflet des dotations
+     * déjà comptabilisées, et le réécrire ici décrocherait la fiche des
+     * écritures qui la justifient.
+     * </p>
+     */
+    private void modification(ImmoEventInput request, UUID id) {
+        ImmobilisationEntity immo = immobilisationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Immobilisation introuvable"));
+
+        immo.setCode(request.code());
+        immo.setDesignation(request.designation());
+        immo.setValeurOrigine(request.valeurOrigine());
+        immo.setDateAcquisition(request.dateAcquisition());
+        immo.setDateMiseEnService(request.dateMiseEnService());
+        immo.setModeAmortissement(request.modeAmortissement());
+        immo.setDureeUtile(request.dureeUtile());
+        immo.setValeurResiduelle(request.valeurResiduelle() != null ? request.valeurResiduelle() : BigDecimal.ZERO);
+        immo.setStatut(request.statut());
+
+        immobilisationRepository.save(immo);
+    }
+
+    private ImmoOutput map(ImmobilisationEntity entity) {
+        return ImmoOutput.builder()
+                .id(entity.getId())
+                .code(entity.getCode())
+                .designation(entity.getDesignation())
+                .valeurOrigine(entity.getValeurOrigine())
+                .dateAcquisition(entity.getDateAcquisition())
+                .dateMiseEnService(entity.getDateMiseEnService())
+                .modeAmortissement(entity.getModeAmortissement())
+                .dureeUtile(entity.getDureeUtile())
+                .valeurResiduelle(entity.getValeurResiduelle())
+                .statut(entity.getStatut())
+                // Oublié jusqu'ici : la fiche repartait sans son cumul, et la
+                // valeur nette comptable était donc incalculable côté client.
+                .amortissementCumule(entity.getAmortissementCumule())
+                .build();
     }
 
     private void genererEcrituresAmortissement(int annee, String compteImmoDefaut) {
@@ -417,6 +600,24 @@ public class ImmobilisationAdapter {
                 input.dureeUtile(),
                 input.valeurResiduelle(),
                 StatutImmobilisation.ACTIVE,
+                currentUserId
+        );
+        return objectMapper.convertValue(event, Map.class);
+    }
+
+    private Map<String, Object> toPayload(UpdateImmoInput input) {
+        String currentUserId = String.valueOf(utilsService.getCurrentUser().getUserData().get().userId());
+        ImmoEventInput event = new ImmoEventInput(
+                input.id(),
+                input.code(),
+                input.designation(),
+                input.valeurOrigine(),
+                input.dateAcquisition(),
+                input.dateMiseEnService(),
+                input.modeAmortissement(),
+                input.dureeUtile(),
+                input.valeurResiduelle(),
+                input.statut(),
                 currentUserId
         );
         return objectMapper.convertValue(event, Map.class);

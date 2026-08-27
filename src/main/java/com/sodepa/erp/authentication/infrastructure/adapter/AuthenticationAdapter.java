@@ -12,15 +12,21 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.idm.UserSessionRepresentation;
 import jakarta.ws.rs.core.Response;
 import com.sodepa.erp.authentication.application.ports.KeycloakProvisioningPort;
+import com.sodepa.erp.share.erreurs.AuthentificationIndisponibleException;
+import com.sodepa.erp.share.erreurs.IdentifiantsRefusesException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.util.HashMap;
@@ -73,8 +79,7 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
         String url = serverUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-        return (Map<String, Object>) response.getBody();
+        return demanderJetons(url, request, "connexion de " + input.username());
     }
 
     /**
@@ -95,8 +100,40 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
         String url = serverUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-        return (Map<String, Object>) response.getBody();
+        return demanderJetons(url, request, "rafraîchissement de jeton");
+    }
+
+    /**
+     * Appelle le point d'entrée « token » de Keycloak et traduit ses refus.
+     *
+     * Sans ce filtre, le 401 que Keycloak renvoie sur un mot de passe erroné ou
+     * un jeton expiré remonte en {@link HttpClientErrorException}, qu'aucun
+     * gestionnaire n'attrape : le client reçoit alors un 500. Un identifiant
+     * incorrect devient indistinguable d'une panne, et le front n'a aucun moyen
+     * de savoir qu'il doit redemander une connexion.
+     *
+     * @param url point d'entrée « token » du realm
+     * @param request corps du grant, déjà formé
+     * @param operation libellé journalisé, pour situer l'échec
+     * @return la charge utile des jetons
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> demanderJetons(
+            String url, HttpEntity<MultiValueMap<String, String>> request, String operation) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            return (Map<String, Object>) response.getBody();
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.BadRequest e) {
+            // Keycloak rend 401 sur `invalid_client` et 400 sur `invalid_grant` :
+            // les deux désignent un refus d'authentification, pas une panne.
+            log.warn("Échec d'authentification Keycloak ({}) : {}", operation, e.getStatusText());
+            throw new IdentifiantsRefusesException();
+        } catch (RestClientException e) {
+            // Keycloak injoignable, TLS, délai dépassé : là, c'est bien une panne,
+            // mais elle mérite un 503 et une trace, pas un 500 muet.
+            log.error("Keycloak injoignable ({})", operation, e);
+            throw new AuthentificationIndisponibleException();
+        }
     }
 
     /**
@@ -175,7 +212,7 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
                     log.error("Erreur de création d'utilisateur dans Keycloak: status={}, body={}", response.getStatus(), errorMsg);
                     throw new RuntimeException("Erreur de création Keycloak: " + errorMsg);
                 }
-                UUID createdId = extractCreatedUserId(response, id);
+                UUID createdId = extractCreatedUserId(response, username);
                 log.info("Utilisateur créé dans Keycloak avec succès. username: {}", username);
                 return createdId;
             }
@@ -186,15 +223,17 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
     }
 
     /**
-     * Extrait l'ID de l'utilisateur créé depuis le header Location de la réponse Keycloak.
-     * En cas de conflit (409, utilisateur déjà existant) ou d'absence de header,
-     * on retombe sur l'ID passé en paramètre.
+     * Extrait l'identifiant Keycloak du compte créé, depuis l'en-tête Location.
+     *
+     * Sur un conflit (409 : le compte existe déjà) Keycloak ne renvoie pas
+     * d'en-tête Location. On retrouve alors le compte par son nom
+     * d'utilisateur : renvoyer un identifiant de repli inventé donnerait une
+     * colonne `iam` qui ne désigne rien.
      */
-    private UUID extractCreatedUserId(Response response, UUID fallbackId) {
+    private UUID extractCreatedUserId(Response response, String username) {
         URI location = response.getLocation();
-        log.info("{}", location.getPath());
         if (location == null) {
-            return fallbackId;
+            return retrouverParNomUtilisateur(username);
         }
         String path = location.getPath();
         String extractedId = path.substring(path.lastIndexOf('/') + 1);
@@ -202,8 +241,22 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
             return UUID.fromString(extractedId);
         } catch (IllegalArgumentException e) {
             log.warn("Impossible de parser l'ID retourné par Keycloak dans le header Location: {}", extractedId);
-            return fallbackId;
+            return retrouverParNomUtilisateur(username);
         }
+    }
+
+    /**
+     * Retrouve un compte Keycloak par son nom d'utilisateur, en correspondance
+     * exacte.
+     */
+    private UUID retrouverParNomUtilisateur(String username) {
+        List<UserRepresentation> trouves =
+                keycloak.realm(realm).users().search(username, true);
+        if (trouves == null || trouves.isEmpty()) {
+            throw new RuntimeException(
+                    "Keycloak n'a renvoyé aucun identifiant pour l'utilisateur " + username);
+        }
+        return UUID.fromString(trouves.get(0).getId());
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.sodepa.erp.comptabilite.generale.application.usecase;
 
 import com.sodepa.erp.comptabilite.generale.application.inputs.GenerateAmortisationInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.ImmobilisationAdapter;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.UseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,12 +12,11 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @RequiredArgsConstructor
-public class GenerateAmortisationUseCase implements UseCase<GenerateAmortisationInput, Void> {
+public class GenerateAmortisationUseCase implements UseCase<GenerateAmortisationInput, SubmissionOutput> {
     private final ImmobilisationAdapter immobilisationAdapter;
 
     @Override
-    public Void execute(GenerateAmortisationInput input) {
-        immobilisationAdapter.initGenerateAmortisation(input);
-        return null;
+    public SubmissionOutput execute(GenerateAmortisationInput input) {
+        return immobilisationAdapter.initGenerateAmortisation(input);
     }
 }

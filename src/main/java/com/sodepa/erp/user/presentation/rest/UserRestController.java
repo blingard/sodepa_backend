@@ -1,6 +1,8 @@
 package com.sodepa.erp.user.presentation.rest;
 
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
+import com.sodepa.erp.share.MakerCheckerSmartOutput;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.user.application.inputs.*;
 import com.sodepa.erp.user.application.outputs.UserOutput;
@@ -9,6 +11,7 @@ import com.sodepa.erp.user.presentation.requests.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,9 +34,24 @@ public class UserRestController {
     private final GetUserByIdUseCase getUserByIdUseCase;
     private final GetPageUsersUseCase getPageUsersUseCase;
     private final SearchUsersUseCase searchUsersUseCase;
+    private final GetPendingUserRequestsUseCase getPendingUserRequestsUseCase;
 
+    /**
+     * Soumet la création d'un utilisateur.
+     *
+     * <p>
+     * Ne crée rien : dépose une demande. La réponse porte les deux
+     * identifiants dont le client a besoin ensuite — celui de la demande, à
+     * passer à {@code validate_or_reject}, et celui qu'aura le compte si elle
+     * est acceptée.
+     * </p>
+     */
+    // `@ResponseStatus` est redondant avec `ResponseEntity.accepted()` pour
+    // l'exécution, mais c'est lui que springdoc lit : sans lui, le contrat
+    // publié annonce un 200 que le serveur ne renvoie jamais.
+    @ResponseStatus(HttpStatus.ACCEPTED)
     @PostMapping("/init_create")
-    public ResponseEntity<Void> initCreate(
+    public ResponseEntity<SubmissionOutput> initCreate(
             @Valid @RequestPart("request") CreateUserRequest request,
             @RequestPart(name = "file", required = false) MultipartFile file
     ) {
@@ -46,8 +64,16 @@ public class UserRestController {
                 request.permissions(),
                 file
         );
-        createUserUseCase.execute(input);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.accepted().body(createUserUseCase.execute(input));
+    }
+
+    /**
+     * Demandes d'utilisateur en attente de décision — la boîte de réception du
+     * checker. Exige {@code VALIDATE_OR_REJECT_USER}.
+     */
+    @GetMapping("/pending")
+    public ResponseEntity<PageRecord<MakerCheckerSmartOutput>> getPending(Pageable pageable) {
+        return ResponseEntity.ok(getPendingUserRequestsUseCase.execute(pageable));
     }
 
     @PutMapping("/init_update/{id}")

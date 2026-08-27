@@ -2,6 +2,7 @@ package com.sodepa.erp.comptabilite.generale.infrastructure.adapter;
 
 import com.sodepa.erp.comptabilite.generale.application.inputs.LigneReleveInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.RapprochementInput;
+import com.sodepa.erp.comptabilite.generale.application.inputs.RechercheReleveInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ReleveManuelInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.SyncInput;
 import com.sodepa.erp.comptabilite.generale.application.outputs.LigneReleveBancaireOutput;
@@ -14,9 +15,15 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.BanqueRepository
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneEcritureRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneReleveBancaireRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.ReleveBancaireRepository;
+import com.sodepa.erp.utils.PageRecord;
+import com.sodepa.erp.utils.PageableRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,6 +40,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class RapprochementAdapter {
+
+    private final static int MAX_PAGE_SIZE = 100;
 
     private final ReleveBancaireRepository releveBancaireRepository;
     private final LigneReleveBancaireRepository ligneReleveBancaireRepository;
@@ -146,6 +155,51 @@ public class RapprochementAdapter {
         }
 
         return count;
+    }
+
+    /**
+     * Relevés importés, paginés et filtrés.
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<ReleveBancaireOutput> getRelevesByPage(RechercheReleveInput input) {
+        Pageable pageable = input.pageable();
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+
+        Page<ReleveBancaireEntity> page = releveBancaireRepository.rechercher(input.banqueId(), input.valide(), pageable);
+        boolean paged = page.getPageable().isPaged();
+
+        return new PageRecord<>(
+                page.getContent().stream().map(this::mapToOutput).toList(),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+    }
+
+    /**
+     * Un relevé et ses lignes.
+     */
+    @Transactional(readOnly = true)
+    public ReleveBancaireOutput getReleveById(UUID id) {
+        ReleveBancaireEntity releve = releveBancaireRepository.findByIdAvecLignes(id)
+                .orElseThrow(() -> new IllegalArgumentException("Relevé bancaire introuvable."));
+        return mapToOutput(releve);
     }
 
     private ReleveBancaireOutput mapToOutput(ReleveBancaireEntity entity) {

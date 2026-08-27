@@ -14,7 +14,14 @@ public record UserData(
     String email,
     Set<Permissions> permissions,
     String sessionId,
-    String jwtToken
+    String jwtToken,
+    /**
+     * Identifiant du compte dans Keycloak (revendication `sub`, colonne
+     * `iam`). C'est lui qu'attend l'API d'administration Keycloak — le
+     * `userId` ci-dessus est la clé métier, les deux ne sont pas
+     * interchangeables.
+     */
+    String iamId
 ) {
 
 }

@@ -2,6 +2,8 @@ package com.sodepa.erp.budget.infrastructure.adapter;
 
 import com.sodepa.erp.budget.application.inputs.CouvertureInput;
 import com.sodepa.erp.budget.application.inputs.CreerPrevisionInput;
+import com.sodepa.erp.budget.application.inputs.PeriodeInput;
+import com.sodepa.erp.budget.application.inputs.RechercheCouvertureInput;
 import com.sodepa.erp.budget.application.outputs.*;
 import com.sodepa.erp.budget.infrastructure.entities.ContratCouvertureEntity;
 import com.sodepa.erp.budget.infrastructure.entities.EcheanceFinancementEntity;
@@ -45,7 +47,49 @@ public class TresorerieAdapter {
                 .montant(input.montant())
                 .build();
         PrevisionTresorerieEntity saved = previsionTresorerieRepository.save(prev);
-        return new PrevisionTresorerieOutput(saved.getId(), saved.getDateEcheance(), saved.getType(), saved.getSource(), saved.getLibelle(), saved.getMontant());
+        return mapPrevision(saved);
+    }
+
+    /**
+     * Prévisions d'une période, échéance par échéance.
+     *
+     * <p>
+     * Le cash-flow les agrège par mois ; celles-ci sont le détail qu'il résume.
+     * Sans ce point d'entrée, une prévision saisie n'était plus jamais
+     * relisible, et rien ne permettait de vérifier ce qui composait un mois.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public List<PrevisionTresorerieOutput> listerPrevisions(PeriodeInput input) {
+        return previsionTresorerieRepository
+                .findByDateEcheanceBetween(input.debut(), input.fin())
+                .stream()
+                .sorted(Comparator.comparing(PrevisionTresorerieEntity::getDateEcheance))
+                .map(this::mapPrevision)
+                .toList();
+    }
+
+    /**
+     * Portefeuille des couvertures de change.
+     */
+    @Transactional(readOnly = true)
+    public List<ContratCouvertureOutput> listerCouvertures(RechercheCouvertureInput input) {
+        String devise = (input.devise() == null || input.devise().isBlank()) ? null : input.devise();
+        String statut = (input.statut() == null || input.statut().isBlank()) ? null : input.statut();
+        return contratCouvertureRepository.rechercher(devise, statut).stream()
+                .map(this::mapCouverture)
+                .toList();
+    }
+
+    private PrevisionTresorerieOutput mapPrevision(PrevisionTresorerieEntity p) {
+        return new PrevisionTresorerieOutput(
+                p.getId(), p.getDateEcheance(), p.getType(), p.getSource(), p.getLibelle(), p.getMontant());
+    }
+
+    private ContratCouvertureOutput mapCouverture(ContratCouvertureEntity c) {
+        return new ContratCouvertureOutput(
+                c.getId(), c.getReference(), c.getDeviseCible(), c.getMontantDevise(),
+                c.getCoursGaranti(), c.getDateEffet(), c.getDateEcheance(), c.getStatut());
     }
 
     @Transactional(readOnly = true)
@@ -154,7 +198,7 @@ public class TresorerieAdapter {
                 .build();
 
         ContratCouvertureEntity c = contratCouvertureRepository.save(contrat);
-        return new ContratCouvertureOutput(c.getId(), c.getReference(), c.getDeviseCible(), c.getMontantDevise(), c.getCoursGaranti(), c.getDateEffet(), c.getDateEcheance(), c.getStatut());
+        return mapCouverture(c);
     }
 
     @Transactional(readOnly = true)

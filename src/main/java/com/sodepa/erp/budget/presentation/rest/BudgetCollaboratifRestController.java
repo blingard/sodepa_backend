@@ -2,6 +2,7 @@ package com.sodepa.erp.budget.presentation.rest;
 
 import com.sodepa.erp.budget.application.inputs.CadrageInput;
 import com.sodepa.erp.budget.application.inputs.GenererHistoriqueInput;
+import com.sodepa.erp.budget.application.inputs.RechercheDemandeInput;
 import com.sodepa.erp.budget.application.inputs.SaisirDemandeInput;
 import com.sodepa.erp.budget.application.outputs.BudgetDemandeOutput;
 import com.sodepa.erp.budget.application.usecase.*;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -29,6 +31,28 @@ public class BudgetCollaboratifRestController {
     private final AppliquerTauxCadrageUseCase appliquerTauxCadrageUseCase;
     private final GenererBudgetDepuisHistoriqueUseCase genererBudgetDepuisHistoriqueUseCase;
     private final ConsoliderDemandesDansPlanUseCase consoliderDemandesDansPlanUseCase;
+    private final ListerDemandesBudgetairesUseCase listerDemandesBudgetairesUseCase;
+
+    /**
+     * Liste les propositions budgétaires, filtrées au besoin.
+     *
+     * <p>
+     * C'est la file d'arbitrage de la direction : sans elle, une demande
+     * n'était visible qu'à l'instant de sa saisie.
+     * </p>
+     *
+     * @param departementId restreint à un service, facultatif
+     * @param annee restreint à un exercice, facultatif
+     * @param statut restreint à un état, facultatif
+     */
+    @GetMapping("/demandes")
+    public List<BudgetDemandeOutput> listerDemandes(
+            @RequestParam(required = false) UUID departementId,
+            @RequestParam(required = false) Integer annee,
+            @RequestParam(required = false) String statut
+    ) {
+        return listerDemandesBudgetairesUseCase.execute(new RechercheDemandeInput(departementId, annee, statut));
+    }
 
     /**
      * Saisit une proposition de ligne budgétaire par un service (Bottom-Up).

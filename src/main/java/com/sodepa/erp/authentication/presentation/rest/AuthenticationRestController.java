@@ -13,9 +13,8 @@ import com.sodepa.erp.authentication.presentation.requests.RefreshRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import com.sodepa.erp.share.UtilsService;
 
 import java.util.List;
 import java.util.Map;
@@ -35,6 +34,7 @@ public class AuthenticationRestController {
     private final ListSessionsUseCase listSessionsUseCase;
     private final DeleteSessionUseCase deleteSessionUseCase;
     private final ChangePasswordUseCase changePasswordUseCase;
+    private final UtilsService utilsService;
 
     /**
      * Endpoint de connexion.
@@ -71,8 +71,11 @@ public class AuthenticationRestController {
      * @return la liste des sessions
      */
     @GetMapping("/sessions")
-    public List<SessionOutput> listSessions(@AuthenticationPrincipal Jwt jwt) {
-        return listSessionsUseCase.execute(jwt.getSubject());
+    public List<SessionOutput> listSessions() {
+        // `@AuthenticationPrincipal Jwt` était toujours nul : la chaîne de
+        // sécurité n'active pas `oauth2ResourceServer`, l'authentification est
+        // posée à la main sous forme de CurrentUserAuthenticationToken.
+        return listSessionsUseCase.execute(utilsService.getCurrentUserData().iamId());
     }
 
     /**
@@ -90,7 +93,9 @@ public class AuthenticationRestController {
      * @param request la demande de changement de mot de passe
      */
     @PostMapping("/change-password")
-    public void changePassword(@AuthenticationPrincipal Jwt jwt, @RequestBody @Valid ChangePasswordRequest request) {
-        changePasswordUseCase.execute(new ChangePasswordInput(jwt.getSubject(), request.newPassword()));
+    public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+        changePasswordUseCase.execute(
+                new ChangePasswordInput(utilsService.getCurrentUserData().iamId(), request.newPassword())
+        );
     }
 }

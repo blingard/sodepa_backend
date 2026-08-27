@@ -1,6 +1,7 @@
 package com.sodepa.erp.budget.presentation.rest;
 
 import com.sodepa.erp.budget.application.inputs.CreerPrevisionInput;
+import com.sodepa.erp.budget.application.inputs.PeriodeInput;
 import com.sodepa.erp.budget.application.outputs.BfrReportOutput;
 import com.sodepa.erp.budget.application.outputs.CashFlowMensuelOutput;
 import com.sodepa.erp.budget.application.outputs.OverdraftAlertOutput;
@@ -31,6 +32,22 @@ public class TresorerieRestController {
     private final CalculerBfrUseCase calculerBfrUseCase;
     private final VerifierSeuilsDecouvertUseCase verifierSeuilsDecouvertUseCase;
     private final SimulerHypothesesWhatIfUseCase simulerHypothesesWhatIfUseCase;
+    private final ListerPrevisionsUseCase listerPrevisionsUseCase;
+
+    /**
+     * Liste les prévisions d'une période, échéance par échéance.
+     *
+     * <p>
+     * C'est le détail que le cash-flow agrège par mois.
+     * </p>
+     */
+    @GetMapping("/previsions")
+    public List<PrevisionTresorerieOutput> listerPrevisions(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate debut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin
+    ) {
+        return listerPrevisionsUseCase.execute(new PeriodeInput(debut, fin));
+    }
 
     /**
      * Ajoute une prévision d'encaissement ou de décaissement.
