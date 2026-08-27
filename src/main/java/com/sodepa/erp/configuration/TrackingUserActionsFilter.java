@@ -23,6 +23,8 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.nio.charset.StandardCharsets;
+import com.sodepa.erp.share.erreurs.RequeteInvalideException;
+
 import java.time.Instant;
 import java.util.Enumeration;
 import java.util.Map;
@@ -56,7 +58,14 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                 userData = filterBaseMethod.getUser(token);
             }
         } else {
-            userData = utilsService.getCurrentUserData();
+            // Une requête anonyme est un cas normal sur les points d'entrée
+            // publics : la tracer sous « ANONYMOUS » vaut mieux que de faire
+            // échouer une requête par ailleurs réussie.
+            try {
+                userData = utilsService.getCurrentUserData();
+            } catch (RuntimeException e) {
+                userData = null;
+            }
         }
 
         if (userData == null) {
@@ -68,7 +77,8 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                     "ANONYMOUS",
                     java.util.Collections.emptySet(),
                     "NO_SESSION",
-                    ""
+                    "",
+                    "ANONYMOUS"
             );
         }
 
@@ -125,7 +135,8 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                     userOutput.email(),
                     userOutput.permissions(),
                     jwt.getClaimAsString("sid"),
-                    jwt.getTokenValue()
+                    jwt.getTokenValue(),
+                    jwt.getSubject()
             );
         } catch (Exception e) {
             log.error("Failed to extract user data from JWT", e);
@@ -177,9 +188,26 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         return body.replaceAll("(?i)(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
     }
 
+    /**
+     * Exige l'en-tête de corrélation <em>avant</em> d'exécuter l'opération.
+     *
+     * <p>
+     * Ce contrôle vivait dans {@code postHandle} : la requête s'exécutait
+     * intégralement — jeton émis, écriture en base — puis échouait. Un appel de
+     * connexion sans en-tête consommait ainsi un jeton Keycloak que personne ne
+     * recevait. Rejeter en amont supprime l'effet de bord.
+     * </p>
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         this.start = System.currentTimeMillis();
+
+        String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+        if (correlationId == null || correlationId.isBlank()) {
+            throw new RequeteInvalideException(
+                    "En-tête " + CORRELATION_ID_HEADER + " absent : il est exigé sur toutes les requêtes.");
+        }
+        response.setHeader(CORRELATION_ID_HEADER, correlationId);
         return true;
     }
 
@@ -187,10 +215,6 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable ModelAndView modelAndView) throws Exception {
         String requestPath = request.getRequestURI();
         String correlationId = request.getHeader(CORRELATION_ID_HEADER);
-        if (correlationId == null || correlationId.isBlank()) {
-            throw new RuntimeException("Correlation Id header not provide");
-        }
-        response.setHeader(CORRELATION_ID_HEADER, correlationId);
 
         if (requestPath.startsWith("/api/auth/login") && response.getStatus() != 200) {
             return;

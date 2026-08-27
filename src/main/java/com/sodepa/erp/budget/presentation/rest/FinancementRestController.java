@@ -2,11 +2,15 @@ package com.sodepa.erp.budget.presentation.rest;
 
 import com.sodepa.erp.budget.application.inputs.CreerFinancementInput;
 import com.sodepa.erp.budget.application.inputs.CreerHorsBilanInput;
+import com.sodepa.erp.budget.application.inputs.RechercheFinancementInput;
 import com.sodepa.erp.budget.application.outputs.EcheanceOutput;
 import com.sodepa.erp.budget.application.outputs.EngagementHorsBilanOutput;
 import com.sodepa.erp.budget.application.outputs.FinancementOutput;
+import com.sodepa.erp.budget.application.outputs.FinancementSmartOutput;
 import com.sodepa.erp.budget.application.outputs.KpiReportOutput;
 import com.sodepa.erp.budget.application.usecase.CalculerKpisPerformancesUseCase;
+import com.sodepa.erp.budget.application.usecase.GetFinancementByIdUseCase;
+import com.sodepa.erp.budget.application.usecase.GetPageFinancementsUseCase;
 import com.sodepa.erp.budget.application.usecase.EnregistrerEngagementHorsBilanUseCase;
 import com.sodepa.erp.budget.application.usecase.EnregistrerFinancementUseCase;
 import com.sodepa.erp.budget.application.usecase.EnregistrerReglementEcheanceUseCase;
@@ -14,8 +18,11 @@ import com.sodepa.erp.budget.application.usecase.GenererReportingHorsBilanUseCas
 import com.sodepa.erp.budget.application.usecase.SimulerAmortissementUseCase;
 import com.sodepa.erp.budget.presentation.requests.CreerFinancementRequest;
 import com.sodepa.erp.budget.presentation.requests.CreerHorsBilanRequest;
+import com.sodepa.erp.utils.PageRecord;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,6 +46,35 @@ public class FinancementRestController {
     private final EnregistrerEngagementHorsBilanUseCase enregistrerEngagementHorsBilanUseCase;
     private final GenererReportingHorsBilanUseCase genererReportingHorsBilanUseCase;
     private final CalculerKpisPerformancesUseCase calculerKpisPerformancesUseCase;
+    private final GetPageFinancementsUseCase getPageFinancementsUseCase;
+    private final GetFinancementByIdUseCase getFinancementByIdUseCase;
+
+    /**
+     * Liste les financements en cours.
+     *
+     * <p>
+     * Résumés seulement : l'échéancier complet se demande fiche par fiche.
+     * </p>
+     *
+     * @param banqueId restreint à un prêteur, facultatif
+     * @param type restreint à une nature de financement, facultatif
+     */
+    @GetMapping
+    public PageRecord<FinancementSmartOutput> listerFinancements(
+            @PageableDefault Pageable pageable,
+            @RequestParam(required = false) UUID banqueId,
+            @RequestParam(required = false) String type
+    ) {
+        return getPageFinancementsUseCase.execute(new RechercheFinancementInput(pageable, banqueId, type));
+    }
+
+    /**
+     * Consulte un financement et son échéancier.
+     */
+    @GetMapping("/{id}")
+    public FinancementOutput getFinancement(@PathVariable UUID id) {
+        return getFinancementByIdUseCase.execute(id);
+    }
 
     /**
      * Enregistre un nouveau financement (avec son plan d'amortissement et l'écriture comptable d'entrée de fonds).

@@ -44,7 +44,7 @@ public interface MakerCheckerEnginePort {
      * @return generated request identifier returned by the
      *         Maker-Checker engine
      */
-    void submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch,
+    UUID submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch,
                       MakerCheckerOperationType checkerOperationType);
 
     void validateOrReject(UUID requestId, MakerCheckerStatus decision, String notes);
@@ -52,6 +52,32 @@ public interface MakerCheckerEnginePort {
     PageRecord<MakerCheckerSmartOutput> findAllByPage(Pageable pageable);
     PageRecord<MakerCheckerSmartOutput> findAllByStatusAndByPage(Pageable pageable, MakerCheckerStatus status);
     PageRecord<MakerCheckerSmartOutput> findAllByEntityNameAndByPage(Pageable pageable, MakerCheckerEntityName status);
+
+    /**
+     * Demandes portant sur un domaine donné et dans un état donné.
+     *
+     * <p>
+     * C'est la requête du checker : « que dois-je trancher, et sur quoi ? ».
+     * Sans elle, l'identifiant tiré au hasard à la soumission n'est
+     * récupérable nulle part et {@code validate_or_reject} reste inappelable.
+     * </p>
+     */
+    PageRecord<MakerCheckerSmartOutput> findAllByEntityNameAndStatusAndByPage(
+            Pageable pageable, MakerCheckerEntityName entityName, MakerCheckerStatus status);
+
+    /**
+     * Comme ci-dessus, mais en écartant les demandes soumises par {@code makerId}.
+     *
+     * <p>
+     * C'est la file réellement actionnable par un checker : la séparation
+     * maker-checker lui interdit de trancher ses propres soumissions, et
+     * {@code validateOrReject} les refuse. Les lister quand même produisait un
+     * bouton qui ne pouvait que renvoyer une erreur.
+     * </p>
+     */
+    PageRecord<MakerCheckerSmartOutput> findAllAValiderParAutrui(
+            Pageable pageable, MakerCheckerEntityName entityName,
+            MakerCheckerStatus status, String makerId);
     MakerCheckerOutput findById(UUID id);
     MakerCheckerOutput findByEntityIdAndEntityName(UUID id, MakerCheckerEntityName entityName);
 

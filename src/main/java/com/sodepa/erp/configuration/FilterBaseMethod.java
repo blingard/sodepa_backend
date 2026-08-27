@@ -88,7 +88,8 @@ public class FilterBaseMethod {
                 userOutput.email(),
                 userOutput.permissions(),
                 getPrincipalFromJwt(jwt, "sid"),
-                jwt.getTokenValue()
+                jwt.getTokenValue(),
+                jwt.getSubject()
         );
     }
 

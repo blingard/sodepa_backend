@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -41,7 +43,7 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
     private Long days;
 
     @Override
-    public void submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch, MakerCheckerOperationType checkerOperationType) {
+    public UUID submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch, MakerCheckerOperationType checkerOperationType) {
         UUID requestId = UUID.randomUUID();
 
         String makerId = utilsService.getCurrentUser().getUserData().get().userId();
@@ -61,6 +63,11 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
         request = requestRepo.save(request);
         // Publier l'événement de soumission vers ClickHouse via RabbitMQ
         publishMakerCheckerEvent(request, makerId, null);
+
+        // Rendu à l'appelant, qui le remonte au client : sans lui, cet
+        // identifiant tiré au hasard n'est récupérable nulle part et la demande
+        // ne peut plus jamais être tranchée.
+        return request.getId();
     }
 
     @Override
@@ -69,18 +76,70 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageRecord<MakerCheckerSmartOutput> findAllByPage(Pageable pageable) {
-        return null;
+        return toPageRecord(requestRepo.findAll(pageable));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageRecord<MakerCheckerSmartOutput> findAllByStatusAndByPage(Pageable pageable, MakerCheckerStatus status) {
-        return null;
+        return toPageRecord(requestRepo.findAllByStatus(status, pageable));
     }
 
     @Override
-    public PageRecord<MakerCheckerSmartOutput> findAllByEntityNameAndByPage(Pageable pageable, MakerCheckerEntityName status) {
-        return null;
+    @Transactional(readOnly = true)
+    public PageRecord<MakerCheckerSmartOutput> findAllByEntityNameAndByPage(Pageable pageable, MakerCheckerEntityName entityName) {
+        return toPageRecord(requestRepo.findAllByEntityName(entityName, pageable));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageRecord<MakerCheckerSmartOutput> findAllByEntityNameAndStatusAndByPage(
+            Pageable pageable, MakerCheckerEntityName entityName, MakerCheckerStatus status) {
+        return toPageRecord(requestRepo.findAllByEntityNameAndStatus(entityName, status, pageable));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageRecord<MakerCheckerSmartOutput> findAllAValiderParAutrui(
+            Pageable pageable, MakerCheckerEntityName entityName,
+            MakerCheckerStatus status, String makerId) {
+        return toPageRecord(requestRepo.findAllByEntityNameAndStatusAndMakerIdNot(
+                entityName, status, makerId, pageable));
+    }
+
+    /**
+     * Transpose une page JPA en {@link PageRecord}, forme rendue au client.
+     *
+     * <p>
+     * Le résumé suffit ici : la charge utile complète d'une demande peut être
+     * volumineuse, et une liste n'en a pas besoin. Le checker qui veut le
+     * détail appelle {@code findById}.
+     * </p>
+     */
+    private PageRecord<MakerCheckerSmartOutput> toPageRecord(Page<MakerCheckerRequestEntity> page) {
+        boolean paged = page.getPageable().isPaged();
+        return new PageRecord<>(
+                page.getContent().stream().map(mapper::toSmartDTO).collect(Collectors.toList()),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? (long) page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? (long) page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
     }
 
     @Override

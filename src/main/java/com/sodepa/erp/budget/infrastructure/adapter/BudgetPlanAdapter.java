@@ -4,12 +4,20 @@ import com.sodepa.erp.budget.application.inputs.AjouterItemInput;
 import com.sodepa.erp.budget.application.inputs.CreerBudgetPlanInput;
 import com.sodepa.erp.budget.application.inputs.EngagementInput;
 import com.sodepa.erp.budget.application.inputs.ReallocationInput;
+import com.sodepa.erp.budget.application.inputs.RechercheBudgetPlanInput;
+import com.sodepa.erp.budget.application.inputs.RechercheEngagementInput;
 import com.sodepa.erp.budget.application.outputs.BudgetEngagementOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetItemOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanOutput;
+import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.infrastructure.entities.*;
 import com.sodepa.erp.budget.infrastructure.repo.*;
+import com.sodepa.erp.utils.PageRecord;
+import com.sodepa.erp.utils.PageableRecord;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,20 +25,144 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class BudgetPlanAdapter {
 
+    private final static int MAX_PAGE_SIZE = 100;
+
     private final BudgetPlanRepository budgetPlanRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
     private final BudgetEngagementRepository budgetEngagementRepository;
     private final AuditTrailRepository auditTrailRepository;
+
+    /**
+     * Plans budgétaires, paginés et filtrés.
+     *
+     * <p>
+     * Rend des résumés, sans les postes : une liste d'exercices n'a pas à
+     * traîner toutes les lignes budgétaires de chacun. Le décompte des postes
+     * est obtenu en une requête pour la page entière.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<BudgetPlanSmartOutput> getPlansByPage(RechercheBudgetPlanInput input) {
+        Pageable pageable = input.pageable();
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+
+        Page<BudgetPlanEntity> page = budgetPlanRepository.rechercher(input.annee(), input.statut(), pageable);
+
+        List<UUID> ids = page.getContent().stream().map(BudgetPlanEntity::getId).toList();
+        Map<UUID, Long> decomptes = ids.isEmpty()
+                ? new HashMap<>()
+                : budgetItemRepository.compterParPlan(ids).stream()
+                        .collect(Collectors.toMap(
+                                BudgetItemRepository.DecompteItems::getPlanId,
+                                BudgetItemRepository.DecompteItems::getNombre));
+
+        boolean paged = page.getPageable().isPaged();
+
+        return new PageRecord<>(
+                page.getContent().stream()
+                        .map(plan -> mapPlanSmart(plan, decomptes.getOrDefault(plan.getId(), 0L)))
+                        .toList(),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+    }
+
+    /**
+     * Fiche complète d'un plan, postes compris.
+     *
+     * <p>
+     * C'est ce point d'entrée qui rend le workflow praticable : sans lui,
+     * l'identifiant rendu à la création était le seul lien vers le plan, et il
+     * se perdait au premier rechargement de page.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public BudgetPlanOutput getPlanById(UUID planId) {
+        BudgetPlanEntity plan = budgetPlanRepository.findByIdAvecItems(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
+        return mapPlan(plan);
+    }
+
+    /**
+     * Engagements, paginés et filtrés sur le plan et l'état.
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<BudgetEngagementOutput> getEngagementsByPage(RechercheEngagementInput input) {
+        Pageable pageable = input.pageable();
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+
+        String statut = (input.statut() == null || input.statut().isBlank()) ? null : input.statut();
+        Page<BudgetEngagementEntity> page = budgetEngagementRepository.rechercher(input.planId(), statut, pageable);
+        boolean paged = page.getPageable().isPaged();
+
+        return new PageRecord<>(
+                page.getContent().stream().map(this::mapEngagement).toList(),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+    }
+
+    /**
+     * Un engagement, par son numéro.
+     *
+     * <p>
+     * Par le numéro et non par l'identifiant technique : c'est lui que portent
+     * la liquidation, l'annulation et le workflow.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public BudgetEngagementOutput getEngagementByNumero(String numeroEngagement) {
+        BudgetEngagementEntity engagement = budgetEngagementRepository.findByNumeroEngagement(numeroEngagement)
+                .orElseThrow(() -> new IllegalArgumentException("Engagement introuvable."));
+        return mapEngagement(engagement);
+    }
 
     @Transactional
     public BudgetPlanOutput creerBudgetPlan(CreerBudgetPlanInput input) {
@@ -354,6 +486,22 @@ public class BudgetPlanAdapter {
                 p.getModifieLe(),
                 p.getModifiePar(),
                 items
+        );
+    }
+
+    private BudgetPlanSmartOutput mapPlanSmart(BudgetPlanEntity p, long nombreItems) {
+        return new BudgetPlanSmartOutput(
+                p.getId(),
+                p.getAnnee(),
+                p.getIntitule(),
+                p.getVersion(),
+                p.getStatut(),
+                p.getTotalBudget(),
+                (int) nombreItems,
+                p.getCreeLe(),
+                p.getCreePar(),
+                p.getModifieLe(),
+                p.getModifiePar()
         );
     }
 

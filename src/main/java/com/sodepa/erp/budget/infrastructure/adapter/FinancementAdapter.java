@@ -1,8 +1,10 @@
 package com.sodepa.erp.budget.infrastructure.adapter;
 
 import com.sodepa.erp.budget.application.inputs.CreerFinancementInput;
+import com.sodepa.erp.budget.application.inputs.RechercheFinancementInput;
 import com.sodepa.erp.budget.application.outputs.EcheanceOutput;
 import com.sodepa.erp.budget.application.outputs.FinancementOutput;
+import com.sodepa.erp.budget.application.outputs.FinancementSmartOutput;
 import com.sodepa.erp.budget.infrastructure.entities.AuditTrailEntity;
 import com.sodepa.erp.budget.infrastructure.entities.EcheanceFinancementEntity;
 import com.sodepa.erp.budget.infrastructure.entities.LigneFinancementEntity;
@@ -17,14 +19,21 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
 import com.sodepa.erp.utils.CodeJournal;
 import com.sodepa.erp.utils.Devise;
+import com.sodepa.erp.utils.PageRecord;
+import com.sodepa.erp.utils.PageableRecord;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,6 +41,11 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 public class FinancementAdapter {
+
+    private final static int MAX_PAGE_SIZE = 100;
+
+    /** État d'une échéance encore due — posé à la génération de l'échéancier. */
+    private final static String STATUT_ECHEANCE_A_PAYER = "A_PAYER";
 
     private final LigneFinancementRepository ligneFinancementRepository;
     private final EcheanceFinancementRepository echeanceFinancementRepository;
@@ -310,6 +324,97 @@ public class FinancementAdapter {
             saisirEcritureUseCase.execute(request);
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Financements, paginés et filtrés.
+     *
+     * <p>
+     * Sans ce point d'entrée, un emprunt n'existait pour le client que le temps
+     * de la réponse à son enregistrement : aucune liste, aucune relecture, et
+     * donc aucun suivi des remboursements possible.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<FinancementSmartOutput> getFinancementsByPage(RechercheFinancementInput input) {
+        Pageable pageable = input.pageable();
+        if (pageable.getPageSize() > MAX_PAGE_SIZE) {
+            pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+        }
+
+        String type = (input.type() == null || input.type().isBlank()) ? null : input.type();
+        Page<LigneFinancementEntity> page = ligneFinancementRepository.rechercher(input.banqueId(), type, pageable);
+        boolean paged = page.getPageable().isPaged();
+
+        return new PageRecord<>(
+                page.getContent().stream().map(this::mapFinancementSmart).toList(),
+                page.isEmpty(),
+                page.isFirst(),
+                page.isLast(),
+                page.getNumber(),
+                page.getNumberOfElements(),
+                PageableRecord.builder()
+                        .offset(paged ? page.getPageable().getOffset() : 0L)
+                        .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
+                        .pageSize(paged ? page.getPageable().getPageSize() : 0L)
+                        .paged(paged)
+                        .sort(page.getPageable().getSort())
+                        .unpaged(!paged)
+                        .build(),
+                page.getSize(),
+                page.getSort(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+    }
+
+    /**
+     * Fiche d'un financement, échéancier compris.
+     */
+    @Transactional(readOnly = true)
+    public FinancementOutput getFinancementById(UUID id) {
+        LigneFinancementEntity entity = ligneFinancementRepository.findByIdAvecEcheances(id)
+                .orElseThrow(() -> new IllegalArgumentException("Financement introuvable."));
+        return mapFinancement(entity);
+    }
+
+    /**
+     * Résumé d'un financement : la position, sans l'échéancier.
+     *
+     * <p>
+     * Le capital restant dû est lu sur la plus ancienne échéance encore à
+     * payer, et non recalculé : {@code soldeRestantDu} est déjà posé par le
+     * plan d'amortissement, ligne à ligne.
+     * </p>
+     */
+    private FinancementSmartOutput mapFinancementSmart(LigneFinancementEntity entity) {
+        List<EcheanceFinancementEntity> echeances = entity.getEcheances() == null
+                ? List.of()
+                : entity.getEcheances();
+
+        List<EcheanceFinancementEntity> restantes = echeances.stream()
+                .filter(e -> STATUT_ECHEANCE_A_PAYER.equals(e.getStatut()))
+                .sorted(Comparator.comparing(EcheanceFinancementEntity::getDateEcheance))
+                .toList();
+
+        BigDecimal capitalRestantDu = restantes.isEmpty()
+                ? BigDecimal.ZERO
+                : restantes.get(0).getSoldeRestantDu();
+
+        return new FinancementSmartOutput(
+                entity.getId(),
+                entity.getBanqueId(),
+                entity.getIntitule(),
+                entity.getType(),
+                entity.getCapitalEmprunte(),
+                entity.getTauxNominal(),
+                entity.getDateEffet(),
+                entity.getDureeMois(),
+                entity.getPeriodicite(),
+                entity.getStatut(),
+                capitalRestantDu,
+                restantes.size()
+        );
     }
 
     private FinancementOutput mapFinancement(LigneFinancementEntity entity) {

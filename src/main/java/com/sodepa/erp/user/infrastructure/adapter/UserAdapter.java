@@ -6,6 +6,9 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.user.UserAdap
 import com.sodepa.erp.share.FileStorageService;
 import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.MakerCheckerSmartOutput;
+import com.sodepa.erp.share.erreurs.ConflitMetierException;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.user.application.inputs.*;
 import com.sodepa.erp.user.application.outputs.UserOutput;
@@ -127,7 +130,7 @@ public class UserAdapter implements UserAdapterInterface {
     }
 
     @Transactional
-    public void initCreateUser(CreateUserInput input) {
+    public SubmissionOutput initCreateUser(CreateUserInput input) {
         utilsService.hasPermission(Permissions.INIT_CREATE_USER);
 
         if (userRepository.findByUsername(input.username()).isPresent()) {
@@ -159,12 +162,39 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        makerCheckerEngine.submitChange(
+        UUID requestId = makerCheckerEngine.submitChange(
                 MakerCheckerEntityName.USER,
                 newUserId.toString(),
                 payload,
                 MakerCheckerOperationType.CREATE
         );
+
+        // Les deux identifiants dont le client a besoin ensuite : `requestId`
+        // pour appeler `validate_or_reject`, `newUserId` pour retrouver le
+        // compte une fois la demande acceptée.
+        return new SubmissionOutput(requestId, newUserId);
+    }
+
+    /**
+     * Demandes de création ou de modification d'utilisateur en attente d'un
+     * checker.
+     *
+     * <p>
+     * Réservé à qui peut trancher : lister ce qu'on n'a pas le droit de valider
+     * exposerait des données de comptes sans contrepartie.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public PageRecord<MakerCheckerSmartOutput> findPendingRequests(Pageable pageable) {
+        utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_USER);
+
+        // Ses propres soumissions sont écartées : le maker-checker interdit de
+        // valider ce qu'on a soumis soi-même, et `validateOrReject` le refuse
+        // par un 400. Les afficher ici revenait à proposer une action qui ne
+        // pouvait qu'échouer.
+        String moi = utilsService.getCurrentUser().getUserData().get().userId();
+        return makerCheckerEngine.findAllAValiderParAutrui(
+                pageable, MakerCheckerEntityName.USER, MakerCheckerStatus.PENDING, moi);
     }
 
     @Transactional
@@ -279,7 +309,11 @@ public class UserAdapter implements UserAdapterInterface {
         UUID checkerId = UUID.fromString(utilsService.getCurrentUser().getUserData().get().userId());
 
         if (checkerOutput.maker().id().equals(checkerId)) {
-            throw new IllegalArgumentException("Le validateur doit être différent de l'initiateur.");
+            // 409 : la demande est valide, c'est l'état du système qui s'y
+            // oppose. Un 400 laissait croire à un corps mal formé, que le
+            // client aurait tenté de corriger sans jamais y parvenir.
+            throw new ConflitMetierException(
+                    "Vous ne pouvez pas valider une demande que vous avez soumise.");
         }
 
         validation(checkerOutput);
@@ -309,8 +343,22 @@ public class UserAdapter implements UserAdapterInterface {
     }
 
     private void creation(UserEventInput payload, UUID id) {
+        // Le compte Keycloak est créé AVANT l'enregistrement en base : c'est lui
+        // qui fournit l'identifiant `iam`, colonne NOT NULL de `utilisateurs`.
+        // L'ordre inverse faisait échouer toute validation de création sur une
+        // violation de contrainte. Même séquence que `UserSeeder`.
+        UUID iam = keycloakProvisioningPort.createKeycloakUser(
+                id,
+                payload.username(),
+                payload.email(),
+                payload.prenom(),
+                payload.nom(),
+                payload.actif()
+        );
+
         UtilisateurEntity entity = UtilisateurEntity.builder()
                 .id(id)
+                .iam(iam)
                 .username(payload.username())
                 .nom(payload.nom())
                 .prenom(payload.prenom())
@@ -322,14 +370,6 @@ public class UserAdapter implements UserAdapterInterface {
                 .build();
         userRepository.save(entity);
         log.info("Création approuvée de l'utilisateur. PK: {}", id);
-        keycloakProvisioningPort.createKeycloakUser(
-                id, 
-                payload.username(), 
-                payload.email(), 
-                payload.prenom(), 
-                payload.nom(), 
-                payload.actif()
-        );
     }
 
     private void update(UserEventInput payload) {

@@ -2,16 +2,22 @@ package com.sodepa.erp.comptabilite.generale.presentation.rest;
 
 import com.sodepa.erp.comptabilite.generale.application.inputs.LigneReleveInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.RapprochementInput;
+import com.sodepa.erp.comptabilite.generale.application.inputs.RechercheReleveInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ReleveManuelInput;
 import com.sodepa.erp.comptabilite.generale.application.inputs.SyncInput;
 import com.sodepa.erp.comptabilite.generale.application.outputs.ReleveBancaireOutput;
 import com.sodepa.erp.comptabilite.generale.application.usecase.EffectuerRapprochementAutomatiqueUseCase;
+import com.sodepa.erp.comptabilite.generale.application.usecase.GetPageRelevesUseCase;
+import com.sodepa.erp.comptabilite.generale.application.usecase.GetReleveByIdUseCase;
 import com.sodepa.erp.comptabilite.generale.application.usecase.SaisirReleveManuelUseCase;
 import com.sodepa.erp.comptabilite.generale.application.usecase.SynchroniserReleveAutomatiqueUseCase;
 import com.sodepa.erp.comptabilite.generale.presentation.requests.ReleveManuelRequest;
 import com.sodepa.erp.comptabilite.generale.presentation.requests.SyncRequest;
+import com.sodepa.erp.utils.PageRecord;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -25,6 +31,31 @@ public class RapprochementRestController {
     private final SaisirReleveManuelUseCase saisirReleveManuelUseCase;
     private final SynchroniserReleveAutomatiqueUseCase synchroniserReleveAutomatiqueUseCase;
     private final EffectuerRapprochementAutomatiqueUseCase effectuerRapprochementAutomatiqueUseCase;
+    private final GetPageRelevesUseCase getPageRelevesUseCase;
+    private final GetReleveByIdUseCase getReleveByIdUseCase;
+
+    /**
+     * Liste les relevés importés.
+     *
+     * @param banqueId restreint à une banque, facultatif
+     * @param valide restreint aux relevés rapprochés ou non, facultatif
+     */
+    @GetMapping("/releves")
+    public PageRecord<ReleveBancaireOutput> listerReleves(
+            @PageableDefault Pageable pageable,
+            @RequestParam(required = false) UUID banqueId,
+            @RequestParam(required = false) Boolean valide
+    ) {
+        return getPageRelevesUseCase.execute(new RechercheReleveInput(pageable, banqueId, valide));
+    }
+
+    /**
+     * Consulte un relevé et ses lignes.
+     */
+    @GetMapping("/releves/{releveId}")
+    public ReleveBancaireOutput getReleve(@PathVariable UUID releveId) {
+        return getReleveByIdUseCase.execute(releveId);
+    }
 
     @PostMapping("/manuel")
     public ReleveBancaireOutput saisirReleveManuel(@RequestBody @Valid ReleveManuelRequest request) {

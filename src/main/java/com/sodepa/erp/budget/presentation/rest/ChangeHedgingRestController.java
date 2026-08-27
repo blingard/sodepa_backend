@@ -1,16 +1,19 @@
 package com.sodepa.erp.budget.presentation.rest;
 
 import com.sodepa.erp.budget.application.inputs.CouvertureInput;
+import com.sodepa.erp.budget.application.inputs.RechercheCouvertureInput;
 import com.sodepa.erp.budget.application.outputs.ContratCouvertureOutput;
 import com.sodepa.erp.budget.application.outputs.ValuationCouvertureReportOutput;
 import com.sodepa.erp.budget.application.usecase.EnregistrerCouvertureUseCase;
 import com.sodepa.erp.budget.application.usecase.EvaluerEcartsChangeLatentsUseCase;
+import com.sodepa.erp.budget.application.usecase.ListerCouverturesUseCase;
 import com.sodepa.erp.budget.presentation.requests.CouvertureRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,6 +26,27 @@ public class ChangeHedgingRestController {
 
     private final EnregistrerCouvertureUseCase enregistrerCouvertureUseCase;
     private final EvaluerEcartsChangeLatentsUseCase evaluerEcartsChangeLatentsUseCase;
+    private final ListerCouverturesUseCase listerCouverturesUseCase;
+
+    /**
+     * Liste le portefeuille des contrats de couverture.
+     *
+     * <p>
+     * Sans cette liste, un contrat n'était connu qu'à l'instant de son
+     * enregistrement, alors que son évaluation au cours du jour réclame son
+     * identifiant.
+     * </p>
+     *
+     * @param devise restreint à une devise cible, facultatif
+     * @param statut restreint à un état de contrat, facultatif
+     */
+    @GetMapping("/couverture")
+    public List<ContratCouvertureOutput> listerCouvertures(
+            @RequestParam(required = false) String devise,
+            @RequestParam(required = false) String statut
+    ) {
+        return listerCouverturesUseCase.execute(new RechercheCouvertureInput(devise, statut));
+    }
 
     /**
      * Enregistre un nouveau contrat de couverture de change.

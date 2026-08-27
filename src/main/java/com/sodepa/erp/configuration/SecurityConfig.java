@@ -32,7 +32,12 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**", "/actuator/**", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout"};
+            "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**", "/actuator/**",
+            // Sans cette entrée, le renvoi interne vers /error se fait refuser
+            // et **toute** exception applicative ressort en 403 au lieu de son
+            // vrai statut : le diagnostic devient impossible côté client.
+            "/error",
+            "/api/auth/login", "/api/auth/refresh", "/api/auth/logout"};
 
     @Bean
     public RestTemplate restTemplate() {

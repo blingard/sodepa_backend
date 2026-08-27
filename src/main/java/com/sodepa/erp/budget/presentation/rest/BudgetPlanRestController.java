@@ -4,16 +4,23 @@ import com.sodepa.erp.budget.application.inputs.AjouterItemInput;
 import com.sodepa.erp.budget.application.inputs.CreerBudgetPlanInput;
 import com.sodepa.erp.budget.application.inputs.EngagementInput;
 import com.sodepa.erp.budget.application.inputs.ReallocationInput;
+import com.sodepa.erp.budget.application.inputs.RechercheBudgetPlanInput;
+import com.sodepa.erp.budget.application.inputs.RechercheEngagementInput;
 import com.sodepa.erp.budget.application.outputs.BudgetEngagementOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetItemOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanOutput;
+import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.application.usecase.*;
+import com.sodepa.erp.budget.infrastructure.entities.StatutBudget;
 import com.sodepa.erp.budget.presentation.requests.AjouterItemRequest;
 import com.sodepa.erp.budget.presentation.requests.CreerBudgetRequest;
 import com.sodepa.erp.budget.presentation.requests.EngagementRequest;
 import com.sodepa.erp.budget.presentation.requests.ReallocationRequest;
+import com.sodepa.erp.utils.PageRecord;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -36,6 +43,56 @@ public class BudgetPlanRestController {
     private final EnregistrerEngagementUseCase enregistrerEngagementUseCase;
     private final LiquiderEngagementUseCase liquiderEngagementUseCase;
     private final AnnulerEngagementUseCase annulerEngagementUseCase;
+    private final GetPageBudgetPlansUseCase getPageBudgetPlansUseCase;
+    private final GetBudgetPlanByIdUseCase getBudgetPlanByIdUseCase;
+    private final GetPageEngagementsUseCase getPageEngagementsUseCase;
+    private final GetEngagementByNumeroUseCase getEngagementByNumeroUseCase;
+
+    /**
+     * Liste les plans budgétaires.
+     *
+     * @param annee restreint à un exercice, facultatif
+     * @param statut restreint à un état (DRAFT, SUBMITTED, PUBLISHED, REJECTED), facultatif
+     */
+    @GetMapping("/plans")
+    public PageRecord<BudgetPlanSmartOutput> listerPlans(
+            @PageableDefault Pageable pageable,
+            @RequestParam(required = false) Integer annee,
+            @RequestParam(required = false) StatutBudget statut
+    ) {
+        return getPageBudgetPlansUseCase.execute(new RechercheBudgetPlanInput(pageable, annee, statut));
+    }
+
+    /**
+     * Consulte un plan budgétaire et ses postes.
+     */
+    @GetMapping("/plans/{planId}")
+    public BudgetPlanOutput getPlan(@PathVariable UUID planId) {
+        return getBudgetPlanByIdUseCase.execute(planId);
+    }
+
+    /**
+     * Liste les engagements budgétaires.
+     *
+     * @param planId restreint aux engagements d'un plan, facultatif
+     * @param statut ENGAGED, CONVERTED_TO_REAL ou CANCELLED, facultatif
+     */
+    @GetMapping("/engagements")
+    public PageRecord<BudgetEngagementOutput> listerEngagements(
+            @PageableDefault Pageable pageable,
+            @RequestParam(required = false) UUID planId,
+            @RequestParam(required = false) String statut
+    ) {
+        return getPageEngagementsUseCase.execute(new RechercheEngagementInput(pageable, planId, statut));
+    }
+
+    /**
+     * Consulte un engagement par son numéro.
+     */
+    @GetMapping("/engagements/{numero}")
+    public BudgetEngagementOutput getEngagement(@PathVariable String numero) {
+        return getEngagementByNumeroUseCase.execute(numero);
+    }
 
     /**
      * Crée un nouveau plan budgétaire annuel.

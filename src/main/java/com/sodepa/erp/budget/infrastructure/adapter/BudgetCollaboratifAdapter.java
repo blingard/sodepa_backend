@@ -2,6 +2,7 @@ package com.sodepa.erp.budget.infrastructure.adapter;
 
 import com.sodepa.erp.budget.application.inputs.CadrageInput;
 import com.sodepa.erp.budget.application.inputs.GenererHistoriqueInput;
+import com.sodepa.erp.budget.application.inputs.RechercheDemandeInput;
 import com.sodepa.erp.budget.application.inputs.SaisirDemandeInput;
 import com.sodepa.erp.budget.application.outputs.BudgetDemandeOutput;
 import com.sodepa.erp.budget.application.usecase.AjouterItemPlanUseCase;
@@ -204,6 +205,26 @@ public class BudgetCollaboratifAdapter {
         Map<UUID, BigDecimal> subMap = cumulsMap.get(compte);
         UUID key = (section == null) ? UUID.fromString("00000000-0000-0000-0000-000000000000") : section;
         subMap.put(key, subMap.getOrDefault(key, BigDecimal.ZERO).add(montant));
+    }
+
+    /**
+     * Demandes budgétaires, filtrées au besoin.
+     *
+     * <p>
+     * C'est le point d'entrée de l'écran d'arbitrage : sans lui, une demande
+     * saisie disparaissait de la vue dès la réponse rendue, et
+     * {@code approuver} comme {@code rejeter} réclamaient un identifiant que
+     * plus rien ne permettait de retrouver.
+     * </p>
+     */
+    @Transactional(readOnly = true)
+    public List<BudgetDemandeOutput> listerDemandes(RechercheDemandeInput input) {
+        String statut = (input.statut() == null || input.statut().isBlank()) ? null : input.statut();
+        return budgetDemandeRepository
+                .rechercher(input.departementId(), input.annee(), statut)
+                .stream()
+                .map(this::mapDemande)
+                .collect(Collectors.toList());
     }
 
     private BudgetDemandeOutput mapDemande(BudgetDemandeEntity e) {
