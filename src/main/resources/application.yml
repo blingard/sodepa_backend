@@ -95,6 +95,232 @@ collabora:
 app:
   public_url: http://172.24.208.1:8087
   duration: 30
+  interceptor-throttle:
+    enabled: true
+    default-rule:
+      name: sodepa-default-catchall
+      limit: 30
+      duration-seconds: 60
+      key-type: AUTHENTICATED_ENDPOINT
+      include-path-in-key: true
+      failure-policy: FAIL_CLOSED
+    rules:
+      # ── Authentication (public endpoints) ──
+      - name: sodepa-auth-public
+        path-patterns:
+          - /api/auth/login
+          - /api/auth/refresh
+          - /api/auth/logout
+        methods:
+          - POST
+        limit: 10
+        duration-seconds: 60
+        key-type: PUBLIC_ENDPOINT
+        include-path-in-key: false
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-auth-sessions
+        path-patterns:
+          - /api/auth/sessions
+          - /api/auth/sessions/**
+          - /api/auth/change-password
+        limit: 10
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── User Management ──
+      - name: sodepa-user-read
+        path-patterns:
+          - /api/v1/users
+          - /api/v1/users/search
+          - /api/v1/users/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-user-write
+        path-patterns:
+          - /api/v1/users/**
+        methods:
+          - POST
+          - PUT
+        limit: 10
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Audit ──
+      - name: sodepa-audit
+        path-patterns:
+          - /api/auth/audit/**
+          - /api/audit/**
+        methods:
+          - GET
+        limit: 20
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Budget / Engagements / Collaboratif (write operations) ──
+      - name: sodepa-budget-write
+        path-patterns:
+          - /api/budget/plans
+          - /api/budget/plans/**
+          - /api/budget/reallocations
+          - /api/budget/engagements
+          - /api/budget/engagements/**
+          - /api/budget/collaboratif/**
+        methods:
+          - POST
+          - PUT
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Comptabilité générale (write: écritures, rapprochement, clôture) ──
+      - name: sodepa-compta-generale-write
+        path-patterns:
+          - /api/comptabilite/ecritures
+          - /api/comptabilite/ecritures/**
+          - /api/comptabilite/rapprochement/**
+          - /api/comptabilite/cloture/**
+          - /api/comptabilite/journaux/init_create
+          - /api/comptabilite/journaux/init_update/**
+          - /api/comptabilite/journaux/validate_or_reject/**
+          - /api/v1/caccounting/compte/init_create
+          - /api/v1/caccounting/compte/init_update/**
+          - /api/v1/caccounting/compte/validate_or_reject/**
+          - /api/v1/caccounting/bank/init_create
+          - /api/v1/caccounting/bank/init_update/**
+          - /api/v1/caccounting/bank/init_update_image/**
+          - /api/v1/caccounting/bank/validate_or_reject/**
+          - /api/v1/caccounting/tiers/init_create
+          - /api/v1/caccounting/tiers/init_update/**
+          - /api/v1/caccounting/tiers/validate_or_reject/**
+        methods:
+          - POST
+          - PUT
+          - DELETE
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Comptabilité générale (read) ──
+      - name: sodepa-compta-generale-read
+        path-patterns:
+          - /api/v1/caccounting/compte/**
+          - /api/v1/caccounting/bank/**
+          - /api/v1/caccounting/tiers/**
+          - /api/comptabilite/journaux/**
+          - /api/comptabilite/ecritures/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Comptabilité analytique (write) ──
+      - name: sodepa-compta-analytique-write
+        path-patterns:
+          - /api/comptabilite/analytique/axes
+          - /api/comptabilite/analytique/axes/**
+          - /api/comptabilite/analytique/lignes/**
+          - /api/comptabilite/analytique/budgets
+          - /api/comptabilite/analytique/cles
+          - /api/comptabilite/analytique/cles/**
+        methods:
+          - POST
+          - PUT
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Comptabilité analytique (read) ──
+      - name: sodepa-compta-analytique-read
+        path-patterns:
+          - /api/comptabilite/analytique/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Reporting (all modules) ──
+      - name: sodepa-reporting
+        path-patterns:
+          - /api/comptabilite/reporting/**
+          - /api/comptabilite/analytique/reporting/**
+          - /api/reporting/**
+        methods:
+          - GET
+        limit: 20
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Trésorerie (write) ──
+      - name: sodepa-tresorerie-write
+        path-patterns:
+          - /api/tresorerie/previsions
+          - /api/tresorerie/change/couverture
+          - /api/tresorerie/rapprochement/**
+        methods:
+          - POST
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Trésorerie (read) ──
+      - name: sodepa-tresorerie-read
+        path-patterns:
+          - /api/tresorerie/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Financement ──
+      - name: sodepa-financement-write
+        path-patterns:
+          - /api/financement
+          - /api/financement/echeances/**
+          - /api/financement/hors-bilan
+        methods:
+          - POST
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-financement-read
+        path-patterns:
+          - /api/financement/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      # ── Immobilisations ──
+      - name: sodepa-immobilisations-write
+        path-patterns:
+          - /api/v1/immobilisations/init_create
+          - /api/v1/immobilisations/init_amortir
+          - /api/v1/immobilisations/validate_or_reject/**
+        methods:
+          - POST
+          - PUT
+        limit: 15
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-immobilisations-read
+        path-patterns:
+          - /api/v1/immobilisations/**
+        methods:
+          - GET
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
 
 management:
   endpoints:
