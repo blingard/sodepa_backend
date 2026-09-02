@@ -1,0 +1,62 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Serveur Allure partagé — SODEPA ERP
+#
+#  Rôle : héberger le rapport de tests à une URL unique, accessible à toute
+#  l'équipe, avec historique et courbes de tendance entre les exécutions.
+#  C'est l'équivalent gratuit et auto-hébergé de la partie « rapports » d'Allure
+#  TestOps (voir docs/TESTING.md pour la bascule vers TestOps).
+#
+#  Démarrage :
+#      docker compose -f docker-compose.allure.yml up -d
+#
+#  Accès :
+#      Interface  →  http://<ip-du-serveur>:5252/allure-docker-service/projects/sodepa
+#      API        →  http://<ip-du-serveur>:5050/allure-docker-service
+#
+#  Envoi des résultats depuis un poste ou depuis la CI :
+#      ./scripts/allure-send-results.sh
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  allure:
+    image: frankescobar/allure-docker-service:latest
+    container_name: sodepa-allure
+    restart: unless-stopped
+    environment:
+      TZ: Africa/Douala
+      # Scrute le dossier de résultats et régénère le rapport automatiquement.
+      CHECK_RESULTS_EVERY_SECONDS: 5
+      # Historique et tendances entre exécutions.
+      KEEP_HISTORY: 1
+      KEEP_HISTORY_LATEST: 50
+      # Authentification : un compte administrateur (envoi de résultats,
+      # création de projets) et un compte lecture seule pour l'équipe.
+      SECURITY_ENABLED: 1
+      SECURITY_USER: ${ALLURE_ADMIN_USER:-admin}
+      SECURITY_PASS: ${ALLURE_ADMIN_PASS:-changez-moi}
+      SECURITY_VIEWER_USER: ${ALLURE_VIEWER_USER:-sodepa}
+      SECURITY_VIEWER_PASS: ${ALLURE_VIEWER_PASS:-sodepa}
+    ports:
+      - "5050:5050"
+    volumes:
+      # Résultats bruts : un sous-dossier par projet.
+      - allure_projects:/app/projects
+      # Dépôt direct des résultats du projet par défaut (utile en local).
+      - ./target/allure-results:/app/allure-results
+
+  allure-ui:
+    image: frankescobar/allure-docker-service-ui:latest
+    container_name: sodepa-allure-ui
+    restart: unless-stopped
+    depends_on:
+      - allure
+    environment:
+      # URL publique de l'API, telle que vue depuis le navigateur des utilisateurs.
+      # À remplacer par l'adresse réelle du serveur (nom DNS ou IP), pas localhost,
+      # sinon l'interface ne fonctionnera que sur la machine hôte.
+      ALLURE_DOCKER_PUBLIC_API_URL: ${ALLURE_PUBLIC_API_URL:-http://localhost:5050}
+    ports:
+      - "5252:5252"
+
+volumes:
+  allure_projects:

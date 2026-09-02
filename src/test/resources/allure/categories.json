@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Règle métier violée",
+    "matchedStatuses": ["failed"],
+    "messageRegex": ".*(non équilibrée|IllegalStateException|IllegalArgumentException).*"
+  },
+  {
+    "name": "Assertion en échec",
+    "matchedStatuses": ["failed"],
+    "messageRegex": ".*(AssertionError|expecting|expected:).*"
+  },
+  {
+    "name": "Infrastructure indisponible",
+    "matchedStatuses": ["broken"],
+    "messageRegex": ".*(Connection refused|ConnectException|UnknownHost|Timeout|Liquibase|Kafka|Redis|Keycloak|MinIO).*"
+  },
+  {
+    "name": "Contexte Spring non chargé",
+    "matchedStatuses": ["broken"],
+    "messageRegex": ".*(ApplicationContext|BeanCreationException|NoSuchBeanDefinition).*"
+  },
+  {
+    "name": "Cas de test à écrire",
+    "matchedStatuses": ["skipped"],
+    "messageRegex": ".*(à implémenter|not implemented|TODO).*"
+  },
+  {
+    "name": "Défauts produit",
+    "matchedStatuses": ["failed"]
+  },
+  {
+    "name": "Tests instables",
+    "matchedStatuses": ["broken"]
+  }
+]

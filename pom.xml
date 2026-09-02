@@ -31,7 +31,31 @@
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
 
+        <!-- ═══════════════ Allure (rapports & gestion des cas de test) ═══════════════ -->
+        <allure.version>2.35.4</allure.version>
+        <aspectj.version>1.9.25</aspectj.version>
+        <!-- Répertoire où les tests déposent les résultats bruts consommés par
+             le rapport Allure, le serveur Allure partagé et allurectl (TestOps). -->
+        <allure.results.directory>${project.build.directory}/allure-results</allure.results.directory>
+        <!-- Tags JUnit exclus par défaut. La CI lance `-DexcludedGroups=integration`
+             pour ne garder que les tests ne nécessitant aucune infrastructure. -->
+        <excludedGroups></excludedGroups>
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Aligne toutes les briques Allure sur une seule version. -->
+            <dependency>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-bom</artifactId>
+                <version>${allure.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -240,6 +264,35 @@
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- ═══════════════ Allure : instrumentation des tests ═══════════════ -->
+        <!-- JUnit 5 complet (inclut junit-jupiter-params pour les @ParameterizedTest). -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Intégration JUnit 5 (Jupiter) : produit les résultats bruts Allure. -->
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Nécessaire pour que les annotations @Step et @Attachment soient
+             interceptées à l'exécution (tissage AspectJ, voir surefire ci-dessous). -->
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>${aspectj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- AssertJ : assertions lisibles, rendues telles quelles dans le rapport. -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
     </dependencies>
 
     <build>
@@ -306,6 +359,78 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!--
+                 Copie categories.json (classification des échecs) et
+                 environment.properties (widget « Environment ») dans le dossier
+                 de résultats, avant l'exécution des tests.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-allure-metadata</id>
+                        <phase>process-test-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${allure.results.directory}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/test/resources/allure</directory>
+                                    <filtering>true</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ═══════════════ Allure : exécution des tests ═══════════════ -->
+            <!--
+                 Surefire charge l'agent AspectJ : sans lui, les annotations
+                 @Step / @Attachment ne remontent pas dans le rapport.
+                 `excludedGroups` permet d'écarter les tests d'intégration
+                 (base de données, Kafka, Keycloak…) : `mvn test -DexcludedGroups=integration`.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>
+                        -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+                    </argLine>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <allure.results.directory>${allure.results.directory}</allure.results.directory>
+                    </systemPropertyVariables>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.aspectj</groupId>
+                        <artifactId>aspectjweaver</artifactId>
+                        <version>${aspectj.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <!--
+                 Génération du rapport HTML en local :
+                   mvn allure:serve    → ouvre le rapport dans le navigateur
+                   mvn allure:report   → écrit le rapport dans target/site/allure-maven-plugin
+            -->
+            <plugin>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-maven</artifactId>
+                <version>3.0.2</version>
+                <configuration>
+                    <reportVersion>${allure.version}</reportVersion>
+                    <resultsDirectory>${allure.results.directory}</resultsDirectory>
+                </configuration>
+            </plugin>
+            <!-- ════════════════════════════════════════════════════════════ -->
         </plugins>
     </build>
 

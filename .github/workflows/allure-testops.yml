@@ -1,0 +1,61 @@
+name: Remontée vers Allure TestOps
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Câblage prêt à l'emploi vers Allure TestOps (produit commercial Qameta).
+#  Le workflow reste inerte tant que la variable de dépôt
+#  ALLURE_TESTOPS_ENABLED n'est pas passée à « true ».
+#
+#  À configurer dans Settings → Secrets and variables → Actions :
+#
+#    Variables
+#      ALLURE_TESTOPS_ENABLED   true
+#      ALLURE_ENDPOINT          https://<votre-instance>.testops.cloud
+#      ALLURE_PROJECT_ID        1
+#
+#    Secrets
+#      ALLURE_TOKEN             jeton API généré depuis votre profil TestOps
+#
+#  Aucune ligne de code de test n'est à modifier : l'instrumentation Allure
+#  du pom.xml alimente à la fois le rapport GitHub Pages et TestOps.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  testops:
+    name: Exécuter et publier dans TestOps
+    if: vars.ALLURE_TESTOPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+
+    env:
+      ALLURE_ENDPOINT: ${{ vars.ALLURE_ENDPOINT }}
+      ALLURE_PROJECT_ID: ${{ vars.ALLURE_PROJECT_ID }}
+      ALLURE_TOKEN: ${{ secrets.ALLURE_TOKEN }}
+      ALLURE_RESULTS: target/allure-results
+      ALLURE_LAUNCH_NAME: "GitHub #${{ github.run_number }} — ${{ github.ref_name }}"
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Installer allurectl
+        uses: allure-framework/setup-allurectl@v1
+        with:
+          allure-endpoint: ${{ vars.ALLURE_ENDPOINT }}
+          allure-token: ${{ secrets.ALLURE_TOKEN }}
+          allure-project-id: ${{ vars.ALLURE_PROJECT_ID }}
+
+      # `allurectl watch` crée le lancement dans TestOps, suit l'exécution en
+      # direct et téléverse les résultats au fur et à mesure.
+      - name: Exécuter les tests sous allurectl
+        run: allurectl watch -- ./mvnw -B --no-transfer-progress test -DexcludedGroups=integration
