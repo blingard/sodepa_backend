@@ -1,0 +1,45 @@
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+/** Lit une variable d'environnement obligatoire. */
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `Variable d'environnement manquante : ${name}. Copier .env.example vers .env et la renseigner.`,
+    );
+  }
+  return value;
+}
+
+/** Lit une variable d'environnement avec valeur par défaut. */
+function optional(name: string, fallback: string): string {
+  return process.env[name] ?? fallback;
+}
+
+export const env = {
+  apiBaseUrl: optional('API_BASE_URL', 'http://localhost:8082'),
+  uiBaseUrl: optional('UI_BASE_URL', 'http://localhost:4200'),
+  apiTimeoutMs: Number(optional('API_TIMEOUT_MS', '30000')),
+  headless: optional('HEADLESS', 'true') !== 'false',
+  /**
+   * Autorise les tests qui modifient l'état de façon difficilement réversible
+   * (clôture d'exercice, suppression de compte, changement de mot de passe).
+   */
+  runDestructive: optional('RUN_DESTRUCTIVE', 'false') === 'true',
+  isCI: !!process.env.CI,
+  users: {
+    admin: {
+      username: optional('ADMIN_USERNAME', 'admin'),
+      password: optional('ADMIN_PASSWORD', 'DefaultPassword123!'),
+    },
+    comptable: {
+      username: optional('COMPTABLE_USERNAME', 'comptable'),
+      password: optional('COMPTABLE_PASSWORD', 'DefaultPassword123!'),
+    },
+  },
+} as const;
+
+export { required };
