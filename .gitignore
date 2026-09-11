@@ -30,6 +30,7 @@ build/
 !**/src/test/**/build/
 
 .vscode/
+<<<<<<< HEAD
 .pycharm_plugin/
 
 # Local configuration and environment variables
@@ -48,3 +49,11 @@ application-prod.yml
 *.db
 hs_err_pid*.log
 *.log
+=======
+
+### Allure ###
+allure-results/
+allure-report/
+.allure/
+gh-pages/
+>>>>>>> 35a26aac6e8d816493fea98ee88c65b247c1057f
