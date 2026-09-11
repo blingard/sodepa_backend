@@ -67,7 +67,6 @@ public class AuthenticationRestController {
 
     /**
      * Endpoint pour lister les sessions actives de l'utilisateur courant.
-     * @param jwt le jeton d'authentification de l'utilisateur
      * @return la liste des sessions
      */
     @GetMapping("/sessions")
@@ -89,7 +88,6 @@ public class AuthenticationRestController {
 
     /**
      * Endpoint pour changer le mot de passe de l'utilisateur courant.
-     * @param jwt le jeton d'authentification de l'utilisateur
      * @param request la demande de changement de mot de passe
      */
     @PostMapping("/change-password")

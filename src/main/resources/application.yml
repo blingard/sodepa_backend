@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    active: ${PROFILE}
   devtools:
     restart:
       enabled: false
@@ -10,73 +12,65 @@ spring:
     type: redis
   data:
     redis:
-      port: 6379
-      host: localhost
+      port: ${REDIS_PORT}
+      host: ${REDIS_IP}
+      password: ${REDIS_PASSWORD}
   datasource:
-    url: jdbc:postgresql://localhost:5433/sodepa
-    username: toto
-    password: 12345
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: ${DB_DDL}
+    show-sql: ${DB_SHOW_SQL}
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        format_sql: ${DB_SHOW_SQL_FORMAT}
   liquibase:
     change-log: classpath:db/changelog/db-changelog-master.yaml
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_IP}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8070/realms/sodepa
-          jwk-set-uri: http://localhost:8070/realms/sodepa/protocol/openid-connect/certs
+          issuer-uri: ${JWT_URI}
+          jwk-set-uri: ${JWK_URI}
       client:
         registration:
           keycloak:
-            client-id: sodepa
-            client-secret: YrLn2AuVUNAtafaOtj8DDs4CFJrv4eMp
+            client-id: ${KEYCLOAK_CLIENT_ID}
+            client-secret: ${KEYCLOAK_CLIENT_SECRET}
             scope: openid,profile,email
             authorization-grant-type: client_credentials
         provider:
           keycloak:
-            issuer-uri: http://localhost:8070/realms/sodepa
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: user-management-group
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+            issuer-uri: ${JWT_URI}
+
 
 server:
-  port: 8082
+  port: ${SERVER_PORT}
 
 # Keycloak Admin
 keycloak:
-  default-password: "DefaultPassword123!"
+  default-password: ${KEYCLOAK_DEFAULT_PASSWORD}
   admin:
-    server-url: http://localhost:8070
-    realm: sodepa
-    client-id: sodepa
-    client-secret: YrLn2AuVUNAtafaOtj8DDs4CFJrv4eMp
+    server-url: ${KEYCLOAK_SERVER_URL}
+    realm: ${KEYCLOAK_REALM}
+    client-id: ${KEYCLOAK_CLIENT_ID}
+    client-secret: ${KEYCLOAK_CLIENT_SECRET}
 
 # Minio
 minio:
-  endpoint: http://localhost:7004
-  fileurl: http://localhost:7004
-  access-key: minioadmin
-  secret-key: minioadmin123
+  endpoint: ${MINIO_ENDPOINT}
+  fileurl: ${MINIO_FILEURL}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   bucket: avatars
   bucket-name: avatars
   region: us-east-1
@@ -91,9 +85,9 @@ springdoc:
     operations-sorter: method
 
 collabora:
-  url: http://localhost:9980
+  url: ${COLLABORA_URL}
 app:
-  public_url: http://172.24.208.1:8087
+  public_url: ${BACK_END_BASE_URL}
   duration: 30
   interceptor-throttle:
     enabled: true
@@ -329,7 +323,7 @@ management:
         include: health, info
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
   datadog:
     metrics:
       export:
@@ -340,7 +334,7 @@ management:
         enabled: false
 
 clickhouse:
-  url: jdbc:ch://localhost:8123/default?compress=0&decompress=0
-  url-http: http://localhost:8123
-  username: default
-  password: ""
+  url: jdbc:ch://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}?compress=0&decompress=0
+  url-http: http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}
+  username: ${CLICKHOUSE_USERNAME}
+  password: ${CLICKHOUSE_PASSWORD}

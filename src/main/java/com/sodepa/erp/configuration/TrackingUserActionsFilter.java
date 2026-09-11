@@ -43,7 +43,6 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     private final JwtDecoder jwtDecoder;
     private final UserManagementEnginePort userManagementEnginePort;
     private final ObjectMapper objectMapper;
-    private long start;
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     private static final int MAX_BODY_SIZE = 10_000;
 
@@ -159,7 +158,8 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         if (content.length == 0) {
             return null;
         }
-        return new String(content, 0, Math.min(content.length, MAX_BODY_SIZE), StandardCharsets.UTF_8);
+        String body = new String(content, 0, Math.min(content.length, MAX_BODY_SIZE), StandardCharsets.UTF_8);
+        return maskSensitiveData(body);
     }
 
     private String extractHeaders(HttpServletRequest request) {
@@ -181,26 +181,25 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     }
 
     /**
-     * Masque les champs sensibles (mot de passe, etc.) dans le body avant envoi à ClickHouse.
-     * A adapter selon vos payloads.
+     * Masque les champs sensibles (mot de passe, tokens, etc.) dans le body avant envoi à ClickHouse.
      */
     private String maskSensitiveData(String body) {
-        return body.replaceAll("(?i)(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        if (body == null) {
+            return null;
+        }
+        String masked = body.replaceAll("(?i)(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        masked = masked.replaceAll("(?i)(\"access_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        masked = masked.replaceAll("(?i)(\"refresh_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        masked = masked.replaceAll("(?i)(\"id_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        return masked;
     }
 
     /**
      * Exige l'en-tête de corrélation <em>avant</em> d'exécuter l'opération.
-     *
-     * <p>
-     * Ce contrôle vivait dans {@code postHandle} : la requête s'exécutait
-     * intégralement — jeton émis, écriture en base — puis échouait. Un appel de
-     * connexion sans en-tête consommait ainsi un jeton Keycloak que personne ne
-     * recevait. Rejeter en amont supprime l'effet de bord.
-     * </p>
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        this.start = System.currentTimeMillis();
+        request.setAttribute("startTime", System.currentTimeMillis());
 
         String correlationId = request.getHeader(CORRELATION_ID_HEADER);
         if (correlationId == null || correlationId.isBlank()) {
@@ -219,7 +218,13 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         if (requestPath.startsWith("/api/auth/login") && response.getStatus() != 200) {
             return;
         }
-        long duration = System.currentTimeMillis() - start;
+        
+        long start = 0;
+        Object startAttr = request.getAttribute("startTime");
+        if (startAttr instanceof Long) {
+            start = (Long) startAttr;
+        }
+        long duration = start > 0 ? System.currentTimeMillis() - start : 0;
 
         ContentCachingRequestWrapper wrappedRequest = getRequestWrapper(request);
         ContentCachingResponseWrapper wrappedResponse = getResponseWrapper(response);

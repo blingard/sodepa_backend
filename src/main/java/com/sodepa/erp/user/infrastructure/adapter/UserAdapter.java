@@ -1,15 +1,11 @@
 package com.sodepa.erp.user.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sodepa.erp.budget.infrastructure.repo.AuditTrailRepository;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.user.UserAdapterInterface;
-import com.sodepa.erp.share.FileStorageService;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
-import com.sodepa.erp.share.MakerCheckerOutput;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
+import com.sodepa.erp.share.*;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
-import com.sodepa.erp.share.SubmissionOutput;
-import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.user.application.inputs.*;
 import com.sodepa.erp.user.application.outputs.UserOutput;
 import com.sodepa.erp.user.application.outputs.UserRecordSmartOutput;
@@ -24,7 +20,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 import com.sodepa.erp.authentication.application.ports.KeycloakProvisioningPort;
 
 import java.util.Map;
@@ -46,6 +41,7 @@ public class UserAdapter implements UserAdapterInterface {
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
     private final KeycloakProvisioningPort keycloakProvisioningPort;
+    private final AuditTrailRepository auditTrailRepository;
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String PROFILE_PICTURES_PATH = "/user/profile_pictures";
@@ -66,6 +62,13 @@ public class UserAdapter implements UserAdapterInterface {
     public UserOutput getUserOutputById(UUID id) {
         return userRepository.findById(id).map(this::toOutput)
                 .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable avec l'ID: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public UserOutput getUserOutPutProfile() {
+        UserData userData = utilsService.getCurrentUserData();
+        return userRepository.findById(UUID.fromString(userData.userId())).map(this::toOutput)
+                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable."));
     }
 
     @Transactional(readOnly = true)
@@ -193,7 +196,7 @@ public class UserAdapter implements UserAdapterInterface {
         // par un 400. Les afficher ici revenait à proposer une action qui ne
         // pouvait qu'échouer.
         String moi = utilsService.getCurrentUser().getUserData().get().userId();
-        return makerCheckerEngine.findAllAValiderParAutrui(
+        return makerCheckerEngine.findAllToValideByOther(
                 pageable, MakerCheckerEntityName.USER, MakerCheckerStatus.PENDING, moi);
     }
 
@@ -262,6 +265,51 @@ public class UserAdapter implements UserAdapterInterface {
                 payload,
                 MakerCheckerOperationType.UPDATE
         );
+    }
+
+    @Transactional
+    public void changePhoto(ChangePhotoInput input) {
+        UserData userData = utilsService.getCurrentUserData();
+
+        UtilisateurEntity user = userRepository.findById(UUID.fromString(userData.userId()))
+                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable avec l'ID: " + userData.userId()));
+
+        String photoUrl = null;
+        if (input.photoProfile() != null && !input.photoProfile().isEmpty()) {
+            photoUrl = fileStorageService.storeFileImage(input.photoProfile(), PROFILE_PICTURES_PATH);
+        }
+
+        String currentUserId = userData.userId();
+
+        UserEventInput event = new UserEventInput(
+                user.getId(),
+                user.getUsername(),
+                user.getNom(),
+                user.getPrenom(),
+                user.getEmail(),
+                photoUrl,
+                user.getTelephones(),
+                user.getPermissions(),
+                user.isActif(),
+                currentUserId
+        );
+
+        Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
+        UUID requestId = makerCheckerEngine.submitChange(
+                MakerCheckerEntityName.USER,
+                user.getId().toString(),
+                payload,
+                MakerCheckerOperationType.UPDATE_IMAGE
+        );
+
+        // Mise à jour de l'utilisateur
+        user.setPhotoProfile(photoUrl);
+        userRepository.save(user);
+
+        // Validation automatique par le système
+        makerCheckerEngine.update(requestId, MakerCheckerStatus.ACCEPTED, "Validation automatique par le système", "SYSTEM");
+
+        log.info("Photo de profil mise à jour pour l'utilisateur {} ({})", user.getUsername(), user.getId());
     }
 
     @Transactional
@@ -397,7 +445,7 @@ public class UserAdapter implements UserAdapterInterface {
                 entity.getNom(),
                 entity.getPrenom(),
                 entity.getEmail(),
-                entity.getPhotoProfile(),
+                fileStorageService.getPresignedUrlFromFullUrl(entity.getPhotoProfile(), 1),
                 entity.isActif(),
                 entity.getTelephones(),
                 entity.getPermissions()

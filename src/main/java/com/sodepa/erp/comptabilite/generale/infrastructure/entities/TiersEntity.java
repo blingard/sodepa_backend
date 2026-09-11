@@ -32,16 +32,16 @@ public class TiersEntity {
     @Column(nullable = false, unique = true, length = 20)
     private String code;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false, length = 255, name = "intitule")
     private String raisonSociale;       // nom / raison sociale
 
-    @Column(length = 255)
+    @Column(length = 255, nullable = false)
     private String adresse;
 
-    @Column(length = 20)
+    @Column(length = 20, nullable = false)
     private String telephone;
 
-    @Column(length = 100)
+    @Column(length = 100, nullable = false)
     private String email;
 
     @Enumerated(EnumType.STRING)

@@ -78,7 +78,7 @@
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>3.0.3</version>
+            <version>3.0.8</version>
         </dependency>
         <!-- pgvector JDBC support (vector similarity search in PostgreSQL) -->
         <dependency>
@@ -86,7 +86,6 @@
             <artifactId>pgvector</artifactId>
             <version>0.1.6</version>
         </dependency>
-        <!-- WebFlux for non-blocking Gemini API calls + SSE streaming -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
@@ -188,7 +187,12 @@
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
-            <version>8.5.7</version>
+            <version>8.6.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>

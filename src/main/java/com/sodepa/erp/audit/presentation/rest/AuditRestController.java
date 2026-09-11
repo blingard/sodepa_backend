@@ -52,15 +52,4 @@ public class AuditRestController {
             @RequestParam(defaultValue = "100") int limit) {
         return ResponseEntity.ok(duckDbAuditManager.listClickHouseActivities(limit));
     }
-
-    /**
-     * Exécute une requête analytique ad-hoc sur DuckDB (incluant les vues fédérées ClickHouse).
-     * Permet de combiner les données locales DuckDB avec les données ClickHouse.
-     *
-     * @param query la requête SQL DuckDB (ex: SELECT count(*) FROM ch_transactions)
-     */
-    @GetMapping("/analytics")
-    public ResponseEntity<List<Map<String, Object>>> executeAnalyticalQuery(@RequestParam String query) {
-        return ResponseEntity.ok(duckDbAuditManager.executeAnalyticalQuery(query));
-    }
 }

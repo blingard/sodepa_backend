@@ -1,10 +1,14 @@
 package com.sodepa.erp.configuration;
 
+import io.minio.BucketExistsArgs;
+import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+@Slf4j
 @Configuration
 public class MinioConfig {
 
@@ -22,9 +26,26 @@ public class MinioConfig {
 
     @Bean
     public MinioClient minioClient() {
-        return MinioClient.builder()
+        MinioClient client = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
                 .build();
+
+        // Créer le bucket automatiquement s'il n'existe pas
+        try {
+            boolean exists = client.bucketExists(
+                    BucketExistsArgs.builder().bucket(bucket).build());
+            if (!exists) {
+                client.makeBucket(
+                        MakeBucketArgs.builder().bucket(bucket).build());
+                log.info("✅ Bucket MinIO '{}' créé avec succès", bucket);
+            } else {
+                log.info("Bucket MinIO '{}' existe déjà", bucket);
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Impossible de vérifier/créer le bucket MinIO '{}': {}", bucket, e.getMessage());
+        }
+
+        return client;
     }
 }

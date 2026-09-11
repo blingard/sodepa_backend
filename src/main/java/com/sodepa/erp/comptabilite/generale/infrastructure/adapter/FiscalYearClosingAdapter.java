@@ -199,6 +199,7 @@ public class FiscalYearClosingAdapter {
                         .build()));
 
         EcritureEntity ecritureCloture = EcritureEntity.builder()
+                .id(UUID.randomUUID())
                 .journal(journalOD)
                 .numeroPiece("CLOTURE-" + annee)
                 .libelle("Détermination du résultat de l'exercice " + annee)
@@ -223,6 +224,7 @@ public class FiscalYearClosingAdapter {
             }
 
             ecritureCloture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(code)
                     .debit(debit)
                     .credit(credit)
@@ -246,6 +248,7 @@ public class FiscalYearClosingAdapter {
         }
 
         ecritureCloture.addLigne(LigneEcritureEntity.builder()
+                .id(UUID.randomUUID())
                 .compteCode(compteResultatCode)
                 .debit(debitResultat)
                 .credit(creditResultat)
@@ -265,6 +268,7 @@ public class FiscalYearClosingAdapter {
                         .build()));
 
         EcritureEntity ecritureOuverture = EcritureEntity.builder()
+                .id(UUID.randomUUID())
                 .journal(journalRAN)
                 .numeroPiece("RAN-" + (annee + 1))
                 .libelle("Bilans d'ouverture - Exercice " + (annee + 1))
@@ -296,6 +300,7 @@ public class FiscalYearClosingAdapter {
             }
 
             ecritureOuverture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(code)
                     .debit(debit)
                     .credit(credit)
@@ -439,6 +444,7 @@ public class FiscalYearClosingAdapter {
         Map<String, EcritureOutput> map = new HashMap<String, EcritureOutput>(0);
 
         EcritureEntity ecritureCloture = EcritureEntity.builder()
+                .id(UUID.randomUUID())
                 .journal(journalOD)
                 .numeroPiece("CLOTURE-" + annee)
                 .libelle("Détermination du résultat de l'exercice " + annee)
@@ -463,6 +469,7 @@ public class FiscalYearClosingAdapter {
             }
 
             ecritureCloture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(code)
                     .debit(debit)
                     .credit(credit)
@@ -486,6 +493,7 @@ public class FiscalYearClosingAdapter {
         }
 
         ecritureCloture.addLigne(LigneEcritureEntity.builder()
+                .id(UUID.randomUUID())
                 .compteCode(compteResultatCode)
                 .debit(debitResultat)
                 .credit(creditResultat)
@@ -535,6 +543,7 @@ public class FiscalYearClosingAdapter {
             }
 
             ecritureOuverture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(code)
                     .debit(debit)
                     .credit(credit)

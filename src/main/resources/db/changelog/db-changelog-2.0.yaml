@@ -56,8 +56,29 @@ databaseChangeLog:
                   constraints:
                     nullable: false
               - column:
+                  name: adresse
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: telephone
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: email
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
                   name: type_tiers
                   type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: false
                   constraints:
                     nullable: false
               - column:
@@ -225,6 +246,12 @@ databaseChangeLog:
               - column:
                   name: statut
                   type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amortissement_cumule
+                  type: numeric(19, 4)
+                  defaultValueNumeric: 0.0
                   constraints:
                     nullable: false
 

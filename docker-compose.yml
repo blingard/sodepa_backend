@@ -1,21 +1,54 @@
 services:
+  vault:
+    image: hashicorp/vault:1.15.2
+    container_name: sodepa-vault
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "sodepa-root-token"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - sodepa-net-db
+      - sodepa-net-app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   mailhog:
     image: mailhog/mailhog
     container_name: mailhog
     restart: always
     ports:
-      - "1025:1025" #127.0.0.1:1025:1025
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    networks:
+      - sodepa-net-app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
   clickhouse:
     image: clickhouse/clickhouse-server:26.7
     container_name: sodepa-clickhouse
     ports:
-      - "8123:8123"
-      - "9010:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9010:9000"
     environment:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     ulimits:
       nofile:
@@ -23,23 +56,50 @@ services:
         hard: 262144
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - sodepa-net-db
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3.13.1-management
     container_name: sodepa-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USERNAME:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-guest}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - sodepa-net-db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-01-18T22-51-12Z
     container_name: minio_saas
     restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
     command:
       - server
       - /data
@@ -48,61 +108,141 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "7004:9000"
-      - "7003:9001"
+      - "127.0.0.1:7004:9000"
+      - "127.0.0.1:7003:9001"
+    networks:
+      - sodepa-net-app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2024-01-18T07-03-39Z
+    container_name: minio_saas_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO...';
+      for i in \$$(seq 1 30); do
+        /usr/bin/mc alias set myminio http://minio:9000 \$${MINIO_ACCESS_KEY:-minioadmin} \$${MINIO_SECRET_KEY:-minioadmin123} && break;
+        sleep 2;
+      done;
+      /usr/bin/mc mb --ignore-existing myminio/avatars;
+      exit 0;
+      "
+    networks:
+      - sodepa-net-app
+
   redis:
     image: redis:7-alpine
     container_name: redis_saas
     restart: unless-stopped
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
+      - "127.0.0.1:6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispassword}
     volumes:
       - redis_data:/data
+    networks:
+      - sodepa-net-db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:redispassword}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   postgres:
     image: postgres:15
     container_name: keycloak-db
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: kcpassword
-      #ports:
-      # - "5432:5432"
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-kcpassword}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - sodepa-net-db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.0
     container_name: keycloak
-    command: start-dev
+    command: start --http-enabled=true --hostname-strict=false
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: kcpassword
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-kcpassword}
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
     ports:
-      - "8070:8080"
+      - "127.0.0.1:8070:8080"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - sodepa-net-db
+      - sodepa-net-app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/realms/master"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
 
   postgressodepa:
     image: postgres:15
     container_name: sodepa_bd
     environment:
       POSTGRES_DB: sodepa
-      POSTGRES_USER: toto
-      POSTGRES_PASSWORD: 12345
+      POSTGRES_USER: ${DB_USERNAME:-toto}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-12345}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data_sodepa:/var/lib/postgresql/data
     restart: unless-stopped
-
+    networks:
+      - sodepa-net-db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:toto} -d sodepa"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   minio_data:
@@ -112,3 +252,9 @@ volumes:
   db_data:
   clickhouse_data:
   rabbitmq_data:
+
+networks:
+  sodepa-net-db:
+    driver: bridge
+  sodepa-net-app:
+    driver: bridge

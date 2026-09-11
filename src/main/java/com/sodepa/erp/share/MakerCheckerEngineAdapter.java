@@ -71,6 +71,34 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
     }
 
     @Override
+    public UUID directSubmitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch, MakerCheckerOperationType checkerOperationType) {
+        UUID requestId = UUID.randomUUID();
+
+        String makerId = utilsService.getCurrentUser().getUserData().get().userId();
+
+        MakerCheckerRequestEntity request = MakerCheckerRequestEntity.builder()
+                .id(requestId)
+                .entityName(entityName)
+                .entityPk(entityPk)
+                .makerId(makerId)
+                .status(MakerCheckerStatus.PENDING)
+                .payload(appliedPatch)
+                .checkerOperationType(checkerOperationType)
+                .createdAt(Instant.now())
+                .expiredAt(Instant.now().plus(days, ChronoUnit.DAYS))
+                .build();
+
+        request = requestRepo.save(request);
+        // Publier l'événement de soumission vers ClickHouse via RabbitMQ
+        publishMakerCheckerEvent(request, makerId, null);
+
+        // Rendu à l'appelant, qui le remonte au client : sans lui, cet
+        // identifiant tiré au hasard n'est récupérable nulle part et la demande
+        // ne peut plus jamais être tranchée.
+        return request.getId();
+    }
+
+    @Override
     public void validateOrReject(UUID requestId, MakerCheckerStatus decision, String notes) {
 
     }
@@ -102,7 +130,7 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
 
     @Override
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> findAllAValiderParAutrui(
+    public PageRecord<MakerCheckerSmartOutput> findAllToValideByOther(
             Pageable pageable, MakerCheckerEntityName entityName,
             MakerCheckerStatus status, String makerId) {
         return toPageRecord(requestRepo.findAllByEntityNameAndStatusAndMakerIdNot(
@@ -228,25 +256,29 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
                 .build();
     }
 
+    private void checker(MakerCheckerRequestEntity makerCheckerRequest, @NotBlank String maker_Id, String checker_Id) {
+        try {
+            String payloadJson = objectMapper.writeValueAsString(makerCheckerRequest);
+            MakerCheckerMessageInput msg = MakerCheckerMessageInput.builder()
+                    .id(UUID.randomUUID())
+                    .entityName(makerCheckerRequest.getEntityName().name())
+                    .entityPk(makerCheckerRequest.getEntityPk())
+                    .payload(payloadJson)
+                    .timestamp(LocalDateTime.now())
+                    .maker_id(maker_Id)
+                    .checker_id(checker_Id)
+                    .build();
+            auditEventPublisher.publishMakerChecker(msg);
+        } catch (JsonProcessingException e) {
+            log.warn("Échec de sérialisation du payload MakerChecker pour ClickHouse : {}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("Échec de publication de l'événement MakerChecker vers RabbitMQ : {}", e.getMessage());
+        }
+    }
+
     private void publishMakerCheckerEvent(MakerCheckerRequestEntity makerCheckerRequest, @NotBlank String maker_Id, String checker_Id) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                String payloadJson = objectMapper.writeValueAsString(makerCheckerRequest);
-                MakerCheckerMessageInput msg = MakerCheckerMessageInput.builder()
-                        .id(UUID.randomUUID())
-                        .entityName(makerCheckerRequest.getEntityName().name())
-                        .entityPk(makerCheckerRequest.getEntityPk())
-                        .payload(payloadJson)
-                        .timestamp(LocalDateTime.now())
-                        .maker_id(maker_Id)
-                        .checker_id(checker_Id)
-                        .build();
-                auditEventPublisher.publishMakerChecker(msg);
-            } catch (JsonProcessingException e) {
-                log.warn("Échec de sérialisation du payload MakerChecker pour ClickHouse : {}", e.getMessage());
-            } catch (Exception e) {
-                log.warn("Échec de publication de l'événement MakerChecker vers RabbitMQ : {}", e.getMessage());
-            }
+            checker(makerCheckerRequest, maker_Id, checker_Id);
         });
     }
 

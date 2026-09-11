@@ -47,6 +47,9 @@ public interface MakerCheckerEnginePort {
     UUID submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch,
                       MakerCheckerOperationType checkerOperationType);
 
+    UUID directSubmitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch,
+                      MakerCheckerOperationType checkerOperationType);
+
     void validateOrReject(UUID requestId, MakerCheckerStatus decision, String notes);
 
     PageRecord<MakerCheckerSmartOutput> findAllByPage(Pageable pageable);
@@ -75,7 +78,7 @@ public interface MakerCheckerEnginePort {
      * bouton qui ne pouvait que renvoyer une erreur.
      * </p>
      */
-    PageRecord<MakerCheckerSmartOutput> findAllAValiderParAutrui(
+    PageRecord<MakerCheckerSmartOutput> findAllToValideByOther(
             Pageable pageable, MakerCheckerEntityName entityName,
             MakerCheckerStatus status, String makerId);
     MakerCheckerOutput findById(UUID id);

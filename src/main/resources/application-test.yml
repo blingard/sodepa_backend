@@ -1,0 +1,20 @@
+# ════════════════════════════════════════════════════════════════════════════════
+# Profil Spring Boot "test" – active le peuplement de données fictives
+# Lancer avec :  ./mvnw spring-boot:run -Dspring-boot.run.profiles=test
+# ou :           java -jar target/erp-*.jar --spring.profiles.active=test
+# ════════════════════════════════════════════════════════════════════════════════
+
+spring:
+  # Désactiver le cache Redis en test pour simplifier le démarrage
+  cache:
+    type: simple
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # Afficher les requêtes SQL générées pour le debug
+    show-sql: true
+
+logging:
+  level:
+    com.sodepa.erp.configuration.TestDataSeeder: DEBUG

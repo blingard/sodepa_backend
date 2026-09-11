@@ -29,9 +29,11 @@ public class UserRestController {
     private final CreateUserUseCase createUserUseCase;
     private final UpdateUserUseCase updateUserUseCase;
     private final ChangePhotoUseCase changePhotoUseCase;
+    private final ChangeOwnPhotoUseCase changeOwnPhotoUseCase;
     private final UpdateUserPermissionsUseCase updateUserPermissionsUseCase;
     private final UserValidateOrRejectUseCase userValidateOrRejectUseCase;
     private final GetUserByIdUseCase getUserByIdUseCase;
+    private final GetUserProfileUseCase getUserProfileUseCase;
     private final GetPageUsersUseCase getPageUsersUseCase;
     private final SearchUsersUseCase searchUsersUseCase;
     private final GetPendingUserRequestsUseCase getPendingUserRequestsUseCase;
@@ -103,6 +105,19 @@ public class UserRestController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Permet à l'utilisateur connecté de changer sa propre photo de profil.
+     * Pas de Maker-Checker requis — mise à jour directe.
+     */
+    @PutMapping("/change_photo")
+    public ResponseEntity<Void> changePhoto(
+            @RequestPart("file") MultipartFile file
+    ) {
+        ChangePhotoInput input = new ChangePhotoInput(null, file);
+        changeOwnPhotoUseCase.execute(input);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/init_update_permissions/{id}")
     public ResponseEntity<Void> initUpdatePermissions(
             @PathVariable UUID id,
@@ -131,6 +146,11 @@ public class UserRestController {
     @GetMapping("/{id}")
     public ResponseEntity<UserOutput> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(getUserByIdUseCase.execute(id));
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<UserOutput> getUserProfile() {
+        return ResponseEntity.ok(getUserProfileUseCase.execute(null));
     }
 
     @GetMapping

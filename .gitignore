@@ -29,6 +29,22 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
 .vscode/
 .pycharm_plugin/
+
+# Local configuration and environment variables
+.env
+.env.*
+docker-compose.override.yml
+application-prod.yml
+
+# Keys & Certificates
+*.pem
+*.key
+*.p12
+*.jks
+
+# Local database files & JVM crash logs
+*.db
+hs_err_pid*.log
+*.log

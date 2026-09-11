@@ -1,5 +1,6 @@
 package com.sodepa.erp.utils;
 
+import com.sodepa.erp.share.FileStorageService;
 import com.sodepa.erp.user.application.outputs.UserRecordSmartOutput;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class UserManagementEngine implements UserManagementEnginePort{
 
     private final UserRepository userRepository;
+    private final FileStorageService fileStorageService;
 
 
     @Override
@@ -24,7 +26,8 @@ public class UserManagementEngine implements UserManagementEnginePort{
         UtilisateurEntity entity = userRepository.findById(id).orElseThrow(()->new RuntimeException("User not found"));
         if(!entity.isActif()) throw new RuntimeException("Current user is not active");
         return UserOutput.builder().id(entity.getId()).username(entity.getUsername()).nom(entity.getNom())
-                .prenom(entity.getPrenom()).email(entity.getEmail()).photoProfile(entity.getPhotoProfile())
+                .prenom(entity.getPrenom()).email(entity.getEmail())
+                .photoProfile(fileStorageService.getPresignedUrlFromFullUrl(entity.getPhotoProfile(), 1))
                 .actif(entity.isActif()).telephones(entity.getTelephones()).permissions(entity.getPermissions()).build();
     }
 }

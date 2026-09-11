@@ -42,7 +42,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -263,7 +262,7 @@ public class ImmobilisationAdapter {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_IMMOBILISATION);
 
         String moi = utilsService.getCurrentUser().getUserData().get().userId();
-        return makerCheckerEngine.findAllAValiderParAutrui(
+        return makerCheckerEngine.findAllToValideByOther(
                 pageable, MakerCheckerEntityName.IMMOBILISATION, MakerCheckerStatus.PENDING, moi);
     }
 
@@ -324,6 +323,7 @@ public class ImmobilisationAdapter {
                 .dureeUtile(request.dureeUtile())
                 .valeurResiduelle(request.valeurResiduelle() != null ? request.valeurResiduelle() : BigDecimal.ZERO)
                 .statut(request.statut())
+                .amortissementCumule(BigDecimal.ZERO)
                 .build();
         immobilisationRepository.save(immo);
     }
@@ -401,6 +401,7 @@ public class ImmobilisationAdapter {
             String compteDebitCode = "681300";
             if (!compteRepository.existsByCode(compteDebitCode)) {
                 compteRepository.save(CompteEntity.builder()
+                        .id(UUID.randomUUID())
                         .code(compteDebitCode)
                         .intitule("Dotations aux amortissements d'immob. corp.")
                         .niveau(3)
@@ -414,6 +415,7 @@ public class ImmobilisationAdapter {
             String compteCreditCode = "28" + compteImmo.substring(1);
             if (!compteRepository.existsByCode(compteCreditCode)) {
                 compteRepository.save(CompteEntity.builder()
+                        .id(UUID.randomUUID())
                         .code(compteCreditCode)
                         .intitule("Amortissements de l'immo " + immo.getCode())
                         .niveau(3)
@@ -424,6 +426,7 @@ public class ImmobilisationAdapter {
             }
 
             EcritureEntity ecriture = EcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .journal(journalOD)
                     .numeroPiece("AMORT-" + immo.getCode() + "-" + annee)
                     .libelle("Dotation amortissement - " + immo.getDesignation() + " (" + annee + ")")
@@ -432,6 +435,7 @@ public class ImmobilisationAdapter {
                     .build();
 
             ecriture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(compteDebitCode)
                     .debit(dotation)
                     .credit(BigDecimal.ZERO)
@@ -439,6 +443,7 @@ public class ImmobilisationAdapter {
                     .build());
 
             ecriture.addLigne(LigneEcritureEntity.builder()
+                    .id(UUID.randomUUID())
                     .compteCode(compteCreditCode)
                     .debit(BigDecimal.ZERO)
                     .credit(dotation)

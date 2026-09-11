@@ -168,4 +168,27 @@ public class FileStorageService {
         data.put("path", path);
         return data;
     }
+
+    /**
+     * Extrait l'objectName d'une URL de fichier complète et génère une URL pré-signée.
+     * Si l'URL n'est pas au format MinIO, retourne la valeur d'origine.
+     */
+    public String getPresignedUrlFromFullUrl(String fullUrl, long durationHours) {
+        if (fullUrl == null || fullUrl.isBlank()) {
+            return fullUrl;
+        }
+        if (fullUrl.contains("/avatars/")) {
+            String bucketPart = "/avatars/";
+            int index = fullUrl.indexOf(bucketPart);
+            if (index != -1) {
+                String objectName = fullUrl.substring(index + bucketPart.length());
+                try {
+                    return getPresignedUrl(objectName, durationHours);
+                } catch (Exception e) {
+                    log.error("Erreur de génération de l'URL pré-signée pour: {}", objectName, e);
+                }
+            }
+        }
+        return fullUrl;
+    }
 }

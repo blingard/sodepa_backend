@@ -88,5 +88,6 @@ public class ImmobilisationEntity {
 
     /** Position du plan d’amortissement (calcul dynamique). */
     @Column(nullable = false, precision = 15, scale = 2)
+    @Builder.Default
     private BigDecimal amortissementCumule = BigDecimal.ZERO;
 }

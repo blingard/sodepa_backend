@@ -48,7 +48,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             String correlationId = request.getHeader(CORRELATION_ID_HEADER);
             if (correlationId == null || correlationId.isBlank()) {
-                throw new RuntimeException("Correlation Id header not provide");
+                sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Correlation Id header not provided");
+                return;
             }
             String jwt = extractJwtFromRequest(request);
             if (jwt != null) {
@@ -59,12 +60,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         } catch (JwtException e) {
             log.error("JWT validation failed: {}", e.getMessage());
-            // Ne pas bloquer la requête, laisser Spring Security gérer l'accès
+            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
+            return;
         } catch (Exception e) {
             log.error("Error processing JWT: {}", e.getMessage(), e);
+            sendErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error");
+            return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void sendErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write(String.format("{\"error\": \"%s\"}", message));
     }
 
     /**
