@@ -119,7 +119,7 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         seedCollaborateurs(unitesMap, postesMap, grillesMap);
 
         // Étape 0.2 : Désactivation stricte des comptes bootstrap 'admin_maker' et 'admin_checker'
-        deactivateBootstrapRoots();
+        //deactivateBootstrapRoots();
 
         log.info("═══════════════════════════════════════════════════════════════════════");
         log.info("     INITIALISATION ET PEUPLEMENT SODEPA ACHEVÉS AVEC SUCCÈS          ");

@@ -44,7 +44,7 @@ public class AuthenticationRestController {
      * @return la réponse de connexion
      */
     @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody @Valid @StrongPassword LoginRequest request) {
+    public Map<String, Object> login(@RequestBody @Valid LoginRequest request) {
         return loginUseCase.execute(new LoginInput(request.username(), request.password()));
     }
 
