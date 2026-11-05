@@ -51,6 +51,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     public void run(String... args) {
         log.info("Démarrage de la vérification et initialisation des workflows SODEPA...");
 
+        if (workflowDefinitionRepository.count() > 0) {
+            log.info("Des workflows existent déjà en base. Aucune action de création n'est nécessaire.");
+            return;
+        }
         seedGouvernanceWorkflows();
         seedDafWorkflows();
         seedDpcWorkflows();

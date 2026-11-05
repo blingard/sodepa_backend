@@ -88,6 +88,10 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
             log.info("SODEPA Data Seeder désactivé par configuration (sodepa.seed.enabled=false).");
             return;
         }
+        if (employeRepository.count() > 0) {
+            log.info("La base de données contient déjà des employés. Le peuplement SODEPA est ignoré pour éviter les doublons.");
+            return;
+        }
 
         log.info("═══════════════════════════════════════════════════════════════════════");
         log.info("     DÉMARRAGE DU PEUPLEMENT DES DONNÉES OFFICIELLES SODEPA            ");
