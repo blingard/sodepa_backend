@@ -465,7 +465,8 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     public AffectationOutput affecterCollaborateur(AffecterCollaborateurInput input) {
         utilsService.hasPermission(Permissions.CREATE_AFFECTATION);
         UtilisateurEntity utilisateur = userRepository.findById(input.utilisateurId())
-                .orElseThrow(() -> new OrganigrammeNotFoundException("Utilisateur introuvable : " + input.utilisateurId()));
+                .or(() -> employeRepository.findById(input.utilisateurId()).map(EmployeEntity::getUtilisateur))
+                .orElseThrow(() -> new OrganigrammeNotFoundException("Utilisateur ou Collaborateur introuvable : " + input.utilisateurId()));
 
         PosteEntity poste = posteRepository.findById(input.posteId())
                 .orElseThrow(() -> new OrganigrammeNotFoundException("Poste introuvable : " + input.posteId()));
@@ -544,7 +545,8 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     private AffectationPosteEntity creationAffectation(Map<String, Object> payload, UUID affectationId) {
         AffecterCollaborateurInput input = objectMapper.convertValue(payload, AffecterCollaborateurInput.class);
         UtilisateurEntity utilisateur = userRepository.findById(input.utilisateurId())
-                .orElseThrow(() -> new OrganigrammeNotFoundException("Utilisateur introuvable : " + input.utilisateurId()));
+                .or(() -> employeRepository.findById(input.utilisateurId()).map(EmployeEntity::getUtilisateur))
+                .orElseThrow(() -> new OrganigrammeNotFoundException("Utilisateur ou Collaborateur introuvable : " + input.utilisateurId()));
         PosteEntity poste = posteRepository.findById(input.posteId())
                 .orElseThrow(() -> new OrganigrammeNotFoundException("Poste introuvable : " + input.posteId()));
 
@@ -562,6 +564,11 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         affectation = affectationRepository.save(affectation);
         poste.setEffectifActuel((int) affectationRepository.countByPosteIdAndStatut(poste.getId(), StatutAffectation.ACTIF));
         posteRepository.save(poste);
+        employeRepository.findByUtilisateurId(utilisateur.getId()).ifPresent(emp -> {
+            emp.setPoste(poste);
+            emp.setUniteOrganisationnelle(poste.getUniteOrganisationnelle());
+            employeRepository.save(emp);
+        });
         return affectation;
     }
 
