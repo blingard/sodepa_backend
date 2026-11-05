@@ -1342,9 +1342,13 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     }
 
     private PosteOutput mapToPosteOutput(PosteEntity p) {
-        Optional<AffectationPosteEntity> aff = affectationRepository
-                .findFirstByUtilisateurIdAndTypeAffectationAndStatut(
-                        p.getId(), TypeAffectation.TITULAIRE, StatutAffectation.ACTIF);
+        List<AffectationPosteEntity> affs = affectationRepository
+                .findByPosteIdAndStatut(p.getId(), StatutAffectation.ACTIF);
+
+        Optional<AffectationPosteEntity> aff = affs.stream()
+                .filter(a -> a.getTypeAffectation() == TypeAffectation.TITULAIRE)
+                .findFirst()
+                .or(() -> affs.stream().findFirst());
 
         return PosteOutput.builder()
                 .id(p.getId())
