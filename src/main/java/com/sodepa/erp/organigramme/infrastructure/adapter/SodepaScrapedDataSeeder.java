@@ -160,6 +160,7 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 CASCADE
             """).executeUpdate();
             entityManager.flush();
+            entityManager.clear();
             log.info("Tables PostgreSQL purgées avec succès.");
         } catch (Exception e) {
             log.error("Erreur lors de la purge PostgreSQL : {}", e.getMessage(), e);

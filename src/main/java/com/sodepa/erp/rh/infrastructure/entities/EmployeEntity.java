@@ -5,6 +5,7 @@ import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnell
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.domain.Persistable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,11 +26,35 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class EmployeEntity {
+public class EmployeEntity implements Persistable<UUID> {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Transient
+    @Builder.Default
+    private boolean isNew = true;
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
+        if (this.dateCreation == null) {
+            this.dateCreation = LocalDateTime.now();
+        }
+    }
 
     @Column(nullable = false, unique = true, length = 50)
     private String matricule;

@@ -3,6 +3,7 @@ package com.sodepa.erp.organigramme.infrastructure.entities;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.domain.Persistable;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -21,10 +22,32 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AffectationPosteEntity {
+public class AffectationPosteEntity implements Persistable<UUID> {
 
     @Id
     private UUID id;
+
+    @Transient
+    @Builder.Default
+    private boolean isNew = true;
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
+    }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "utilisateur_id", nullable = false)
