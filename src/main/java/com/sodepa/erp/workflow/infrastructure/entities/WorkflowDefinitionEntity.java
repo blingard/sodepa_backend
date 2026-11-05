@@ -54,4 +54,12 @@ public class WorkflowDefinitionEntity {
 
     @Column(name = "date_creation", nullable = false)
     private Instant dateCreation;
+
+    public void addEtape(WorkflowEtapeDefinitionEntity etape) {
+        if (this.etapes == null) {
+            this.etapes = new ArrayList<>();
+        }
+        this.etapes.add(etape);
+        etape.setWorkflowDefinition(this);
+    }
 }
