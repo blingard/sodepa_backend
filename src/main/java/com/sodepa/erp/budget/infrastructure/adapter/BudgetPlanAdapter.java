@@ -1,5 +1,8 @@
 package com.sodepa.erp.budget.infrastructure.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sodepa.erp.audit.application.inputs.MakerCheckerMessageInput;
+import com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager;
 import com.sodepa.erp.budget.application.inputs.AjouterItemInput;
 import com.sodepa.erp.budget.application.inputs.CreerBudgetPlanInput;
 import com.sodepa.erp.budget.application.inputs.EngagementInput;
@@ -12,9 +15,18 @@ import com.sodepa.erp.budget.application.outputs.BudgetPlanOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.infrastructure.entities.*;
 import com.sodepa.erp.budget.infrastructure.repo.*;
+import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
+import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.utils.MakerCheckerEntityName;
+import com.sodepa.erp.utils.MakerCheckerOperationType;
+import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.utils.PageableRecord;
+import com.sodepa.erp.utils.Permissions;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,6 +46,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class BudgetPlanAdapter {
@@ -44,6 +58,44 @@ public class BudgetPlanAdapter {
     private final BudgetReallocationRepository budgetReallocationRepository;
     private final BudgetEngagementRepository budgetEngagementRepository;
     private final AuditTrailRepository auditTrailRepository;
+    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final UtilsService utilsService;
+    private final ObjectMapper objectMapper;
+    private final ClickHouseManager clickHouseManager;
+
+    public boolean canValidate(Permissions permission) {
+        try {
+            utilsService.hasPermission(permission);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void trackClickHouse(String entityName, String entityPk, Object payloadObj) {
+        try {
+            String actorId = "SYSTEM";
+            try {
+                actorId = utilsService.getCurrentUserData().userId();
+            } catch (Exception ignored) {
+            }
+
+            String payloadStr = objectMapper.writeValueAsString(payloadObj);
+            clickHouseManager.saveMakerChecker(
+                    MakerCheckerMessageInput.builder()
+                            .id(UUID.randomUUID())
+                            .entityName(entityName)
+                            .entityPk(entityPk)
+                            .payload(payloadStr)
+                            .timestamp(LocalDateTime.now())
+                            .maker_id(actorId)
+                            .checker_id(actorId)
+                            .build()
+            );
+        } catch (Exception e) {
+            log.warn("Journalisation ClickHouse non bloquante ignorée pour {} ({}): {}", entityName, entityPk, e.getMessage());
+        }
+    }
 
     /**
      * Plans budgétaires, paginés et filtrés.
@@ -166,17 +218,76 @@ public class BudgetPlanAdapter {
 
     @Transactional
     public BudgetPlanOutput creerBudgetPlan(CreerBudgetPlanInput input) {
+        utilsService.hasPermission(Permissions.CREATE_BUDGET_PLAN);
         List<BudgetPlanEntity> existants = budgetPlanRepository.findByAnnee(input.annee());
         int nouvelleVersion = existants.size() + 1;
 
+        UUID id = UUID.randomUUID();
+        Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
+        payload.put("id", id.toString());
+        payload.put("version", nouvelleVersion);
+
+        UUID uuid = makerCheckerEngine.submitChange(
+                MakerCheckerEntityName.BUDGET_PLAN,
+                id.toString(),
+                payload,
+                MakerCheckerOperationType.CREATE
+        );
+        log.info("Plan budgétaire exercice {} V{} soumis au Maker-Checker (Ticket: {})", input.annee(), nouvelleVersion, uuid);
+
+        trackClickHouse(MakerCheckerEntityName.BUDGET_PLAN.name(), id.toString(), Map.of(
+                "action", "SOUMISSION_CREER_BUDGET_PLAN",
+                "annee", input.annee(),
+                "intitule", input.intitule(),
+                "version", nouvelleVersion,
+                "ticket", uuid.toString()
+        ));
+
+        if (canValidate(Permissions.VALIDATE_BUDGET_PLAN)) {
+            try {
+                validateOrRejectBudgetPlan(new ValidateOrRejectSubmissionInput(
+                        uuid,
+                        MakerCheckerStatus.ACCEPTED,
+                        "Validation automatique par l'utilisateur",
+                        MakerCheckerOperationType.CREATE
+                ));
+            } catch (Exception e) {
+                log.warn("Erreur validation auto plan budgétaire: {}", e.getMessage());
+            }
+        }
+
+        return budgetPlanRepository.findById(id)
+                .map(this::mapPlan)
+                .orElseGet(() -> new BudgetPlanOutput(
+                        id,
+                        input.annee(),
+                        input.intitule(),
+                        nouvelleVersion,
+                        StatutBudget.DRAFT,
+                        BigDecimal.ZERO,
+                        LocalDateTime.now(),
+                        input.utilisateurId(),
+                        null,
+                        null,
+                        new ArrayList<>()
+                ));
+    }
+
+    private BudgetPlanEntity creationBudgetPlan(Map<String, Object> payload, UUID planId) {
+        int annee = (Integer) payload.get("annee");
+        String intitule = (String) payload.get("intitule");
+        UUID userId = payload.get("utilisateurId") != null ? UUID.fromString(payload.get("utilisateurId").toString()) : null;
+        int version = payload.get("version") != null ? ((Number) payload.get("version")).intValue() : 1;
+
         BudgetPlanEntity plan = BudgetPlanEntity.builder()
-                .annee(input.annee())
-                .intitule(input.intitule())
-                .version(nouvelleVersion)
+                .id(planId)
+                .annee(annee)
+                .intitule(intitule)
+                .version(version)
                 .statut(StatutBudget.DRAFT)
                 .totalBudget(BigDecimal.ZERO)
                 .creeLe(LocalDateTime.now())
-                .creePar(input.utilisateurId())
+                .creePar(userId)
                 .build();
 
         BudgetPlanEntity saved = budgetPlanRepository.save(plan);
@@ -185,12 +296,51 @@ public class BudgetPlanAdapter {
                 .entiteNom("BudgetPlanEntity")
                 .entiteId(saved.getId())
                 .action("CREATE")
-                .details("Création du plan budgétaire exercice " + input.annee() + " version V" + nouvelleVersion)
+                .details("Création du plan budgétaire exercice " + annee + " version V" + version)
                 .timestamp(LocalDateTime.now())
-                .utilisateur(input.utilisateurId())
+                .utilisateur(userId)
                 .build());
 
-        return mapPlan(saved);
+        return saved;
+    }
+
+    @Transactional
+    public void validateOrRejectBudgetPlan(ValidateOrRejectSubmissionInput input) {
+        utilsService.hasPermission(Permissions.VALIDATE_BUDGET_PLAN);
+        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerStatus currentStatus = checkerOutput.status();
+        if (currentStatus != MakerCheckerStatus.PENDING) {
+            throw new RuntimeException(String.format(
+                    "Invalid transition: Cannot transition from %s to %s.", currentStatus, input.decision()));
+        }
+
+        UUID checkerId = UUID.fromString(utilsService.getCurrentUserData().userId());
+        if (checkerOutput.maker() != null && checkerOutput.maker().id() != null && checkerOutput.maker().id().equals(checkerId)) {
+            throw new RuntimeException("A checker cannot vote on their own request.");
+        }
+
+        MakerCheckerStatus newStatus;
+        if (MakerCheckerStatus.ACCEPTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.ACCEPTED;
+        } else if (MakerCheckerStatus.REJECTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.REJECTED;
+        } else {
+            throw new RuntimeException("Invalid decision: " + input.decision());
+        }
+
+        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+
+        if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
+            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            log.info("Plan budgétaire rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+        } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
+            UUID planId = UUID.fromString(checkerOutput.entityPk());
+            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
+                creationBudgetPlan(checkerOutput.payload(), planId);
+            }
+            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            log.info("Plan budgétaire approuvé par Checker {}. Ticket: {}, Plan PK: {}", checkerId, checkerOutput.id(), planId);
+        }
     }
 
     @Transactional
@@ -313,6 +463,43 @@ public class BudgetPlanAdapter {
 
     @Transactional
     public void effectuerReallocation(ReallocationInput input) {
+        utilsService.hasPermission(Permissions.CREATE_BUDGET_REALLOCATION);
+        UUID id = UUID.randomUUID();
+        Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
+        payload.put("id", id.toString());
+
+        UUID uuid = makerCheckerEngine.submitChange(
+                MakerCheckerEntityName.BUDGET_REALLOCATION,
+                id.toString(),
+                payload,
+                MakerCheckerOperationType.CREATE
+        );
+        log.info("Réallocation budgétaire soumise au Maker-Checker (Ticket: {})", uuid);
+
+        trackClickHouse(MakerCheckerEntityName.BUDGET_REALLOCATION.name(), id.toString(), Map.of(
+                "action", "SOUMISSION_EFFECTUER_REALLOCATION",
+                "sourceItem", input.sourceItemId().toString(),
+                "destItem", input.destItemId().toString(),
+                "montant", input.montant(),
+                "ticket", uuid.toString()
+        ));
+
+        if (canValidate(Permissions.VALIDATE_BUDGET_REALLOCATION)) {
+            try {
+                validateOrRejectReallocation(new ValidateOrRejectSubmissionInput(
+                        uuid,
+                        MakerCheckerStatus.ACCEPTED,
+                        "Validation automatique par l'utilisateur",
+                        MakerCheckerOperationType.CREATE
+                ));
+            } catch (Exception e) {
+                log.warn("Erreur validation auto réallocation budgétaire: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void creationReallocation(Map<String, Object> payload, UUID reallocationId) {
+        ReallocationInput input = objectMapper.convertValue(payload, ReallocationInput.class);
         BudgetItemEntity source = budgetItemRepository.findById(input.sourceItemId())
                 .orElseThrow(() -> new IllegalArgumentException("Item source introuvable."));
         BudgetItemEntity dest = budgetItemRepository.findById(input.destItemId())
@@ -354,6 +541,7 @@ public class BudgetPlanAdapter {
         budgetItemRepository.save(dest);
 
         BudgetReallocationEntity reallocation = BudgetReallocationEntity.builder()
+                .id(reallocationId)
                 .sourceItem(source)
                 .destItem(dest)
                 .montant(input.montant())
@@ -374,7 +562,94 @@ public class BudgetPlanAdapter {
     }
 
     @Transactional
+    public void validateOrRejectReallocation(ValidateOrRejectSubmissionInput input) {
+        utilsService.hasPermission(Permissions.VALIDATE_BUDGET_REALLOCATION);
+        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerStatus currentStatus = checkerOutput.status();
+        if (currentStatus != MakerCheckerStatus.PENDING) {
+            throw new RuntimeException(String.format(
+                    "Invalid transition: Cannot transition from %s to %s.", currentStatus, input.decision()));
+        }
+
+        UUID checkerId = UUID.fromString(utilsService.getCurrentUserData().userId());
+        if (checkerOutput.maker() != null && checkerOutput.maker().id() != null && checkerOutput.maker().id().equals(checkerId)) {
+            throw new RuntimeException("A checker cannot vote on their own request.");
+        }
+
+        MakerCheckerStatus newStatus;
+        if (MakerCheckerStatus.ACCEPTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.ACCEPTED;
+        } else if (MakerCheckerStatus.REJECTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.REJECTED;
+        } else {
+            throw new RuntimeException("Invalid decision: " + input.decision());
+        }
+
+        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+
+        if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
+            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            log.info("Réallocation budgétaire rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+        } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
+            UUID reallocationId = UUID.fromString(checkerOutput.entityPk());
+            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
+                creationReallocation(checkerOutput.payload(), reallocationId);
+            }
+            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            log.info("Réallocation budgétaire approuvée par Checker {}. Ticket: {}, Reallocation PK: {}", checkerId, checkerOutput.id(), reallocationId);
+        }
+    }
+
+    @Transactional
     public BudgetEngagementOutput enregistrerEngagement(EngagementInput input) {
+        utilsService.hasPermission(Permissions.CREATE_BUDGET_ENGAGEMENT);
+        UUID id = UUID.randomUUID();
+        Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
+        payload.put("id", id.toString());
+
+        UUID uuid = makerCheckerEngine.submitChange(
+                MakerCheckerEntityName.BUDGET_ENGAGEMENT,
+                id.toString(),
+                payload,
+                MakerCheckerOperationType.CREATE
+        );
+        log.info("Engagement budgétaire {} soumis au Maker-Checker (Ticket: {})", input.numeroEngagement(), uuid);
+
+        trackClickHouse(MakerCheckerEntityName.BUDGET_ENGAGEMENT.name(), id.toString(), Map.of(
+                "action", "SOUMISSION_ENREGISTRER_ENGAGEMENT",
+                "numeroEngagement", input.numeroEngagement(),
+                "montant", input.montant(),
+                "ticket", uuid.toString()
+        ));
+
+        if (canValidate(Permissions.VALIDATE_BUDGET_ENGAGEMENT)) {
+            try {
+                validateOrRejectEngagement(new ValidateOrRejectSubmissionInput(
+                        uuid,
+                        MakerCheckerStatus.ACCEPTED,
+                        "Validation automatique par l'utilisateur",
+                        MakerCheckerOperationType.CREATE
+                ));
+            } catch (Exception e) {
+                log.warn("Erreur validation auto engagement budgétaire: {}", e.getMessage());
+            }
+        }
+
+        return budgetEngagementRepository.findById(id)
+                .map(this::mapEngagement)
+                .orElseGet(() -> new BudgetEngagementOutput(
+                        id,
+                        null,
+                        input.numeroEngagement(),
+                        input.description(),
+                        input.montant(),
+                        LocalDateTime.now(),
+                        "PENDING_VALIDATION"
+                ));
+    }
+
+    private BudgetEngagementEntity creationEngagement(Map<String, Object> payload, UUID engagementId) {
+        EngagementInput input = objectMapper.convertValue(payload, EngagementInput.class);
         BudgetItemEntity item = budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(input.planId(), input.compteCode(), input.sectionId())
                 .orElseThrow(() -> new IllegalArgumentException("Ligne budgétaire inexistante pour ce plan, compte et section."));
 
@@ -392,6 +667,7 @@ public class BudgetPlanAdapter {
         }
 
         BudgetEngagementEntity engagement = BudgetEngagementEntity.builder()
+                .id(engagementId)
                 .budgetItem(item)
                 .numeroEngagement(input.numeroEngagement())
                 .description(input.description())
@@ -414,7 +690,46 @@ public class BudgetPlanAdapter {
                 .utilisateur(input.utilisateurId())
                 .build());
 
-        return mapEngagement(saved);
+        return saved;
+    }
+
+    @Transactional
+    public void validateOrRejectEngagement(ValidateOrRejectSubmissionInput input) {
+        utilsService.hasPermission(Permissions.VALIDATE_BUDGET_ENGAGEMENT);
+        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerStatus currentStatus = checkerOutput.status();
+        if (currentStatus != MakerCheckerStatus.PENDING) {
+            throw new RuntimeException(String.format(
+                    "Invalid transition: Cannot transition from %s to %s.", currentStatus, input.decision()));
+        }
+
+        UUID checkerId = UUID.fromString(utilsService.getCurrentUserData().userId());
+        if (checkerOutput.maker() != null && checkerOutput.maker().id() != null && checkerOutput.maker().id().equals(checkerId)) {
+            throw new RuntimeException("A checker cannot vote on their own request.");
+        }
+
+        MakerCheckerStatus newStatus;
+        if (MakerCheckerStatus.ACCEPTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.ACCEPTED;
+        } else if (MakerCheckerStatus.REJECTED.equals(input.decision())) {
+            newStatus = MakerCheckerStatus.REJECTED;
+        } else {
+            throw new RuntimeException("Invalid decision: " + input.decision());
+        }
+
+        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+
+        if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
+            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            log.info("Engagement budgétaire rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+        } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
+            UUID engagementId = UUID.fromString(checkerOutput.entityPk());
+            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
+                creationEngagement(checkerOutput.payload(), engagementId);
+            }
+            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            log.info("Engagement budgétaire approuvé par Checker {}. Ticket: {}, Engagement PK: {}", checkerId, checkerOutput.id(), engagementId);
+        }
     }
 
     @Transactional

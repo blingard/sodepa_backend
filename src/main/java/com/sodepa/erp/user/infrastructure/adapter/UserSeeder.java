@@ -28,7 +28,7 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@Order(1)
+@Order(2)
 public class UserSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;

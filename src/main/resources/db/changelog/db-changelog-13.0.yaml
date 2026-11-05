@@ -1,0 +1,449 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20261103-1300-paie-schema
+      author: sodepa-dev
+      changes:
+        # Table 1: Périodes de paie mensuelles
+        - createTable:
+            tableName: paie_periodes
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: mois
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: annee
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: date_debut
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(30)
+                  defaultValue: "OUVERTE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: masse_salariale_nette
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: masse_salariale_brute
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_charges_patronales
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: cout_global_sodepa
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: date_calcul
+                  type: TIMESTAMP
+              - column:
+                  name: date_validation
+                  type: TIMESTAMP
+              - column:
+                  name: date_cloture
+                  type: TIMESTAMP
+
+        # Table 2: Configuration des rubriques et primes SODEPA
+        - createTable:
+            tableName: paie_primes_config
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_rubrique
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: imposable
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cotisable_cnps
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_defaut
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        # Table 3: Variables mensuelles de paie
+        - createTable:
+            tableName: paie_variables_mensuelles
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: periode_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_paie_var_periode
+                    references: paie_periodes(id)
+              - column:
+                  name: employe_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_paie_var_employe
+                    references: rh_employes(id)
+              - column:
+                  name: code_rubrique
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+              - column:
+                  name: montant
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: quantite
+                  type: NUMERIC(10, 2)
+                  defaultValueNumeric: 1
+              - column:
+                  name: commentaire
+                  type: VARCHAR(255)
+
+        # Table 4: Bulletins de paie mensuels
+        - createTable:
+            tableName: paie_bulletins
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: periode_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_bulletin_periode
+                    references: paie_periodes(id)
+              - column:
+                  name: employe_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_bulletin_employe
+                    references: rh_employes(id)
+              - column:
+                  name: matricule
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nom_complet
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: structure_nom
+                  type: VARCHAR(150)
+              - column:
+                  name: poste_nom
+                  type: VARCHAR(150)
+              - column:
+                  name: categorie
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: echelon
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: numero_cnps
+                  type: VARCHAR(50)
+              - column:
+                  name: mode_paiement
+                  type: VARCHAR(30)
+                  defaultValue: "VIREMENT"
+              - column:
+                  name: banque_nom
+                  type: VARCHAR(100)
+              - column:
+                  name: compte_bancaire_rib
+                  type: VARCHAR(50)
+              # Salaires et gains
+              - column:
+                  name: salaire_base
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sursalaire
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_primes_imposables
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_primes_non_imposables
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_heures_sup
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: salaire_brut_taxable
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: salaire_brut_cotisable_cnps
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              # Retenues salariales
+              - column:
+                  name: retenue_irpp
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue_cac
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue_tc
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue_cfc_salariale
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue_cnps_salariale
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue_syndicat
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: acomptes_avances
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: autres_retenues
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_retenues_salariales
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: net_a_payer
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              # Charges patronales
+              - column:
+                  name: charge_cnps_pvid
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: charge_cnps_pf
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: charge_cnps_at
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: charge_cfc_patronale
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: charge_fne_patronale
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_charges_patronales
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: cout_global_employeur
+                  type: NUMERIC(18, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(30)
+                  defaultValue: "CALCULE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_calcul
+                  type: TIMESTAMP
+
+        # Table 5: Lignes de détail du bulletin de paie
+        - createTable:
+            tableName: paie_bulletin_lignes
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: bulletin_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ligne_bulletin
+                    references: paie_bulletins(id)
+              - column:
+                  name: ordre
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code_rubrique
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sens
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: base_calcul
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: taux
+                  type: NUMERIC(8, 4)
+                  defaultValueNumeric: 0
+              - column:
+                  name: gain
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: retenue
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: charge_patronale
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+
+        # Données de référence pour les primes courantes de la SODEPA
+        - insert:
+            tableName: paie_primes_config
+            columns:
+              - column: { name: id, value: "11111111-2222-3333-4444-555555550001" }
+              - column: { name: code, value: "INDEM_LOGEMENT" }
+              - column: { name: libelle, value: "Indemnité de logement" }
+              - column: { name: type_rubrique, value: "PRIME_LOGEMENT" }
+              - column: { name: imposable, valueBoolean: true }
+              - column: { name: cotisable_cnps, valueBoolean: true }
+              - column: { name: montant_defaut, valueNumeric: 25000 }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: paie_primes_config
+            columns:
+              - column: { name: id, value: "11111111-2222-3333-4444-555555550002" }
+              - column: { name: code, value: "INDEM_TRANSPORT" }
+              - column: { name: libelle, value: "Indemnité de transport légale" }
+              - column: { name: type_rubrique, value: "INDEMNITE_TRANSPORT" }
+              - column: { name: imposable, valueBoolean: false }
+              - column: { name: cotisable_cnps, valueBoolean: false }
+              - column: { name: montant_defaut, valueNumeric: 20000 }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: paie_primes_config
+            columns:
+              - column: { name: id, value: "11111111-2222-3333-4444-555555550003" }
+              - column: { name: code, value: "PRIME_SALISSURE_RISQUE" }
+              - column: { name: libelle, value: "Prime de salissure et risque pastoral/abattoir" }
+              - column: { name: type_rubrique, value: "PRIME_RISQUE" }
+              - column: { name: imposable, valueBoolean: true }
+              - column: { name: cotisable_cnps, valueBoolean: true }
+              - column: { name: montant_defaut, valueNumeric: 15000 }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: paie_primes_config
+            columns:
+              - column: { name: id, value: "11111111-2222-3333-4444-555555550004" }
+              - column: { name: code, value: "PRIME_SUJETION" }
+              - column: { name: libelle, value: "Indemnité de sujétion et technicité" }
+              - column: { name: type_rubrique, value: "PRIME_FONCTION" }
+              - column: { name: imposable, valueBoolean: true }
+              - column: { name: cotisable_cnps, valueBoolean: true }
+              - column: { name: montant_defaut, valueNumeric: 30000 }
+              - column: { name: actif, valueBoolean: true }

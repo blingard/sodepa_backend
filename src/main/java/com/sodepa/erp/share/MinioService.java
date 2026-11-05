@@ -16,7 +16,7 @@ public interface MinioService {
      * @return the public direct URL to access the file (e.g.
      *         http://minio-host:9000/bucket/objectName)
      */
-    String uploadFile(MultipartFile file, String objectName) throws Exception;
+    String uploadFile(MultipartFile file, String objectName) throws RuntimeException;
 
     /**
      * Download a file from MinIO

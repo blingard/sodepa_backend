@@ -1,5 +1,14 @@
 package com.sodepa.erp.utils;
 
+import com.sodepa.erp.organigramme.infrastructure.entities.AffectationPosteEntity;
+import com.sodepa.erp.organigramme.infrastructure.entities.DelegationPouvoirEntity;
+import com.sodepa.erp.organigramme.infrastructure.entities.DerogationPermissionEntity;
+import com.sodepa.erp.organigramme.infrastructure.entities.StatutAffectation;
+import com.sodepa.erp.organigramme.infrastructure.entities.StatutDelegation;
+import com.sodepa.erp.organigramme.infrastructure.entities.StatutDerogation;
+import com.sodepa.erp.organigramme.infrastructure.repo.AffectationPosteRepository;
+import com.sodepa.erp.organigramme.infrastructure.repo.DelegationPouvoirRepository;
+import com.sodepa.erp.organigramme.infrastructure.repo.DerogationPermissionRepository;
 import com.sodepa.erp.share.FileStorageService;
 import com.sodepa.erp.user.application.outputs.UserRecordSmartOutput;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
@@ -10,24 +19,102 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 @RequiredArgsConstructor
 @Component
-public class UserManagementEngine implements UserManagementEnginePort{
+public class UserManagementEngine implements UserManagementEnginePort {
 
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
-
+    private final AffectationPosteRepository affectationPosteRepository;
+    private final DelegationPouvoirRepository delegationPouvoirRepository;
+    private final DerogationPermissionRepository derogationPermissionRepository;
 
     @Override
-    public UserOutput  getUserById(UUID id) {
-        UtilisateurEntity entity = userRepository.findById(id).orElseThrow(()->new RuntimeException("User not found"));
-        if(!entity.isActif()) throw new RuntimeException("Current user is not active");
-        return UserOutput.builder().id(entity.getId()).username(entity.getUsername()).nom(entity.getNom())
-                .prenom(entity.getPrenom()).email(entity.getEmail())
+    public UserOutput getUserById(UUID id) {
+        UtilisateurEntity entity = userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
+        if (!entity.isActif()) {
+            throw new RuntimeException("Current user is not active");
+        }
+
+        Set<Permissions> effectivePermissions = resolveEffectivePermissions(entity);
+
+        return UserOutput.builder()
+                .id(entity.getId())
+                .username(entity.getUsername())
+                .nom(entity.getNom())
+                .prenom(entity.getPrenom())
+                .email(entity.getEmail())
                 .photoProfile(fileStorageService.getPresignedUrlFromFullUrl(entity.getPhotoProfile(), 1))
-                .actif(entity.isActif()).telephones(entity.getTelephones()).permissions(entity.getPermissions()).build();
+                .actif(entity.isActif())
+                .telephones(entity.getTelephones())
+                .permissions(effectivePermissions)
+                .build();
+    }
+
+    /**
+     * Résout dynamiquement les permissions d'un utilisateur SODEPA :
+     * 1. Exceptions racines : admin_maker et admin_checker possèdent des permissions directes et ne sont pas des employés.
+     * 2. Collaborateurs opérationnels :
+     *    - Permissions du poste budgété actif (AffectationPosteEntity).
+     *    - Permissions des délégations actives (DelegationPouvoirEntity).
+     *    - Permissions dérogées exceptionnelles actives accordées par la DG (DerogationPermissionEntity).
+     */
+    private Set<Permissions> resolveEffectivePermissions(UtilisateurEntity entity) {
+        if ("admin_maker".equalsIgnoreCase(entity.getUsername()) || "admin_checker".equalsIgnoreCase(entity.getUsername())) {
+            return entity.getPermissions() != null ? entity.getPermissions() : Collections.emptySet();
+        }
+
+        Set<Permissions> permissions = new HashSet<>();
+        LocalDate today = LocalDate.now();
+        Instant now = Instant.now();
+
+        // 1. Affectations de postes actives
+        List<AffectationPosteEntity> affectations = affectationPosteRepository.findByUtilisateurIdAndStatut(
+                entity.getId(), StatutAffectation.ACTIF);
+        for (AffectationPosteEntity aff : affectations) {
+            boolean dateDebutOk = aff.getDateDebut() == null || !aff.getDateDebut().isAfter(today);
+            boolean dateFinOk = aff.getDateFin() == null || !aff.getDateFin().isBefore(today);
+            if (dateDebutOk && dateFinOk && aff.getPoste() != null && aff.getPoste().getPermissions() != null) {
+                permissions.addAll(aff.getPoste().getPermissions());
+            }
+        }
+
+        // 2. Délégations actives (en tant que délégataire)
+        List<DelegationPouvoirEntity> delegations = delegationPouvoirRepository.findByDelegataireIdAndStatut(
+                entity.getId(), StatutDelegation.ACTIVE);
+        for (DelegationPouvoirEntity del : delegations) {
+            boolean dateDebutOk = del.getDateDebut() == null || !del.getDateDebut().isAfter(now);
+            boolean dateFinOk = del.getDateFin() == null || !del.getDateFin().isBefore(now);
+            if (dateDebutOk && dateFinOk && del.getDelegant() != null) {
+                List<AffectationPosteEntity> delegantAffs = affectationPosteRepository.findByUtilisateurIdAndStatut(
+                        del.getDelegant().getId(), StatutAffectation.ACTIF);
+                for (AffectationPosteEntity aff : delegantAffs) {
+                    if (aff.getPoste() != null && aff.getPoste().getPermissions() != null) {
+                        permissions.addAll(aff.getPoste().getPermissions());
+                    }
+                }
+            }
+        }
+
+        // 3. Dérogations nominatives d'habilitations exceptionnelles actives
+        List<DerogationPermissionEntity> derogations = derogationPermissionRepository.findByUtilisateurIdAndStatut(
+                entity.getId(), StatutDerogation.ACTIVE);
+        for (DerogationPermissionEntity der : derogations) {
+            boolean dateDebutOk = der.getDateDebut() == null || !der.getDateDebut().isAfter(now);
+            boolean dateFinOk = der.getDateFin() == null || !der.getDateFin().isBefore(now);
+            if (dateDebutOk && dateFinOk && der.getPermission() != null) {
+                permissions.add(der.getPermission());
+            }
+        }
+
+        return permissions;
     }
 }

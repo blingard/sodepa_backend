@@ -4,6 +4,7 @@ import com.sodepa.erp.authentication.application.inputs.LoginInput;
 import com.sodepa.erp.authentication.application.inputs.LogoutInput;
 import com.sodepa.erp.authentication.application.inputs.RefreshInput;
 import com.sodepa.erp.authentication.application.outputs.SessionOutput;
+import com.sodepa.erp.share.GlobalConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
@@ -70,11 +71,11 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", clientId);
-        body.add("client_secret", clientSecret);
-        body.add("grant_type", "password");
-        body.add("username", input.username());
-        body.add("password", input.password());
+        body.add(GlobalConstants.CLIENT_ID, clientId);
+        body.add(GlobalConstants.CLIENT_SECRET, clientSecret);
+        body.add(GlobalConstants.GRANT_TYPE, GlobalConstants.PASSWORD);
+        body.add(GlobalConstants.USERNAME, input.username());
+        body.add(GlobalConstants.PASSWORD, input.password());
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
         String url = serverUrl + "/realms/" + realm + "/protocol/openid-connect/token";
@@ -145,9 +146,9 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", clientId);
-        body.add("client_secret", clientSecret);
-        body.add("refresh_token", input.refreshToken());
+        body.add(GlobalConstants.CLIENT_ID, clientId);
+        body.add(GlobalConstants.CLIENT_SECRET, clientSecret);
+        body.add(GlobalConstants.REFRESH_TOKEN, input.refreshToken());
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
         String url = serverUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
@@ -197,7 +198,7 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
             kcUser.setEmailVerified(true);
             kcUser.setEnabled(active);
             Map<String, List<String>> attributes = new HashMap<>();
-            attributes.put("USER_ID", List.of(id.toString()));
+            attributes.put(GlobalConstants.USER_ID, List.of(id.toString()));
             kcUser.setAttributes(attributes);
 
             CredentialRepresentation creds = new CredentialRepresentation();
@@ -210,7 +211,8 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
                 if (response.getStatus() >= 400 && response.getStatus() != 409) {
                     String errorMsg = response.readEntity(String.class);
                     log.error("Erreur de création d'utilisateur dans Keycloak: status={}, body={}", response.getStatus(), errorMsg);
-                    throw new RuntimeException("Erreur de création Keycloak: " + errorMsg);
+                    //TODO: metre en place un mecanisme pour identifier les erreurs de creation d'utilisateur dans keycloak et les remonter correctement pour les administrateurs (dans clickhouse par exemple)
+                    throw new RuntimeException(GlobalConstants.ERROR_CREATE_KEYCLOAK_USER);
                 }
                 UUID createdId = extractCreatedUserId(response, username);
                 log.info("Utilisateur créé dans Keycloak avec succès. username: {}", username);
@@ -218,7 +220,7 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
             }
         } catch (Exception e) {
             log.error("Exception lors de la création de l'utilisateur dans Keycloak: ", e);
-            throw new RuntimeException("Erreur d'intégration Keycloak : " + e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -253,8 +255,8 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
         List<UserRepresentation> trouves =
                 keycloak.realm(realm).users().search(username, true);
         if (trouves == null || trouves.isEmpty()) {
-            throw new RuntimeException(
-                    "Keycloak n'a renvoyé aucun identifiant pour l'utilisateur " + username);
+            //TODO: metre en place un mecanisme pour identifier les erreurs de creation d'utilisateur dans keycloak et les remonter correctement pour les administrateurs (dans clickhouse par exemple)
+            throw new RuntimeException(GlobalConstants.ERROR_KEYCLOAK_USER_NOT_FOUND);
         }
         return UUID.fromString(trouves.get(0).getId());
     }
@@ -270,8 +272,63 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
             log.info("Mot de passe modifié avec succès dans Keycloak pour l'utilisateur ID: {}", userId);
         } catch (Exception e) {
             log.error("Exception lors de la modification du mot de passe dans Keycloak pour l'utilisateur ID: {}", userId, e);
-            throw new RuntimeException("Erreur de modification du mot de passe dans Keycloak: " + e.getMessage(), e);
+            //TODO: mettre en place un mécanisme pour identifier les erreurs de modification de mot de passe dans Keycloak et les remonter correctement pour les administrateurs (dans clickhouse par exemple)
+            throw new RuntimeException(GlobalConstants.ERROR_KEYCLOAK_CHANGE_PASSWORD, e);
         }
     }
 
+
+    @Override
+    public void setUserActive(String username, boolean active) {
+        try {
+            List<UserRepresentation> users = keycloak.realm(realm).users().search(username, true);
+            if (users != null && !users.isEmpty()) {
+                UserRepresentation user = users.get(0);
+                user.setEnabled(active);
+                keycloak.realm(realm).users().get(user.getId()).update(user);
+                log.info("Statut du compte Keycloak mis à jour pour '{}': enabled={}", username, active);
+            } else {
+                log.warn("Utilisateur Keycloak '{}' introuvable lors de la mise à jour du statut", username);
+            }
+        } catch (Exception e) {
+            log.warn("Impossible de mettre à jour le statut Keycloak pour '{}': {}", username, e.getMessage());
+        }
+    }
+
+    @Override
+    public void deleteKeycloakUser(String username) {
+        try {
+            List<UserRepresentation> users = keycloak.realm(realm).users().search(username, true);
+            if (users != null && !users.isEmpty()) {
+                for (UserRepresentation user : users) {
+                    keycloak.realm(realm).users().delete(user.getId());
+                    log.info("Utilisateur Keycloak '{}' (ID: {}) supprimé avec succès.", username, user.getId());
+                }
+            } else {
+                log.info("Utilisateur Keycloak '{}' non trouvé pour suppression.", username);
+            }
+        } catch (Exception e) {
+            log.warn("Impossible de supprimer l'utilisateur Keycloak '{}' : {}", username, e.getMessage());
+        }
+    }
+
+    @Override
+    public void purgeAllKeycloakUsers() {
+        try {
+            List<UserRepresentation> users = keycloak.realm(realm).users().list(0, 1000);
+            if (users != null && !users.isEmpty()) {
+                log.info("Purge de {} utilisateurs dans Keycloak (realm: {})...", users.size(), realm);
+                for (UserRepresentation user : users) {
+                    try {
+                        keycloak.realm(realm).users().delete(user.getId());
+                        log.info("Utilisateur Keycloak purgé: {}", user.getUsername());
+                    } catch (Exception ex) {
+                        log.warn("Impossible de supprimer l'utilisateur Keycloak {}: {}", user.getUsername(), ex.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Erreur lors de la purge générale des utilisateurs Keycloak : {}", e.getMessage());
+        }
+    }
 }

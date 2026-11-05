@@ -1,0 +1,91 @@
+databaseChangeLog:
+  - changeSet:
+      id: 19.0-employe-utilisateur-fk-and-derogations
+      author: sodepa-team
+      changes:
+        - addColumn:
+            tableName: rh_employes
+            columns:
+              - column:
+                  name: utilisateur_id
+                  type: uuid
+                  constraints:
+                    nullable: true
+                    unique: true
+                    foreignKeyName: fk_employe_utilisateur
+                    references: utilisateurs(id)
+        - createTable:
+            tableName: derogations_permissions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: utilisateur_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_derogation_utilisateur
+                    references: utilisateurs(id)
+              - column:
+                  name: permission
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_debut
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: "ACTIVE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: motif
+                  type: text
+              - column:
+                  name: reference_decision
+                  type: varchar(150)
+              - column:
+                  name: accorde_par_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_derogation_accorde_par
+                    references: utilisateurs(id)
+              - column:
+                  name: date_creation
+                  type: timestamp
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: derogations_permissions
+            indexName: idx_derogation_user
+            columns:
+              - column:
+                  name: utilisateur_id
+        - createIndex:
+            tableName: derogations_permissions
+            indexName: idx_derogation_statut
+            columns:
+              - column:
+                  name: statut
+        - createIndex:
+            tableName: derogations_permissions
+            indexName: idx_derogation_dates
+            columns:
+              - column:
+                  name: date_debut
+              - column:
+                  name: date_fin

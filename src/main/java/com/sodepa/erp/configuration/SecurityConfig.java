@@ -43,7 +43,8 @@ public class SecurityConfig {
             // vrai statut : le diagnostic devient impossible côté client.
             "/error",
             "/api/auth/login",
-            "/api/auth/refresh"};
+            "/api/auth/refresh",
+            "/api/auth/logout"};
 
     @Bean
     public RestTemplate restTemplate() {

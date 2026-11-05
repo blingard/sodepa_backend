@@ -1,0 +1,557 @@
+databaseChangeLog:
+  - changeSet:
+      id: 16.0-01-create-regies-and-formation-tables
+      author: sodepa-erp
+      changes:
+        # ==========================================
+        # 1. RÉGIES D'AVANCES RANCHES & ABATTOIRS
+        # ==========================================
+        - createTable:
+            tableName: tresorerie_regies
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: nom
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_unite
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false # RANCH, ABATTOIR, SIEGE
+              - column:
+                  name: plafond_autorise_fcfa
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 10000000
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_actuel_fcfa
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: regisseur_nom
+                  type: VARCHAR(150)
+              - column:
+                  name: regisseur_matricule
+                  type: VARCHAR(50)
+              - column:
+                  name: banque_rattachement
+                  type: VARCHAR(100)
+              - column:
+                  name: rib_compte_regie
+                  type: VARCHAR(50)
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: tresorerie_regie_approvisionnements
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: numero_demande
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: regie_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_approv_regie
+                    references: tresorerie_regies(id)
+              - column:
+                  name: montant_demande_fcfa
+                  type: NUMERIC(15, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: solde_avant_approv
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: motif_reapprovisionnement
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etat_justificatifs_depenses
+                  type: TEXT
+              - column:
+                  name: montant_justificatifs_valides
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: date_demande
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(40)
+                  defaultValue: EN_ATTENTE_DAF
+                  constraints:
+                    nullable: false
+              - column:
+                  name: signature_daf
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: date_signature_daf
+                  type: TIMESTAMP
+              - column:
+                  name: signature_dg
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: date_signature_dg
+                  type: TIMESTAMP
+              - column:
+                  name: reference_virement_banque
+                  type: VARCHAR(100)
+              - column:
+                  name: date_effet_deblocage
+                  type: DATE
+
+        - createTable:
+            tableName: tresorerie_regie_depenses
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: numero_piece
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: regie_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_depense_regie
+                    references: tresorerie_regies(id)
+              - column:
+                  name: date_depense
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: beneficiaire
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: motif
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: imputation_budgetaire
+                  type: VARCHAR(100)
+              - column:
+                  name: montant_depense_fcfa
+                  type: NUMERIC(15, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: justificatif_ref
+                  type: VARCHAR(100)
+              - column:
+                  name: justifie
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+
+        # ==========================================
+        # 2. PLANS & ACTIONS DE FORMATION (CSF)
+        # ==========================================
+        - createTable:
+            tableName: rh_formation_plans
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: annee_exercice
+                  type: INT
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: intitule
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: budget_total_prevu
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(40)
+                  defaultValue: BROUILLON
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visa_sdrh
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: visa_daf
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: approbation_dg
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: date_approbation_dg
+                  type: DATE
+              - column:
+                  name: observations
+                  type: TEXT
+
+        - createTable:
+            tableName: rh_formation_actions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: plan_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_formation_plan
+                    references: rh_formation_plans(id)
+              - column:
+                  name: code
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: theme
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: domaine
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: public_cible
+                  type: VARCHAR(200)
+              - column:
+                  name: organisme_formateur
+                  type: VARCHAR(150)
+              - column:
+                  name: type_formateur
+                  type: VARCHAR(30)
+                  defaultValue: EXTERNE
+              - column:
+                  name: lieu
+                  type: VARCHAR(150)
+              - column:
+                  name: date_debut
+                  type: DATE
+              - column:
+                  name: date_fin
+                  type: DATE
+              - column:
+                  name: duree_heures
+                  type: INT
+              - column:
+                  name: cout_estimatif_fcfa
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: donne_droit_reclassement
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: rh_formation_participations
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: action_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_partic_action
+                    references: rh_formation_actions(id)
+              - column:
+                  name: employe_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_partic_employe
+                    references: rh_employes(id)
+              - column:
+                  name: note_evaluation_chaud
+                  type: NUMERIC(4, 2)
+              - column:
+                  name: attestation_delivree
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+              - column:
+                  name: avis_hierarchique
+                  type: VARCHAR(50)
+                  defaultValue: FAVORABLE
+
+        # ==========================================
+        # 3. STAGIAIRES ACADÉMIQUES & PROFESSIONNELS
+        # ==========================================
+        - createTable:
+            tableName: rh_stages
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code_dossier
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: nom_prenom_stagiaire
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etablissement_origine
+                  type: VARCHAR(150)
+              - column:
+                  name: niveau_etude
+                  type: VARCHAR(100)
+              - column:
+                  name: type_stage
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false # ACADEMIQUE, PROFESSIONNEL, PRE_EMPLOI
+              - column:
+                  name: structure_accueil
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: encadreur_nom
+                  type: VARCHAR(150)
+              - column:
+                  name: date_debut
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: lettre_admission_ref
+                  type: VARCHAR(100)
+              - column:
+                  name: statut
+                  type: VARCHAR(40)
+                  defaultValue: EN_COURS
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_demande_rallonge
+                  type: DATE
+              - column:
+                  name: rallonge_accordee
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+
+        # ==========================================
+        # 4. RECLASSEMENTS INDICIAIRES POST-FORMATION
+        # ==========================================
+        - createTable:
+            tableName: rh_formation_reclassements
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: employe_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reclass_employe
+                    references: rh_employes(id)
+              - column:
+                  name: intitule_diplome_formation
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: duree_formation_mois
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: anciennete_annees
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ancienne_categorie
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ancien_echelon
+                  type: VARCHAR(5)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nouvelle_categorie
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nouvel_echelon
+                  type: VARCHAR(5)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decision_dg_ref
+                  type: VARCHAR(100)
+              - column:
+                  name: date_effet
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valide_dg
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+
+  - changeSet:
+      id: 16.0-02-seed-regies-and-formation
+      author: sodepa-erp
+      changes:
+        # Seed des régies SODEPA
+        - insert:
+            tableName: tresorerie_regies
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REGIE_RANCH_DUMBO" }
+              - column: { name: nom, value: "Régie d'avances Ranch de Dumbo" }
+              - column: { name: type_unite, value: "RANCH" }
+              - column: { name: plafond_autorise_fcfa, valueNumeric: 15000000 }
+              - column: { name: solde_actuel_fcfa, valueNumeric: 8500000 }
+              - column: { name: regisseur_nom, value: "M. Nfor Joseph (Régisseur Dumbo)" }
+              - column: { name: regisseur_matricule, value: "SDP-2018-0045" }
+              - column: { name: banque_rattachement, value: "Afriland First Bank Nkambe" }
+              - column: { name: rib_compte_regie, value: "10005 00012 01234567890 45" }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: tresorerie_regies
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REGIE_RANCH_JAKIRI" }
+              - column: { name: nom, value: "Régie d'avances Ranch de Jakiri" }
+              - column: { name: type_unite, value: "RANCH" }
+              - column: { name: plafond_autorise_fcfa, valueNumeric: 10000000 }
+              - column: { name: solde_actuel_fcfa, valueNumeric: 6200000 }
+              - column: { name: regisseur_nom, value: "Mme Bih Theresia" }
+              - column: { name: regisseur_matricule, value: "SDP-2020-0082" }
+              - column: { name: banque_rattachement, value: "BICEC Kumbo" }
+              - column: { name: rib_compte_regie, value: "10001 00023 09876543210 12" }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: tresorerie_regies
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REGIE_RANCH_FARO" }
+              - column: { name: nom, value: "Régie d'avances Ranch de Faro" }
+              - column: { name: type_unite, value: "RANCH" }
+              - column: { name: plafond_autorise_fcfa, valueNumeric: 20000000 }
+              - column: { name: solde_actuel_fcfa, valueNumeric: 12500000 }
+              - column: { name: regisseur_nom, value: "M. Mohamadou Bello" }
+              - column: { name: regisseur_matricule, value: "SDP-2017-0019" }
+              - column: { name: banque_rattachement, value: "SCB Cameroun Garoua" }
+              - column: { name: rib_compte_regie, value: "10002 00034 11223344556 78" }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: tresorerie_regies
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REGIE_ABATTOIR_YDE" }
+              - column: { name: nom, value: "Régie d'avances Abattoir Frigorifique de Yaoundé" }
+              - column: { name: type_unite, value: "ABATTOIR" }
+              - column: { name: plafond_autorise_fcfa, valueNumeric: 12000000 }
+              - column: { name: solde_actuel_fcfa, valueNumeric: 4800000 }
+              - column: { name: regisseur_nom, value: "Mme Atangana Marie-Claire" }
+              - column: { name: regisseur_matricule, value: "SDP-2019-0063" }
+              - column: { name: banque_rattachement, value: "UBA Yaoundé Etoudi" }
+              - column: { name: rib_compte_regie, value: "10033 00045 55667788990 23" }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: tresorerie_regies
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REGIE_ABATTOIR_DLA" }
+              - column: { name: nom, value: "Régie d'avances Abattoir Frigorifique de Douala" }
+              - column: { name: type_unite, value: "ABATTOIR" }
+              - column: { name: plafond_autorise_fcfa, valueNumeric: 15000000 }
+              - column: { name: solde_actuel_fcfa, valueNumeric: 7100000 }
+              - column: { name: regisseur_nom, value: "M. Mbappe Jacques" }
+              - column: { name: regisseur_matricule, value: "SDP-2016-0008" }
+              - column: { name: banque_rattachement, value: "Société Générale Douala Bassa" }
+              - column: { name: rib_compte_regie, value: "10003 00056 99887766554 90" }
+              - column: { name: actif, valueBoolean: true }

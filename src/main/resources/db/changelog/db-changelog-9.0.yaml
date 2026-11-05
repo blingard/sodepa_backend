@@ -1,0 +1,263 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-organigramme-tables
+      author: Antigravity-Sodepa
+      changes:
+        - createTable:
+            tableName: unites_organisationnelles
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_unite
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: parent_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_unite_parent
+                    references: unites_organisationnelles(id)
+              - column:
+                  name: materialized_path
+                  type: varchar(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: localisation
+                  type: varchar(100)
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: ACTIF
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fermeture
+                  type: date
+
+        - createTable:
+            tableName: postes
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code_poste
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: unite_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_poste_unite
+                    references: unites_organisationnelles(id)
+              - column:
+                  name: poste_superieur_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_poste_superieur
+                    references: postes(id)
+              - column:
+                  name: effectif_autorise
+                  type: int
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effectif_actuel
+                  type: int
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: categorie_convention
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: OUVERT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_mission
+                  type: clob
+
+        - createTable:
+            tableName: affectations_postes
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: utilisateur_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_aff_user
+                    references: utilisateurs(id)
+              - column:
+                  name: poste_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_aff_poste
+                    references: postes(id)
+              - column:
+                  name: type_affectation
+                  type: varchar(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_debut
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: date
+              - column:
+                  name: reference_decision
+                  type: varchar(150)
+              - column:
+                  name: motif_fin
+                  type: varchar(100)
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: ACTIF
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: organigramme_versions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: numero_version
+                  type: varchar(50)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: varchar(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: clob
+              - column:
+                  name: date_effet
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: BROUILLON
+                  constraints:
+                    nullable: false
+              - column:
+                  name: approuve_par
+                  type: uuid
+              - column:
+                  name: date_approbation
+                  type: timestamp
+
+        - createTable:
+            tableName: delegations_pouvoir
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: delegant_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_del_delegant
+                    references: utilisateurs(id)
+              - column:
+                  name: delegataire_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_del_delegataire
+                    references: utilisateurs(id)
+              - column:
+                  name: type_delegation
+                  type: varchar(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: plafond_montant
+                  type: decimal(18, 2)
+              - column:
+                  name: date_debut
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_unite_mat_path
+            tableName: unites_organisationnelles
+            columns:
+              - column:
+                  name: materialized_path

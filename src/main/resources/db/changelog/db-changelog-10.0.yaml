@@ -1,0 +1,318 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-workflow-engine-tables
+      author: Antigravity-Sodepa
+      changes:
+        - createTable:
+            tableName: workflows_definitions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(60)
+                  constraints:
+                    unique: true
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: clob
+              - column:
+                  name: domaine
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: int
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: timestamp
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: workflows_etapes_definitions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: workflow_definition_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_etape_definition
+                    references: workflows_definitions(id)
+              - column:
+                  name: ordre
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code_etape
+                  type: varchar(60)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: intitule
+                  type: varchar(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_etape
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: politique_validation
+                  type: varchar(40)
+                  defaultValue: UN_SEUL_SUFFIT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: strategie_assignation
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valeur_assignation
+                  type: varchar(100)
+              - column:
+                  name: delai_sla_heures
+                  type: int
+              - column:
+                  name: action_depassement_sla
+                  type: varchar(40)
+                  defaultValue: RELANCE_EMAIL
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: workflows_conditions_transitions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: etape_source_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_trans_source
+                    references: workflows_etapes_definitions(id)
+              - column:
+                  name: etape_cible_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_trans_cible
+                    references: workflows_etapes_definitions(id)
+              - column:
+                  name: expression_condition
+                  type: varchar(255)
+              - column:
+                  name: priorite
+                  type: int
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: workflows_instances
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: workflow_definition_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_inst_def
+                    references: workflows_definitions(id)
+              - column:
+                  name: entity_name
+                  type: varchar(60)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entity_id
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: initiateur_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_inst_initiateur
+                    references: utilisateurs(id)
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: EN_COURS
+                  constraints:
+                    nullable: false
+              - column:
+                  name: etape_courante_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_wf_inst_etape_courante
+                    references: workflows_etapes_definitions(id)
+              - column:
+                  name: donnees_contexte
+                  type: clob
+              - column:
+                  name: date_initiation
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_cloture
+                  type: timestamp
+
+        - createTable:
+            tableName: workflows_taches
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: workflow_instance_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_tache_inst
+                    references: workflows_instances(id)
+              - column:
+                  name: etape_definition_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_tache_etape_def
+                    references: workflows_etapes_definitions(id)
+              - column:
+                  name: assigne_utilisateur_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_tache_user
+                    references: utilisateurs(id)
+              - column:
+                  name: statut
+                  type: varchar(30)
+                  defaultValue: EN_ATTENTE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decision
+                  type: varchar(30)
+              - column:
+                  name: commentaire
+                  type: clob
+              - column:
+                  name: date_creation
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_echeance
+                  type: timestamp
+              - column:
+                  name: date_decision
+                  type: timestamp
+
+        - createTable:
+            tableName: workflows_historique_audit
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: workflow_instance_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_wf_audit_inst
+                    references: workflows_instances(id)
+              - column:
+                  name: etape_code
+                  type: varchar(60)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: acteur_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: action
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decision
+                  type: varchar(30)
+              - column:
+                  name: commentaire
+                  type: clob
+              - column:
+                  name: correlation_id
+                  type: varchar(100)
+              - column:
+                  name: horodatage
+                  type: timestamp
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            indexName: idx_wf_inst_entity
+            tableName: workflows_instances
+            columns:
+              - column:
+                  name: entity_name
+              - column:
+                  name: entity_id
+
+        - createIndex:
+            indexName: idx_wf_tache_assigne_statut
+            tableName: workflows_taches
+            columns:
+              - column:
+                  name: assigne_utilisateur_id
+              - column:
+                  name: statut

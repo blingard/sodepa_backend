@@ -338,3 +338,8 @@ clickhouse:
   url-http: http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}
   username: ${CLICKHOUSE_USERNAME}
   password: ${CLICKHOUSE_PASSWORD}
+
+sodepa:
+  seed:
+    enabled: ${SODEPA_SEED_ENABLED:true}
+    purge-on-startup: ${SODEPA_PURGE_ON_STARTUP:true}
