@@ -18,6 +18,8 @@ import com.sodepa.erp.organigramme.infrastructure.repo.*;
 import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
+import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -51,6 +53,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     private final UserRepository userRepository;
     private final TypeStructureRepository typeStructureRepository;
     private final ObjectifUniteRepository objectifRepository;
+    private final EmployeRepository employeRepository;
     private final MakerCheckerEnginePort makerCheckerEngine;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
@@ -967,11 +970,22 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     public Optional<UtilisateurEntity> getResponsableUnite(UUID uniteId) {
         List<PosteEntity> postes = posteRepository.findByUniteOrganisationnelleId(uniteId);
         // Le responsable est le poste de l'unité qui n'a pas de N+1 au sein de la même unité
-        return postes.stream()
+        Optional<UtilisateurEntity> fromAff = postes.stream()
                 .filter(p -> p.getPosteSuperieur() == null || !p.getPosteSuperieur().getUniteOrganisationnelle().getId().equals(uniteId))
                 .flatMap(p -> affectationRepository.findByPosteIdAndStatut(p.getId(), StatutAffectation.ACTIF).stream())
                 .filter(a -> a.getTypeAffectation() == TypeAffectation.TITULAIRE)
                 .map(AffectationPosteEntity::getUtilisateur)
+                .findFirst();
+
+        if (fromAff.isPresent()) {
+            return fromAff;
+        }
+
+        return postes.stream()
+                .filter(p -> p.getPosteSuperieur() == null || !p.getPosteSuperieur().getUniteOrganisationnelle().getId().equals(uniteId))
+                .flatMap(p -> employeRepository.findByPosteId(p.getId()).stream())
+                .map(EmployeEntity::getUtilisateur)
+                .filter(Objects::nonNull)
                 .findFirst();
     }
 
@@ -1350,6 +1364,19 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 .findFirst()
                 .or(() -> affs.stream().findFirst());
 
+        String titulaireNom = aff.map(a -> a.getUtilisateur().getNom() + " " + a.getUtilisateur().getPrenom()).orElse(null);
+        UUID titulaireId = aff.map(a -> a.getUtilisateur().getId()).orElse(null);
+
+        // Si aucune affectation explicite n'a été trouvée, fallback sur le dossier Employé direct
+        if (titulaireNom == null) {
+            List<EmployeEntity> emps = employeRepository.findByPosteId(p.getId());
+            if (!emps.isEmpty()) {
+                EmployeEntity e = emps.get(0);
+                titulaireNom = e.getNom() + " " + e.getPrenom();
+                titulaireId = e.getUtilisateur() != null ? e.getUtilisateur().getId() : e.getId();
+            }
+        }
+
         return PosteOutput.builder()
                 .id(p.getId())
                 .codePoste(p.getCodePoste())
@@ -1363,8 +1390,8 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 .categorieConvention(p.getCategorieConvention())
                 .statut(p.getStatut())
                 .descriptionMission(p.getDescriptionMission())
-                .titulaireActuelNom(aff.map(a -> a.getUtilisateur().getNom() + " " + a.getUtilisateur().getPrenom()).orElse("Poste vacant"))
-                .titulaireActuelId(aff.map(a -> a.getUtilisateur().getId()).orElse(null))
+                .titulaireActuelNom(titulaireNom != null ? titulaireNom : "Poste vacant")
+                .titulaireActuelId(titulaireId)
                 .permissions(p.getPermissions() != null ? p.getPermissions() : java.util.Collections.emptySet())
                 .build();
     }
