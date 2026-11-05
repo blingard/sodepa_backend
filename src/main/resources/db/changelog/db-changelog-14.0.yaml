@@ -100,7 +100,7 @@ databaseChangeLog:
                   type: UUID
                   constraints:
                     foreignKeyName: fk_eb_unite
-                    references: organigramme_unites(id)
+                    references: unites_organisationnelles(id)
               - column:
                   name: structure_nom
                   type: VARCHAR(150)
