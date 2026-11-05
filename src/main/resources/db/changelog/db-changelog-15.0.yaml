@@ -1,0 +1,403 @@
+databaseChangeLog:
+  - changeSet:
+      id: 15.0-01-create-pastoral-tables
+      author: sodepa-erp
+      changes:
+        - createTable:
+            tableName: pastoral_ranches
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: nom
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: region
+                  type: VARCHAR(100)
+              - column:
+                  name: superficie_hectares
+                  type: NUMERIC(12, 2)
+              - column:
+                  name: capacite_tetes
+                  type: INT
+              - column:
+                  name: responsable_nom
+                  type: VARCHAR(150)
+              - column:
+                  name: regie_plafond_fcfa
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 10000000
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: pastoral_categories_cheptel
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: age_min_mois
+                  type: INT
+              - column:
+                  name: age_max_mois
+                  type: INT
+              - column:
+                  name: compte_actif_syscohada
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: compte_variation_syscohada
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valeur_forfaitaire_bareme
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: pastoral_bovins
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: matricule_boucle
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: ranch_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_bovins_ranch
+                    references: pastoral_ranches(id)
+              - column:
+                  name: categorie_code
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sexe
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: race
+                  type: VARCHAR(50)
+                  defaultValue: GUDALI
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_naissance
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: poids_actuel_kg
+                  type: NUMERIC(8, 2)
+              - column:
+                  name: date_derniere_pesee
+                  type: DATE
+              - column:
+                  name: mere_boucle
+                  type: VARCHAR(50)
+              - column:
+                  name: pere_boucle
+                  type: VARCHAR(50)
+              - column:
+                  name: etat_sante
+                  type: VARCHAR(50)
+                  defaultValue: BON
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(40)
+                  defaultValue: VIVANT_AU_RANCH
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_entree
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_sortie
+                  type: DATE
+              - column:
+                  name: valeur_comptable_actuelle
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: pastoral_mouvements_cheptel
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: numero_mouvement
+                  type: VARCHAR(60)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: bovin_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_mouvements_bovin
+                    references: pastoral_bovins(id)
+              - column:
+                  name: ranch_source_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_mouvements_ranch_src
+                    references: pastoral_ranches(id)
+              - column:
+                  name: ranch_destination_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_mouvements_ranch_dst
+                    references: pastoral_ranches(id)
+              - column:
+                  name: type_mouvement
+                  type: VARCHAR(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_mouvement
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: poids_kg
+                  type: NUMERIC(8, 2)
+              - column:
+                  name: ancienne_categorie
+                  type: VARCHAR(40)
+              - column:
+                  name: nouvelle_categorie
+                  type: VARCHAR(40)
+              - column:
+                  name: valeur_mouvement
+                  type: NUMERIC(15, 2)
+                  defaultValueNumeric: 0
+              - column:
+                  name: compte_debit_syscohada
+                  type: VARCHAR(30)
+              - column:
+                  name: compte_credit_syscohada
+                  type: VARCHAR(30)
+              - column:
+                  name: justificatif_ref
+                  type: VARCHAR(100)
+              - column:
+                  name: observations
+                  type: TEXT
+              - column:
+                  name: cree_par
+                  type: VARCHAR(100)
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: pastoral_herd_compositions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: annee_exercice
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ranch_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_herd_ranch
+                    references: pastoral_ranches(id)
+              - column:
+                  name: date_inventaire
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effectif_physique_total
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: effectif_veaux
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: effectif_genisses_taurillons
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: effectif_reproducteurs
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: effectif_embouche_reforme
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: valeur_totale_cheptel
+                  type: NUMERIC(18, 2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut_rapprochement
+                  type: VARCHAR(40)
+                  defaultValue: CONFORME
+                  constraints:
+                    nullable: false
+              - column:
+                  name: observations
+                  type: TEXT
+
+  - changeSet:
+      id: 15.0-02-seed-pastoral-data
+      author: sodepa-erp
+      changes:
+        # 1. Ranches SODEPA
+        - insert:
+            tableName: pastoral_ranches
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "RANCH_DUMBO" }
+              - column: { name: nom, value: "Ranch Pastoral de Dumbo" }
+              - column: { name: region, value: "Nord-Ouest (Donga-Mantung)" }
+              - column: { name: superficie_hectares, valueNumeric: 25000 }
+              - column: { name: capacite_tetes, valueNumeric: 15000 }
+              - column: { name: responsable_nom, value: "Dr. Ndamen Jean-Paul (Chef de Ranch)" }
+              - column: { name: regie_plafond_fcfa, valueNumeric: 15000000 }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: pastoral_ranches
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "RANCH_JAKIRI" }
+              - column: { name: nom, value: "Ranch Pastoral de Jakiri" }
+              - column: { name: region, value: "Nord-Ouest (Bui)" }
+              - column: { name: superficie_hectares, valueNumeric: 8000 }
+              - column: { name: capacite_tetes, valueNumeric: 6000 }
+              - column: { name: responsable_nom, value: "Ing. Fomenky Samuel" }
+              - column: { name: regie_plafond_fcfa, valueNumeric: 10000000 }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: pastoral_ranches
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "RANCH_FARO" }
+              - column: { name: nom, value: "Ranch Pastoral de Faro" }
+              - column: { name: region, value: "Nord (Poli)" }
+              - column: { name: superficie_hectares, valueNumeric: 40000 }
+              - column: { name: capacite_tetes, valueNumeric: 20000 }
+              - column: { name: responsable_nom, value: "Dr. Oumarou Buba" }
+              - column: { name: regie_plafond_fcfa, valueNumeric: 20000000 }
+              - column: { name: actif, valueBoolean: true }
+
+        # 2. Catégories Cheptel SYSCOHADA SODEPA
+        - insert:
+            tableName: pastoral_categories_cheptel
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "VEAUX" }
+              - column: { name: libelle, value: "Veaux (0 à 1 an)" }
+              - column: { name: age_min_mois, valueNumeric: 0 }
+              - column: { name: age_max_mois, valueNumeric: 12 }
+              - column: { name: compte_actif_syscohada, value: "2191" }
+              - column: { name: compte_variation_syscohada, value: "7217" }
+              - column: { name: valeur_forfaitaire_bareme, valueNumeric: 80000 }
+        - insert:
+            tableName: pastoral_categories_cheptel
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "GENISSES_TAURILLONS" }
+              - column: { name: libelle, value: "Génisses et Taurillons de croissance (1 à 3 ans)" }
+              - column: { name: age_min_mois, valueNumeric: 13 }
+              - column: { name: age_max_mois, valueNumeric: 36 }
+              - column: { name: compte_actif_syscohada, value: "2496" }
+              - column: { name: compte_variation_syscohada, value: "7222" }
+              - column: { name: valeur_forfaitaire_bareme, valueNumeric: 180000 }
+        - insert:
+            tableName: pastoral_categories_cheptel
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "REPRODUCTEURS" }
+              - column: { name: libelle, value: "Animaux Reproducteurs (> 3 ans - Vaches & Taureaux)" }
+              - column: { name: age_min_mois, valueNumeric: 37 }
+              - column: { name: age_max_mois, valueNumeric: 180 }
+              - column: { name: compte_actif_syscohada, value: "2462" }
+              - column: { name: compte_variation_syscohada, value: "722" }
+              - column: { name: valeur_forfaitaire_bareme, valueNumeric: 350000 }
+        - insert:
+            tableName: pastoral_categories_cheptel
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: code, value: "EMBOUCHE_REFORME" }
+              - column: { name: libelle, value: "Animaux d'Embouche & Réforme (prêts vente / abattage)" }
+              - column: { name: age_min_mois, valueNumeric: 36 }
+              - column: { name: age_max_mois, valueNumeric: 200 }
+              - column: { name: compte_actif_syscohada, value: "3880" }
+              - column: { name: compte_variation_syscohada, value: "7360" }
+              - column: { name: valeur_forfaitaire_bareme, valueNumeric: 290000 }

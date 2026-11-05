@@ -1,4 +1,5 @@
 package com.sodepa.erp.user.infrastructure.adapter;
+import com.sodepa.erp.user.application.BootstrapInitializationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sodepa.erp.budget.infrastructure.repo.AuditTrailRepository;
@@ -42,6 +43,7 @@ public class UserAdapter implements UserAdapterInterface {
     private final UtilsService utilsService;
     private final KeycloakProvisioningPort keycloakProvisioningPort;
     private final AuditTrailRepository auditTrailRepository;
+    private final BootstrapInitializationService bootstrapInitializationService;
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String PROFILE_PICTURES_PATH = "/user/profile_pictures";
@@ -416,8 +418,11 @@ public class UserAdapter implements UserAdapterInterface {
                 .permissions(payload.permissions())
                 .actif(payload.actif())
                 .build();
-        userRepository.save(entity);
+        UtilisateurEntity saved = userRepository.save(entity);
         log.info("Création approuvée de l'utilisateur. PK: {}", id);
+        if (!"admin_maker".equalsIgnoreCase(payload.username()) && !"admin_checker".equalsIgnoreCase(payload.username())) {
+            bootstrapInitializationService.ensureBootstrapStructuresAndDeactivateRoots(saved);
+        }
     }
 
     private void update(UserEventInput payload) {

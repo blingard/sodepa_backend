@@ -11,16 +11,21 @@ import com.sodepa.erp.budget.application.outputs.BudgetItemOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.application.usecase.*;
+import com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter;
 import com.sodepa.erp.budget.infrastructure.entities.StatutBudget;
 import com.sodepa.erp.budget.presentation.requests.AjouterItemRequest;
 import com.sodepa.erp.budget.presentation.requests.CreerBudgetRequest;
 import com.sodepa.erp.budget.presentation.requests.EngagementRequest;
 import com.sodepa.erp.budget.presentation.requests.ReallocationRequest;
+import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
+import com.sodepa.erp.share.RejectOrValidateSubmitRequest;
 import com.sodepa.erp.utils.PageRecord;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -47,6 +52,7 @@ public class BudgetPlanRestController {
     private final GetBudgetPlanByIdUseCase getBudgetPlanByIdUseCase;
     private final GetPageEngagementsUseCase getPageEngagementsUseCase;
     private final GetEngagementByNumeroUseCase getEngagementByNumeroUseCase;
+    private final BudgetPlanAdapter budgetPlanAdapter;
 
     /**
      * Liste les plans budgétaires.
@@ -180,5 +186,47 @@ public class BudgetPlanRestController {
     @PostMapping("/engagements/{numero}/annuler")
     public void annuler(@PathVariable String numero, @RequestParam UUID userId) {
         annulerEngagementUseCase.execute(new AnnulerEngagementUseCase.Input(numero, userId));
+    }
+
+    @PutMapping("/plans/validate_or_reject/{id}")
+    @Operation(summary = "Valider ou rejeter un plan budgétaire soumis au pattern Maker-Checker")
+    public ResponseEntity<Void> validateOrRejectPlan(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectOrValidateSubmitRequest request) {
+        budgetPlanAdapter.validateOrRejectBudgetPlan(new ValidateOrRejectSubmissionInput(
+                id,
+                request.decision(),
+                request.notes(),
+                request.checkerOperationType()
+        ));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/reallocations/validate_or_reject/{id}")
+    @Operation(summary = "Valider ou rejeter une réallocation budgétaire soumise au pattern Maker-Checker")
+    public ResponseEntity<Void> validateOrRejectReallocation(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectOrValidateSubmitRequest request) {
+        budgetPlanAdapter.validateOrRejectReallocation(new ValidateOrRejectSubmissionInput(
+                id,
+                request.decision(),
+                request.notes(),
+                request.checkerOperationType()
+        ));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/engagements/validate_or_reject/{id}")
+    @Operation(summary = "Valider ou rejeter un engagement budgétaire soumis au pattern Maker-Checker")
+    public ResponseEntity<Void> validateOrRejectEngagement(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectOrValidateSubmitRequest request) {
+        budgetPlanAdapter.validateOrRejectEngagement(new ValidateOrRejectSubmissionInput(
+                id,
+                request.decision(),
+                request.notes(),
+                request.checkerOperationType()
+        ));
+        return ResponseEntity.noContent().build();
     }
 }

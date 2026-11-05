@@ -1,0 +1,438 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20261103-01-create-ged-documents
+      author: SODEPA-ERP
+      changes:
+        - createTable:
+            tableName: ged_documents
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nom_fichier
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: taille_octets
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: content_type
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: hash_sha256
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: s3_cle
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: s3_bucket
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_entite
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: entite_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: date_upload
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: upload_par
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 20261103-02-create-rh-grille-salariale
+      author: SODEPA-ERP
+      changes:
+        - createTable:
+            tableName: rh_grille_salariale
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: categorie
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: echelon
+                  type: VARCHAR(2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: groupe
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: salaire_base
+                  type: NUMERIC(15, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: taux_horaire
+                  type: NUMERIC(10, 2)
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: rh_grille_salariale
+            columnNames: categorie, echelon
+            constraintName: uq_grille_cat_echelon
+
+  - changeSet:
+      id: 20261103-03-seed-rh-grille-salariale-sodepa
+      author: SODEPA-ERP
+      changes:
+        # Catégorie 1 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 35355}}, {column: {name: taux_horaire, valueNumeric: 185.68}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 37009}}, {column: {name: taux_horaire, valueNumeric: 188.40}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 38663}}, {column: {name: taux_horaire, valueNumeric: 190.96}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 40283}}, {column: {name: taux_horaire, valueNumeric: 193.28}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 41936}}, {column: {name: taux_horaire, valueNumeric: 195.93}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 1}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 43590}}, {column: {name: taux_horaire, valueNumeric: 198.41}} ] }
+
+        # Catégorie 2 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 43804}}, {column: {name: taux_horaire, valueNumeric: 190.66}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 45227}}, {column: {name: taux_horaire, valueNumeric: 195.52}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 46881}}, {column: {name: taux_horaire, valueNumeric: 198.85}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 48512}}, {column: {name: taux_horaire, valueNumeric: 202.94}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 50160}}, {column: {name: taux_horaire, valueNumeric: 207.23}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 2}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 51644}}, {column: {name: taux_horaire, valueNumeric: 211.32}} ] }
+
+        # Catégorie 3 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 50899}}, {column: {name: taux_horaire, valueNumeric: 201.40}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 54455}}, {column: {name: taux_horaire, valueNumeric: 211.15}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 58005}}, {column: {name: taux_horaire, valueNumeric: 220.58}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 61631}}, {column: {name: taux_horaire, valueNumeric: 230.32}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 65112}}, {column: {name: taux_horaire, valueNumeric: 239.93}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 3}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 68667}}, {column: {name: taux_horaire, valueNumeric: 249.59}} ] }
+
+        # Catégorie 4 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 65179}}, {column: {name: taux_horaire, valueNumeric: 226.82}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 70903}}, {column: {name: taux_horaire, valueNumeric: 260.45}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 76569}}, {column: {name: taux_horaire, valueNumeric: 294.07}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 82338}}, {column: {name: taux_horaire, valueNumeric: 327.74}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 88061}}, {column: {name: taux_horaire, valueNumeric: 361.52}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 4}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 93784}}, {column: {name: taux_horaire, valueNumeric: 394.70}} ] }
+
+        # Catégorie 5 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 86382}}, {column: {name: taux_horaire, valueNumeric: 345.25}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 91989}}, {column: {name: taux_horaire, valueNumeric: 373.41}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 97606}}, {column: {name: taux_horaire, valueNumeric: 403.46}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 103219}}, {column: {name: taux_horaire, valueNumeric: 433.25}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 108825}}, {column: {name: taux_horaire, valueNumeric: 463.17}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 5}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 114437}}, {column: {name: taux_horaire, valueNumeric: 493.11}} ] }
+
+        # Catégorie 6 (Groupe 1)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 110471}}, {column: {name: taux_horaire, valueNumeric: 477.13}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 118289}}, {column: {name: taux_horaire, valueNumeric: 506.25}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 126084}}, {column: {name: taux_horaire, valueNumeric: 534.98}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 133902}}, {column: {name: taux_horaire, valueNumeric: 563.99}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 141714}}, {column: {name: taux_horaire, valueNumeric: 588.93}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 6}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 1}}, {column: {name: salaire_base, valueNumeric: 149520}}, {column: {name: taux_horaire, valueNumeric: 622.02}} ] }
+
+        # Catégorie 7 (Groupe 2 - Maîtrise)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 117279}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 127777}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 138274}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 148766}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 159263}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 7}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 169761}} ] }
+
+        # Catégorie 8 (Groupe 2)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 169761}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 179027}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 188273}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 197540}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 206806}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 8}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 216063}} ] }
+
+        # Catégorie 9 (Groupe 2)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 204664}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 222205}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 239741}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 257283}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 274830}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 9}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 2}}, {column: {name: salaire_base, valueNumeric: 292371}} ] }
+
+        # Catégorie 10 (Groupe 3 - Cadres)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 225889}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 241703}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 257508}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 273317}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 289147}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 10}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 304946}} ] }
+
+        # Catégorie 11 (Groupe 3)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 304946}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 318507}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 332048}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 345614}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 359170}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 11}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 372716}} ] }
+
+        # Catégorie 12 (Groupe 3)
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "A"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 372716}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "B"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 386272}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "C"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 399828}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "D"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 413368}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "E"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 426930}} ] }
+        - insert: { tableName: rh_grille_salariale, columns: [ {column: {name: id, valueComputed: "gen_random_uuid()"}}, {column: {name: categorie, valueNumeric: 12}}, {column: {name: echelon, value: "F"}}, {column: {name: groupe, valueNumeric: 3}}, {column: {name: salaire_base, valueNumeric: 440475}} ] }
+
+  - changeSet:
+      id: 20261103-04-create-rh-employes
+      author: SODEPA-ERP
+      changes:
+        - createTable:
+            tableName: rh_employes
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: matricule
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: nom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prenom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sexe
+                  type: VARCHAR(1)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_naissance
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: lieu_naissance
+                  type: VARCHAR(100)
+              - column:
+                  name: situation_matrimoniale
+                  type: VARCHAR(20)
+                  defaultValue: "CELIBATAIRE"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nombre_enfants_a_charge
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: email
+                  type: VARCHAR(150)
+              - column:
+                  name: telephone
+                  type: VARCHAR(50)
+              - column:
+                  name: adresse
+                  type: VARCHAR(255)
+              - column:
+                  name: numero_cnps
+                  type: VARCHAR(50)
+              - column:
+                  name: compte_bancaire_rib
+                  type: VARCHAR(50)
+              - column:
+                  name: banque_nom
+                  type: VARCHAR(100)
+              - column:
+                  name: type_contrat
+                  type: VARCHAR(30)
+                  defaultValue: "CDI"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_embauche
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin_essai
+                  type: DATE
+              - column:
+                  name: date_fin_contrat
+                  type: DATE
+              - column:
+                  name: statut_activite
+                  type: VARCHAR(30)
+                  defaultValue: "EN_FONCTION"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: unite_organisationnelle_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_employe_unite
+                    references: unites_organisationnelles(id)
+              - column:
+                  name: poste_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_employe_poste
+                    references: postes(id)
+              - column:
+                  name: grille_salariale_id
+                  type: UUID
+                  constraints:
+                    foreignKeyName: fk_employe_grille
+                    references: rh_grille_salariale(id)
+              - column:
+                  name: user_id
+                  type: VARCHAR(100)
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 20261103-05-create-achat-seuils-config
+      author: SODEPA-ERP
+      changes:
+        - createTable:
+            tableName: achat_seuils_config
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: type_procedure
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_min_ttc
+                  type: NUMERIC(15, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: montant_max_ttc
+                  type: NUMERIC(15, 2)
+              - column:
+                  name: nb_proformas_requis
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: commission_requise
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 20261103-06-seed-achat-seuils-sodepa
+      author: SODEPA-ERP
+      changes:
+        - insert:
+            tableName: achat_seuils_config
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: type_procedure, value: "ACHAT_DIRECT_CAISSE" }
+              - column: { name: libelle, value: "Menues dépenses & Achat caisse direct" }
+              - column: { name: montant_min_ttc, valueNumeric: 0 }
+              - column: { name: montant_max_ttc, valueNumeric: 499999 }
+              - column: { name: nb_proformas_requis, valueNumeric: 1 }
+              - column: { name: commission_requise, valueBoolean: false }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: achat_seuils_config
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: type_procedure, value: "BON_COMMANDE" }
+              - column: { name: libelle, value: "Bon de Commande (Consultation 3 devis)" }
+              - column: { name: montant_min_ttc, valueNumeric: 500000 }
+              - column: { name: montant_max_ttc, valueNumeric: 14999999 }
+              - column: { name: nb_proformas_requis, valueNumeric: 3 }
+              - column: { name: commission_requise, valueBoolean: false }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: achat_seuils_config
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: type_procedure, value: "LETTRE_COMMANDE" }
+              - column: { name: libelle, value: "Lettre-Commande (Comité de sélection)" }
+              - column: { name: montant_min_ttc, valueNumeric: 15000000 }
+              - column: { name: montant_max_ttc, valueNumeric: 49999999 }
+              - column: { name: nb_proformas_requis, valueNumeric: 3 }
+              - column: { name: commission_requise, valueBoolean: true }
+              - column: { name: actif, valueBoolean: true }
+        - insert:
+            tableName: achat_seuils_config
+            columns:
+              - column: { name: id, valueComputed: "gen_random_uuid()" }
+              - column: { name: type_procedure, value: "MARCHE_PUBLIC_CIPM" }
+              - column: { name: libelle, value: "Marché Public (CIPM & Appel d'Offres)" }
+              - column: { name: montant_min_ttc, valueNumeric: 50000000 }
+              - column: { name: montant_max_ttc, value: null }
+              - column: { name: nb_proformas_requis, valueNumeric: 0 }
+              - column: { name: commission_requise, valueBoolean: true }
+              - column: { name: actif, valueBoolean: true }

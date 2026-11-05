@@ -11,7 +11,6 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
@@ -185,6 +184,7 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
     @Override
     @Transactional
     public void update(UUID id, MakerCheckerStatus status, String note, String checherId) {
+
         MakerCheckerRequestEntity entity = requestRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Data not found."));
         entity.setStatus(status);
@@ -230,15 +230,21 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
                     .status(true)
                     .build();
         }
-        UserRecordSmartOutput checker = userAdapterInterface.getUserById(UUID.fromString(entity.getMakerId()));
-
-        if(entity.getCheckerId() == "SYSTEM"){
-            checker = UserRecordSmartOutput.builder()
-                    .id(UUID.randomUUID())
-                    .name("SYSTEM")
-                    .image(null)
-                    .status(true)
-                    .build();
+        UserRecordSmartOutput checker = null;
+        if (entity.getCheckerId() != null) {
+            if ("SYSTEM".equals(entity.getCheckerId())) {
+                checker = UserRecordSmartOutput.builder()
+                        .id(UUID.randomUUID())
+                        .name("SYSTEM")
+                        .image(null)
+                        .status(true)
+                        .build();
+            } else {
+                try {
+                    checker = userAdapterInterface.getUserById(UUID.fromString(entity.getCheckerId()));
+                } catch (Exception ignored) {
+                }
+            }
         }
         return MakerCheckerOutput.builder()
                 .id(entity.getId())

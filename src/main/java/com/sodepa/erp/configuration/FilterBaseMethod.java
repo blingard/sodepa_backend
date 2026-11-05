@@ -1,6 +1,7 @@
 package com.sodepa.erp.configuration;
 
 import com.sodepa.erp.share.CurrentUserAuthenticationToken;
+import com.sodepa.erp.share.GlobalConstants;
 import com.sodepa.erp.share.UserData;
 import com.sodepa.erp.utils.UserManagementEnginePort;
 import com.sodepa.erp.utils.UserOutput;
@@ -23,8 +24,7 @@ import java.util.stream.Collectors;
 public class FilterBaseMethod {
     private final JwtDecoder jwtDecoder;
     private final UserManagementEnginePort userManagementEnginePort;
-    private static final String BEARER_PREFIX = "Bearer ";
-    private static final String PREFERENCE_USERNAME = "preferred_username";
+
 
     public UserData getUser(String token){
         Jwt jwt = jwtDecoder.decode(token);
@@ -40,7 +40,7 @@ public class FilterBaseMethod {
 
         Collection<GrantedAuthority> authorities = extractAuthorities(jwt);
         UserData userData = extractUserData(jwt);
-        String principal = getPrincipalFromJwt(jwt, PREFERENCE_USERNAME);
+        String principal = getPrincipalFromJwt(jwt, GlobalConstants.PREFERENCE_USERNAME);
 
         CurrentUserAuthenticationToken authentication = new CurrentUserAuthenticationToken(
                 principal,
@@ -96,7 +96,7 @@ public class FilterBaseMethod {
 
     private String getPrincipalFromJwt(Jwt jwt, String claimName) {
         String value = jwt.getClaimAsString(claimName);
-        if (value == null && Objects.equals(claimName, PREFERENCE_USERNAME)) {
+        if (value == null && Objects.equals(claimName, GlobalConstants.PREFERENCE_USERNAME)) {
             return jwt.getSubject();
         }
         return value;

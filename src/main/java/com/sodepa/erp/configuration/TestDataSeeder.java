@@ -159,21 +159,21 @@ public class TestDataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("═══════════════════════════════════════════════════════════════");
-        log.info("  Démarrage du peuplement complet SODEPA (Historique 10 ans)");
-        log.info("═══════════════════════════════════════════════════════════════");
+        //log.info("═══════════════════════════════════════════════════════════════");
+        //log.info("  Démarrage du peuplement complet SODEPA (Historique 10 ans)");
+        //log.info("═══════════════════════════════════════════════════════════════");
 
         try {
-            seedRefData();
-            seedHistoricalData();
-            seedTreasuryData();
-            log.info("═══════════════════════════════════════════════════════════════");
-            log.info("  Peuplement des données de test terminé avec succès ✓");
-            log.info("═══════════════════════════════════════════════════════════════");
+            //seedRefData();
+            //seedHistoricalData();
+            //seedTreasuryData();
+            //log.info("═══════════════════════════════════════════════════════════════");
+            //log.info("  Peuplement des données de test terminé avec succès ✓");
+            //log.info("═══════════════════════════════════════════════════════════════");
         } catch (Exception e) {
-            log.error("Erreur lors de l'exécution du seeder de test : ", e);
+            //log.error("Erreur lors de l'exécution du seeder de test : ", e);
         } finally {
-            SecurityContextHolder.clearContext();
+            //SecurityContextHolder.clearContext();
         }
     }
 
@@ -214,14 +214,14 @@ public class TestDataSeeder implements CommandLineRunner {
                     ((UserAdapter) adapter).validateOrReject(validationInput);
                 }
             } catch (Exception e) {
-                log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
+                //log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
             }
         }
         authenticate("admin_maker", MAKER_ID);
     }
 
     private void seedRefData() {
-        log.info("  ↳ Données de référence (Journaux, Banques, Tiers, Users, Immo, Analytique)...");
+        //log.info("  ↳ Données de référence (Journaux, Banques, Tiers, Users, Immo, Analytique)...");
         authenticate("admin_maker", MAKER_ID);
 
         // 1. Journaux
@@ -234,7 +234,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         .typeJournal("DIVERS")
                         .build());
             } catch (Exception e) {
-                log.error("Échec de création du journal " + code, e);
+                //log.error("Échec de création du journal " + code, e);
             }
         }
         approvePendingRequests(MakerCheckerEntityName.JOURNAL, journalAdapter);
@@ -256,7 +256,7 @@ public class TestDataSeeder implements CommandLineRunner {
                 DummyMultipartFile logoFile = new DummyMultipartFile("logo", "logo.png", "image/png", logoBytes);
                 bankAdapter.initCreateBank(new CreateBankInput((String) b[0], (String) b[1], (String) b[2], logoFile));
             } catch (Exception e) {
-                log.warn("Échec flow normal Banque {}, repli direct...", b[0]);
+                //log.warn("Échec flow normal Banque {}, repli direct...", b[0]);
                 banqueRepository.save(BanqueEntity.builder()
                         .id(UUID.randomUUID()).code((String) b[0]).nom((String) b[1]).compteComptableCode((String) b[2]).logo((String) b[3]).status(true).build());
             }
@@ -288,7 +288,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         (String) p[0], (String) p[1], (String) p[2], (String) p[3], (String) p[4], (TypeTiers) p[5], (String) p[6]
                 ));
             } catch (Exception e) {
-                log.warn("Échec flow normal Tiers {}, repli direct...", p[0]);
+                //log.warn("Échec flow normal Tiers {}, repli direct...", p[0]);
                 tiersRepository.save(TiersEntity.builder()
                         .id(UUID.randomUUID()).code((String) p[0]).raisonSociale((String) p[1]).adresse((String) p[2])
                         .telephone((String) p[3]).email((String) p[4]).typeTiers((TypeTiers) p[5]).compteCollectifCode((String) p[6]).actif(true).build());
@@ -334,7 +334,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     user.setNom(nom);
                     user.setPrenom(prenom);
                     userRepository.save(user);
-                    log.info("Mise à jour de l'utilisateur {} avec le nom réel : {} {}", username, prenom, nom);
+                    //log.info("Mise à jour de l'utilisateur {} avec le nom réel : {} {}", username, prenom, nom);
                 }
                 continue;
             }
@@ -369,7 +369,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         (ModeAmortissement) im[4], (int) im[5], BigDecimal.ZERO
                 ));
             } catch (Exception e) {
-                log.warn("Échec flow normal Immobilisation {}, repli direct...", im[0]);
+                //log.warn("Échec flow normal Immobilisation {}, repli direct...", im[0]);
                 immobilisationRepository.save(ImmobilisationEntity.builder()
                         .id(UUID.randomUUID()).code((String) im[0]).designation((String) im[1]).valeurOrigine(BigDecimal.valueOf((int) im[2]))
                         .dateAcquisition((LocalDate) im[3]).dateMiseEnService((LocalDate) im[3]).modeAmortissement((ModeAmortissement) im[4])
@@ -406,7 +406,7 @@ public class TestDataSeeder implements CommandLineRunner {
     }
 
     private void seedHistoricalData() {
-        log.info("  ↳ Production de l'historique financier et budgétaire sur 10 ans (2017-2026)...");
+        //log.info("  ↳ Production de l'historique financier et budgétaire sur 10 ans (2017-2026)...");
 
         List<String> realClients = List.of("CLI001", "CLI002", "CLI003", "CLI004");
         List<String> realSuppliers = List.of("FOU005", "FOU006", "FOU007", "FOU008");
@@ -434,7 +434,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     authenticate("admin_checker", CHECKER_ID);
                     approuverPlanUseCase.execute(new ApprouverPlanUseCase.Input(planId, CHECKER_ID));
                 } catch (Exception e) {
-                    log.error("Échec création budget " + annee + " : " + e.getMessage());
+                    //log.error("Échec création budget " + annee + " : " + e.getMessage());
                 }
             }
 
@@ -490,7 +490,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    log.debug("Erreur écriture HA: {}", e.getMessage());
+                    //log.debug("Erreur écriture HA: {}", e.getMessage());
                 }
 
                 // 2. Transaction de Vente mensuelle (Produit 701)
@@ -534,7 +534,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    log.debug("Erreur écriture VT: {}", e.getMessage());
+                    //log.debug("Erreur écriture VT: {}", e.getMessage());
                 }
 
                 // 3. Transaction de Paie mensuelle (Salaires 661)
@@ -573,7 +573,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    log.debug("Erreur écriture BQ: {}", e.getMessage());
+                    //log.debug("Erreur écriture BQ: {}", e.getMessage());
                 }
             }
 
@@ -599,7 +599,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     }
                 });
             } catch (Exception e) {
-                log.debug("Erreur budget analytique {}: {}", finalAnnee, e.getMessage());
+                //log.debug("Erreur budget analytique {}: {}", finalAnnee, e.getMessage());
             }
 
             // D. Dotations aux Amortissements
@@ -620,7 +620,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     }
                 });
             } catch (Exception e) {
-                log.debug("Erreur amortissement annuel {}: {}", finalAnnee, e.getMessage());
+                //log.debug("Erreur amortissement annuel {}: {}", finalAnnee, e.getMessage());
             }
 
             // E. Clôture Comptable de l'Exercice
@@ -641,14 +641,14 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    log.debug("Erreur clôture comptable {}: {}", finalAnnee, e.getMessage());
+                    //log.debug("Erreur clôture comptable {}: {}", finalAnnee, e.getMessage());
                 }
             }
         }
     }
 
     private void seedTreasuryData() {
-        log.info("  ↳ Trésorerie, Financements et Couvertures (Exercice 2026)...");
+        //log.info("  ↳ Trésorerie, Financements et Couvertures (Exercice 2026)...");
         authenticate("admin_maker", MAKER_ID);
 
         UUID afrilandId = bankIds.get("AFB");

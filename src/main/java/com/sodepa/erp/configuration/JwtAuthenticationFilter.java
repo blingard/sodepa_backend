@@ -41,7 +41,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     requestPath.startsWith("/swagger-ui") ||
                     requestPath.startsWith("/v3/api-docs") ||
                     requestPath.startsWith("/api-docs") ||
-                    requestPath.startsWith("/actuator")) {
+                    requestPath.startsWith("/actuator") ||
+                    requestPath.equals("/api/auth/login") ||
+                    requestPath.equals("/api/auth/refresh") ||
+                    requestPath.equals("/api/auth/logout")) {
                 log.debug("Skipping JWT authentication for public or actuator endpoint: {}", requestPath);
                 filterChain.doFilter(request, response);
                 return;

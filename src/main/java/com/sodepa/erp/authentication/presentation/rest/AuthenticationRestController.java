@@ -10,7 +10,9 @@ import com.sodepa.erp.authentication.presentation.requests.ChangePasswordRequest
 import com.sodepa.erp.authentication.presentation.requests.LoginRequest;
 import com.sodepa.erp.authentication.presentation.requests.LogoutRequest;
 import com.sodepa.erp.authentication.presentation.requests.RefreshRequest;
+import com.sodepa.erp.share.password.StrongPassword;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -82,7 +84,7 @@ public class AuthenticationRestController {
      * @param sessionId l'identifiant de la session
      */
     @DeleteMapping("/sessions/{sessionId}")
-    public void deleteSession(@PathVariable String sessionId) {
+    public void deleteSession(@PathVariable @Valid @NotBlank(message = "SESSION_ID_IS_BLANK") String sessionId) {
         deleteSessionUseCase.execute(sessionId);
     }
 
@@ -91,9 +93,9 @@ public class AuthenticationRestController {
      * @param request la demande de changement de mot de passe
      */
     @PostMapping("/change-password")
-    public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+    public void changePassword(@RequestBody @Valid @StrongPassword ChangePasswordRequest request) {
         changePasswordUseCase.execute(
-                new ChangePasswordInput(utilsService.getCurrentUserData().iamId(), request.newPassword())
+                new ChangePasswordInput(utilsService.getCurrentUserData().iamId(), request.password())
         );
     }
 }

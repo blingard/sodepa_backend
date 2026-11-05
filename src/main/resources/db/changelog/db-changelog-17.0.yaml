@@ -1,0 +1,313 @@
+databaseChangeLog:
+  - changeSet:
+      id: 17.0-01-create-parametres-systeme-table
+      author: sodepa-erp
+      changes:
+        - createTable:
+            tableName: app_parametres_systeme
+            columns:
+              - column:
+                  name: cle
+                  type: VARCHAR(100)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: valeur
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_valeur
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false # DECIMAL, INTEGER, STRING, BOOLEAN
+              - column:
+                  name: categorie
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false # PAIE, ACHATS, CHEPTEL, TRESORERIE, FORMATION, SECURITE
+              - column:
+                  name: description
+                  type: VARCHAR(500)
+              - column:
+                  name: modifiable_par
+                  type: VARCHAR(100)
+                  defaultValue: "ADMIN,DAF,DRH"
+              - column:
+                  name: derniere_modification
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+              - column:
+                  name: modifie_par
+                  type: VARCHAR(100)
+                  defaultValue: "SYSTEM_INITIALIZER"
+
+  - changeSet:
+      id: 17.0-02-seed-parametres-systeme
+      author: sodepa-erp
+      changes:
+        # --- PAIE & FISCALITÉ CAMEROUNAISE ---
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.plafond_cnps" }
+              - column: { name: valeur, value: "750000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Plafond mensuel d'assiette cotisable CNPS (FCFA)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cnps_pvid_salarial" }
+              - column: { name: valeur, value: "0.042" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux CNPS PVID salarial (4.2%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cnps_pvid_patronal" }
+              - column: { name: valeur, value: "0.042" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux CNPS PVID patronal (4.2%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cnps_pf_patronal" }
+              - column: { name: valeur, value: "0.070" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux CNPS Prestations Familiales patronal (7.0%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cnps_at_patronal" }
+              - column: { name: valeur, value: "0.025" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux CNPS Accidents du Travail patronal (2.5%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cfc_salarial" }
+              - column: { name: valeur, value: "0.010" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux Crédit Foncier du Cameroun salarial (1.0%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cfc_patronal" }
+              - column: { name: valeur, value: "0.015" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux Crédit Foncier du Cameroun patronal (1.5%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_fne_patronal" }
+              - column: { name: valeur, value: "0.010" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux Fonds National de l'Emploi patronal (1.0%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_cac_sur_irpp" }
+              - column: { name: valeur, value: "0.100" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux Centimes Additionnels Communaux sur IRPP (10%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.taux_abattement_frais_pro" }
+              - column: { name: valeur, value: "0.30" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Taux d'abattement forfaitaire pour frais professionnels IRPP (30%)" }
+              - column: { name: modifiable_par, value: "DAF,DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.indemnite_transport_defaut" }
+              - column: { name: valeur, value: "20000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Indemnité forfaitaire de transport par défaut (FCFA)" }
+              - column: { name: modifiable_par, value: "DRH,DAF" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.indemnite_logement_cadre" }
+              - column: { name: valeur, value: "35000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Indemnité forfaitaire de logement cadres (FCFA)" }
+              - column: { name: modifiable_par, value: "DRH,DAF" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "paie.categorie_min_logement" }
+              - column: { name: valeur, value: "7" }
+              - column: { name: type_valeur, value: "INTEGER" }
+              - column: { name: categorie, value: "PAIE" }
+              - column: { name: description, value: "Catégorie socioprofessionnelle minimale donnant droit à indemnité de logement" }
+              - column: { name: modifiable_par, value: "DRH" }
+
+        # --- ACHATS & MARCHÉS PUBLICS ---
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "achats.taux_tva" }
+              - column: { name: valeur, value: "19.25" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "ACHATS" }
+              - column: { name: description, value: "Taux légal de la TVA Cameroun (19.25%)" }
+              - column: { name: modifiable_par, value: "DAF" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "achats.seuil_achat_direct" }
+              - column: { name: valeur, value: "500000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "ACHATS" }
+              - column: { name: description, value: "Seuil maximum Achat Direct / Caisse sans proforma formel (FCFA)" }
+              - column: { name: modifiable_par, value: "DAF,DG" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "achats.seuil_bon_commande" }
+              - column: { name: valeur, value: "15000000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "ACHATS" }
+              - column: { name: description, value: "Seuil maximum Bon de Commande sur 3 factures proforma (FCFA)" }
+              - column: { name: modifiable_par, value: "DAF,DG" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "achats.seuil_lettre_commande" }
+              - column: { name: valeur, value: "50000000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "ACHATS" }
+              - column: { name: description, value: "Seuil maximum Lettre-Commande (FCFA), au-delà Marché Public CIPM" }
+              - column: { name: modifiable_par, value: "DAF,DG" }
+
+        # --- CHEPTEL & RANCHES PASTORAUX ---
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "pastoral.matricule_masque" }
+              - column: { name: valeur, value: "SDP-%s-%d-%04d" }
+              - column: { name: type_valeur, value: "STRING" }
+              - column: { name: categorie, value: "CHEPTEL" }
+              - column: { name: description, value: "Masque format du numéro de boucle auriculaire bovin" }
+              - column: { name: modifiable_par, value: "ADMIN" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "pastoral.poids_naissance_defaut" }
+              - column: { name: valeur, value: "28.0" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "CHEPTEL" }
+              - column: { name: description, value: "Poids standard de naissance d'un veau (kg)" }
+              - column: { name: modifiable_par, value: "DIRECTEUR_RANCH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "pastoral.compte_debit_naissance" }
+              - column: { name: valeur, value: "2191" }
+              - column: { name: type_valeur, value: "STRING" }
+              - column: { name: categorie, value: "CHEPTEL" }
+              - column: { name: description, value: "Compte SYSCOHADA débit naissance veau" }
+              - column: { name: modifiable_par, value: "DAF" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "pastoral.compte_credit_naissance" }
+              - column: { name: valeur, value: "7217" }
+              - column: { name: type_valeur, value: "STRING" }
+              - column: { name: categorie, value: "CHEPTEL" }
+              - column: { name: description, value: "Compte SYSCOHADA crédit naissance veau" }
+              - column: { name: modifiable_par, value: "DAF" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "pastoral.compte_debit_mortalite" }
+              - column: { name: valeur, value: "8310" }
+              - column: { name: type_valeur, value: "STRING" }
+              - column: { name: categorie, value: "CHEPTEL" }
+              - column: { name: description, value: "Compte SYSCOHADA débit perte/mortalité cheptel" }
+              - column: { name: modifiable_par, value: "DAF" }
+
+        # --- RÉGIES D'AVANCES & TRÉSORERIE ---
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "tresorerie.regie_plafond_menue_depense" }
+              - column: { name: valeur, value: "100000" }
+              - column: { name: type_valeur, value: "DECIMAL" }
+              - column: { name: categorie, value: "TRESORERIE" }
+              - column: { name: description, value: "Plafond maximum par bon de caisse régie d'avance (FCFA)" }
+              - column: { name: modifiable_par, value: "DAF,DG" }
+
+        # --- FORMATION & STAGES ---
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "formation.delai_forclusion_stage_jours" }
+              - column: { name: valeur, value: "14" }
+              - column: { name: type_valeur, value: "INTEGER" }
+              - column: { name: categorie, value: "FORMATION" }
+              - column: { name: description, value: "Délai minimum (en jours) avant la fin pour déposer une demande de prolongation de stage" }
+              - column: { name: modifiable_par, value: "DRH" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "formation.anciennete_min_reclassement_annees" }
+              - column: { name: valeur, value: "5" }
+              - column: { name: type_valeur, value: "INTEGER" }
+              - column: { name: categorie, value: "FORMATION" }
+              - column: { name: description, value: "Ancienneté minimale requise (années) pour reclassement indiciaire post-formation" }
+              - column: { name: modifiable_par, value: "DRH,DG" }
+
+        - insert:
+            tableName: app_parametres_systeme
+            columns:
+              - column: { name: cle, value: "formation.duree_min_formation_reclassement_mois" }
+              - column: { name: valeur, value: "18" }
+              - column: { name: type_valeur, value: "INTEGER" }
+              - column: { name: categorie, value: "FORMATION" }
+              - column: { name: description, value: "Durée minimale (mois) d'une formation diplômante ouvrant droit à reclassement" }
+              - column: { name: modifiable_par, value: "DRH,DG" }

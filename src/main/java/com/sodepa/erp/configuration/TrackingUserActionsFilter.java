@@ -3,6 +3,7 @@ package com.sodepa.erp.configuration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sodepa.erp.audit.application.usecase.AuditEventPublisher;
+import com.sodepa.erp.share.GlobalConstants;
 import com.sodepa.erp.share.UserData;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.UserManagementEnginePort;
@@ -43,8 +44,7 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     private final JwtDecoder jwtDecoder;
     private final UserManagementEnginePort userManagementEnginePort;
     private final ObjectMapper objectMapper;
-    private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
-    private static final int MAX_BODY_SIZE = 10_000;
+
 
     private RequestTrackingEvent buildEvent(String correlationId,
                                             ContentCachingRequestWrapper request,
@@ -149,7 +149,7 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         if (content.length == 0) {
             return null;
         }
-        String body = new String(content, 0, Math.min(content.length, MAX_BODY_SIZE), StandardCharsets.UTF_8);
+        String body = new String(content, 0, Math.min(content.length, GlobalConstants.MAX_BODY_SIZE), StandardCharsets.UTF_8);
         return maskSensitiveData(body);
     }
 
@@ -158,7 +158,7 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         if (content.length == 0) {
             return null;
         }
-        String body = new String(content, 0, Math.min(content.length, MAX_BODY_SIZE), StandardCharsets.UTF_8);
+        String body = new String(content, 0, Math.min(content.length, GlobalConstants.MAX_BODY_SIZE), StandardCharsets.UTF_8);
         return maskSensitiveData(body);
     }
 
@@ -201,19 +201,18 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         request.setAttribute("startTime", System.currentTimeMillis());
 
-        String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+        String correlationId = request.getHeader(GlobalConstants.CORRELATION_ID_HEADER);
         if (correlationId == null || correlationId.isBlank()) {
-            throw new RequeteInvalideException(
-                    "En-tête " + CORRELATION_ID_HEADER + " absent : il est exigé sur toutes les requêtes.");
+            throw new RequeteInvalideException(GlobalConstants.CORRELATION_ID_HEADER_ERROR);
         }
-        response.setHeader(CORRELATION_ID_HEADER, correlationId);
+        response.setHeader(GlobalConstants.CORRELATION_ID_HEADER, correlationId);
         return true;
     }
 
     @Override
     public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable ModelAndView modelAndView) throws Exception {
         String requestPath = request.getRequestURI();
-        String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+        String correlationId = request.getHeader(GlobalConstants.CORRELATION_ID_HEADER);
 
         if (requestPath.startsWith("/api/auth/login") && response.getStatus() != 200) {
             return;

@@ -68,6 +68,22 @@ public class GestionnaireErreursApi {
      * <p>Renvoyées champ par champ : c'est ce qui permet au formulaire
      * d'afficher chaque message sous le bon libellé.</p>
      */
+    /** Violations de contraintes sur les paramètres de méthode (Spring 6+). */
+    @ExceptionHandler(org.springframework.web.method.annotation.HandlerMethodValidationException.class)
+    public ResponseEntity<Map<String, Object>> traiterHandlerMethodValidation(
+            org.springframework.web.method.annotation.HandlerMethodValidationException ex, HttpServletRequest requete) {
+        Map<String, String> champs = new TreeMap<>();
+        ex.getParameterValidationResults().forEach(result -> {
+            String paramName = result.getMethodParameter().getParameterName();
+            result.getResolvableErrors().forEach(err -> {
+                champs.put(paramName != null ? paramName : "parametre",
+                        err.getDefaultMessage() == null ? "Valeur invalide." : err.getDefaultMessage());
+            });
+        });
+        return reponse(HttpStatus.BAD_REQUEST, "VALIDATION",
+                "Certains paramètres sont invalides.", champs, requete);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> traiterValidation(
             MethodArgumentNotValidException ex, HttpServletRequest requete) {

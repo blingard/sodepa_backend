@@ -6,5 +6,5 @@ import jakarta.validation.constraints.NotBlank;
  * Représente la requête de déconnexion.
  */
 public record LogoutRequest(
-    @NotBlank String refreshToken
+    @NotBlank(message = "REFRESH_TOKEN_NOT_VALID") String refreshToken
 ) {}

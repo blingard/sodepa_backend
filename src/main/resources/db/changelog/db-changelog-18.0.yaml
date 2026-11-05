@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 18.0-create-poste-permissions
+      author: sodepa-team
+      changes:
+        - createTable:
+            tableName: poste_permissions
+            columns:
+              - column:
+                  name: poste_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_poste_permissions_poste
+                    references: postes(id)
+              - column:
+                  name: permission
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+        - addPrimaryKey:
+            tableName: poste_permissions
+            columnNames: poste_id, permission
+            constraintName: pk_poste_permissions
+        - createIndex:
+            tableName: poste_permissions
+            indexName: idx_poste_permissions_poste
+            columns:
+              - column:
+                  name: poste_id

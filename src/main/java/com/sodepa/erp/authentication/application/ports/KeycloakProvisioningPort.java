@@ -28,4 +28,24 @@ public interface KeycloakProvisioningPort {
      */
     void changePassword(String userId, String newPassword);
 
+    /**
+     * Active ou désactive un utilisateur dans Keycloak.
+     *
+     * @param username le nom d'utilisateur Keycloak
+     * @param active   vrai pour activer, faux pour désactiver
+     */
+    void setUserActive(String username, boolean active);
+
+    /**
+     * Supprime un utilisateur de Keycloak par son nom d'utilisateur.
+     *
+     * @param username le nom d'utilisateur Keycloak
+     */
+    void deleteKeycloakUser(String username);
+
+    /**
+     * Purge tous les utilisateurs de Keycloak dans le realm courant.
+     */
+    void purgeAllKeycloakUsers();
+
 }
