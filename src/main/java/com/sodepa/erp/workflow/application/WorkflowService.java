@@ -13,6 +13,7 @@ import com.sodepa.erp.workflow.presentation.responses.WorkflowInstanceResponse;
 import com.sodepa.erp.workflow.presentation.responses.WorkflowTacheResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class WorkflowService {
     private final WorkflowHistoriqueAuditRepository workflowHistoriqueAuditRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public List<WorkflowDefinitionResponse> listerDefinitions() {
@@ -136,13 +138,13 @@ public class WorkflowService {
             log.info("Workflow instance {} : Demande de révision à l'étape {}", instance.getId(), etapeCourante.getCodeEtape());
         } else if (request.getDecision() == DecisionWorkflow.APPROUVE) {
             // Passer à l'étape suivante
-            passerAEtapeSuivante(instance, etapeCourante);
+            passerAEtapeSuivante(instance, etapeCourante, acteurId, request.getCommentaire());
         }
 
         return mapToTacheResponse(tache);
     }
 
-    private void passerAEtapeSuivante(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etapeCourante) {
+    private void passerAEtapeSuivante(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etapeCourante, UUID acteurId, String commentaire) {
         List<WorkflowEtapeDefinitionEntity> etapes = workflowEtapeRepository
                 .findByWorkflowDefinitionIdOrderByOrdreAsc(instance.getWorkflowDefinition().getId());
 
@@ -163,8 +165,19 @@ public class WorkflowService {
             instance.setDateCloture(Instant.now());
             workflowInstanceRepository.save(instance);
 
-            enregistrerAudit(instance, etapeCourante.getCodeEtape(), instance.getInitiateur().getId(), ActionWorkflowAudit.CLOTURE, DecisionWorkflow.APPROUVE, "Circuit approuvé dans sa totalité");
+            enregistrerAudit(instance, etapeCourante.getCodeEtape(), acteurId, ActionWorkflowAudit.CLOTURE, DecisionWorkflow.APPROUVE, "Circuit approuvé dans sa totalité : " + (commentaire != null ? commentaire : ""));
             log.info("Workflow instance {} TOTALEMENT APPROUVÉE !", instance.getId());
+
+            // Notification événementielle découplée pour finalisation métier (ex: Contrat de travail DG)
+            eventPublisher.publishEvent(new WorkflowInstanceCompletedEvent(
+                    instance.getId(),
+                    instance.getWorkflowDefinition() != null ? instance.getWorkflowDefinition().getCode() : null,
+                    instance.getEntityName(),
+                    instance.getEntityId(),
+                    etapeCourante.getCodeEtape(),
+                    acteurId,
+                    commentaire
+            ));
         }
     }
 
@@ -190,7 +203,20 @@ public class WorkflowService {
     }
 
     private UtilisateurEntity resoudreUtilisateurAssigne(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etape) {
-        // Fallback par défaut: initiateur ou premier utilisateur actif
+        // Recherche d'un utilisateur correspondant au rôle ou poste
+        if (etape.getValeurAssignation() != null && !etape.getValeurAssignation().isBlank()) {
+            String roleOrPoste = etape.getValeurAssignation().toLowerCase().trim();
+            Optional<UtilisateurEntity> matched = userRepository.findAll().stream()
+                    .filter(UtilisateurEntity::isActif)
+                    .filter(u -> u.getUsername().toLowerCase().contains(roleOrPoste)
+                            || (u.getNom() != null && u.getNom().toLowerCase().contains(roleOrPoste)))
+                    .findFirst();
+            if (matched.isPresent()) {
+                return matched.get();
+            }
+        }
+
+        // Fallback par défaut: premier utilisateur actif (ou initiateur)
         return userRepository.findAll().stream()
                 .filter(UtilisateurEntity::isActif)
                 .findFirst()

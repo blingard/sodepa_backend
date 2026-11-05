@@ -3,6 +3,7 @@ package com.sodepa.erp.rh.presentation.responses;
 import com.sodepa.erp.rh.infrastructure.entities.Sexe;
 import com.sodepa.erp.rh.infrastructure.entities.SituationMatrimoniale;
 import com.sodepa.erp.rh.infrastructure.entities.StatutActivite;
+import com.sodepa.erp.rh.infrastructure.entities.StatutContrat;
 import com.sodepa.erp.rh.infrastructure.entities.TypeContrat;
 import lombok.*;
 
@@ -38,6 +39,16 @@ public class EmployeResponse {
     private LocalDate dateFinEssai;
     private LocalDate dateFinContrat;
     private StatutActivite statutActivite;
+
+    // Contrat & Circuit de validation
+    private UUID contratId;
+    private String numeroContrat;
+    private StatutContrat statutContrat;
+    private String referenceNoteServiceDg;
+    private LocalDate dateSignatureDg;
+    private Boolean signeParDg;
+    private UUID workflowInstanceId;
+    private UUID makerCheckerTicketId;
 
     // Rattachement Organigramme
     private UUID uniteId;

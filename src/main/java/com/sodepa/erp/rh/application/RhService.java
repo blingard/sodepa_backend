@@ -20,6 +20,11 @@ import com.sodepa.erp.rh.presentation.requests.CreerEmployeRequest;
 import com.sodepa.erp.rh.presentation.requests.ModifierEmployeRequest;
 import com.sodepa.erp.rh.presentation.responses.EmployeResponse;
 import com.sodepa.erp.rh.presentation.responses.GrilleSalarialeResponse;
+import com.sodepa.erp.rh.infrastructure.repo.ContratTravailRepository;
+import com.sodepa.erp.rh.presentation.requests.ApprobationContratDgRequest;
+import com.sodepa.erp.rh.presentation.responses.ContratTravailResponse;
+import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.presentation.requests.DemarrerWorkflowRequest;
 import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
@@ -57,6 +62,8 @@ public class RhService {
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final MakerCheckerEnginePort makerCheckerEngine;
+    private final ContratTravailRepository contratTravailRepository;
+    private final WorkflowService workflowService;
 
     public boolean canValidate(Permissions permission) {
         try {
@@ -108,7 +115,9 @@ public class RhService {
     public EmployeResponse creerEmploye(CreerEmployeRequest req) {
         utilsService.hasPermission(Permissions.CREATE_EMPLOYE);
 
-        // Règle fondamentale : Tout employé est obligatoirement lié à un compte utilisateur existant.
+        // =========================================================================
+        // ÉTAPE 1 : Création / Liaison du Compte Utilisateur SODEPA
+        // =========================================================================
         UtilisateurEntity utilisateur = null;
         if (req.getUtilisateurId() != null) {
             utilisateur = userRepository.findById(req.getUtilisateurId())
@@ -122,7 +131,7 @@ public class RhService {
                     ? req.getEmail().trim().toLowerCase()
                     : (req.getPrenom().toLowerCase().trim().replaceAll("\\s+", ".") + "." +
                        req.getNom().toLowerCase().trim().replaceAll("\\s+", ".") + "@sodepa.cm");
-            String username = baseEmail.split("@")[0];
+            String username = baseEmail.split("@")[0].replaceAll("[^a-zA-Z0-9._-]", "");
             if (userRepository.findByUsername(username).isPresent()) {
                 username = username + "." + (employeRepository.count() + 1);
             }
@@ -136,7 +145,7 @@ public class RhService {
                         .email(baseEmail)
                         .photoProfile("")
                         .actif(true)
-                        .telephones(req.getTelephone() != null && !req.getTelephone().isBlank() ? java.util.Set.of(req.getTelephone()) : java.util.Collections.emptySet())
+                        .telephones(req.getTelephone() != null && !req.getTelephone().isBlank() ? java.util.Set.of(req.getTelephone().trim()) : java.util.Collections.emptySet())
                         .permissions(new java.util.HashSet<>())
                         .build();
                 return userRepository.save(u);
@@ -158,105 +167,146 @@ public class RhService {
                 .findByCategorieAndEchelon(req.getCategorie(), req.getEchelon().toUpperCase().trim())
                 .orElseThrow(() -> new IllegalArgumentException("Échelon " + req.getEchelon() + " invalide pour la catégorie " + req.getCategorie()));
 
-        // Résolution unité
+        // Résolution unité (optionnelle)
         UniteOrganisationnelleEntity unite = null;
         if (req.getUniteOrganisationnelleId() != null) {
             unite = uniteRepository.findById(req.getUniteOrganisationnelleId())
                     .orElseThrow(() -> new IllegalArgumentException("Unité organisationnelle introuvable"));
         }
 
-        // Résolution poste
+        // Résolution poste (optionnel)
         PosteEntity poste = null;
         if (req.getPosteId() != null) {
             poste = posteRepository.findById(req.getPosteId())
                     .orElseThrow(() -> new IllegalArgumentException("Poste introuvable"));
         }
 
-        // Génération automatique du matricule SODEPA (ex: SDP-2026-0001)
+        // =========================================================================
+        // ÉTAPE 2 : Création du Dossier Employé SODEPA
+        // =========================================================================
         long count = employeRepository.count() + 1;
         String matricule = String.format("SDP-%d-%04d", LocalDate.now().getYear(), count);
-        UUID id = UUID.randomUUID();
+        UUID employeId = UUID.randomUUID();
 
+        EmployeEntity employe = EmployeEntity.builder()
+                .id(employeId)
+                .matricule(matricule)
+                .nom(req.getNom() != null ? req.getNom().trim() : "")
+                .prenom(req.getPrenom() != null ? req.getPrenom().trim() : "")
+                .sexe(req.getSexe())
+                .dateNaissance(req.getDateNaissance())
+                .lieuNaissance(req.getLieuNaissance())
+                .situationMatrimoniale(req.getSituationMatrimoniale() != null ? req.getSituationMatrimoniale() : SituationMatrimoniale.CELIBATAIRE)
+                .nombreEnfantsACharge(req.getNombreEnfantsACharge() != null ? req.getNombreEnfantsACharge() : 0)
+                .email(req.getEmail() != null && !req.getEmail().isBlank() ? req.getEmail().trim() : utilisateur.getEmail())
+                .telephone(req.getTelephone())
+                .adresse(req.getAdresse())
+                .numeroCnps(req.getNumeroCnps())
+                .compteBancaireRib(req.getCompteBancaireRib())
+                .banqueNom(req.getBanqueNom())
+                .typeContrat(req.getTypeContrat() != null ? req.getTypeContrat() : TypeContrat.CDI)
+                .dateEmbauche(req.getDateEmbauche())
+                .dateFinEssai(req.getDateFinEssai())
+                .dateFinContrat(req.getDateFinContrat())
+                .statutActivite(StatutActivite.EN_FONCTION)
+                .uniteOrganisationnelle(unite)
+                .poste(poste)
+                .grilleSalariale(grille)
+                .utilisateur(utilisateur)
+                .build();
+
+        employe = employeRepository.save(employe);
+        log.info("Employé {} créé avec succès avec le matricule {}", employe.getId(), matricule);
+
+        // =========================================================================
+        // ÉTAPE 3 : Création du Contrat de Travail
+        // =========================================================================
+        long contratCount = contratTravailRepository.count() + 1;
+        String numeroContrat = String.format("CT-%d-%04d", LocalDate.now().getYear(), contratCount);
+        UUID contratId = UUID.randomUUID();
+
+        ContratTravailEntity contrat = ContratTravailEntity.builder()
+                .id(contratId)
+                .numeroContrat(numeroContrat)
+                .employe(employe)
+                .typeContrat(req.getTypeContrat() != null ? req.getTypeContrat() : TypeContrat.CDI)
+                .statut(StatutContrat.EN_ATTENTE_VALIDATION)
+                .dateDebut(req.getDateEmbauche())
+                .dateFinEssai(req.getDateFinEssai())
+                .dateFinContrat(req.getDateFinContrat())
+                .categorie(grille.getCategorie())
+                .echelon(grille.getEchelon())
+                .salaireBase(grille.getSalaireBase())
+                .uniteOrganisationnelle(unite)
+                .poste(poste)
+                .signeParDg(false)
+                .build();
+
+        contrat = contratTravailRepository.save(contrat);
+        log.info("Contrat de travail {} créé pour l'employé {}", numeroContrat, matricule);
+
+        // =========================================================================
+        // ÉTAPE 4 : Intégration Maker-Checker & Moteur de Workflow
+        // =========================================================================
         Map<String, Object> payload = new java.util.HashMap<>(objectMapper.convertValue(req, Map.class));
-        payload.put("id", id.toString());
+        payload.put("id", employeId.toString());
         payload.put("matricule", matricule);
+        payload.put("contratId", contratId.toString());
+        payload.put("numeroContrat", numeroContrat);
+        payload.put("utilisateurId", utilisateur.getId().toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID ticketUuid = makerCheckerEngine.submitChange(
                 MakerCheckerEntityName.EMPLOYE,
-                id.toString(),
+                employeId.toString(),
                 payload,
                 MakerCheckerOperationType.CREATE
         );
-        log.info("Création employé soumise au Maker-Checker: {} (Ticket: {})", matricule, uuid);
+        contrat.setMakerCheckerTicketId(ticketUuid);
+
+        // Démarrage de l'instance de workflow officiel WF-RH-RECRUTEMENT
+        UUID wfInstanceId = null;
+        try {
+            UUID initiateurId = (utilsService.getCurrentUserData() != null && utilsService.getCurrentUserData().userId() != null)
+                    ? UUID.fromString(utilsService.getCurrentUserData().userId())
+                    : utilisateur.getId();
+
+            String wfCode = "WF-RH-RECRUTEMENT";
+            var wfInstanceResp = workflowService.demarrerWorkflow(DemarrerWorkflowRequest.builder()
+                    .workflowDefinitionCode(wfCode)
+                    .entityName("EMPLOYE")
+                    .entityId(employeId.toString())
+                    .initiateurId(initiateurId)
+                    .contexte(Map.of(
+                            "matricule", matricule,
+                            "nomComplet", employe.getPrenom() + " " + employe.getNom(),
+                            "numeroContrat", numeroContrat,
+                            "typeContrat", contrat.getTypeContrat().name(),
+                            "categorie", String.valueOf(contrat.getCategorie()),
+                            "echelon", contrat.getEchelon(),
+                            "ticketMakerChecker", ticketUuid.toString()
+                    ))
+                    .build());
+            wfInstanceId = wfInstanceResp.getId();
+            contrat.setWorkflowInstanceId(wfInstanceId);
+            log.info("Circuit de validation {} instancié pour l'employé {} (Instance: {})", wfCode, matricule, wfInstanceId);
+        } catch (Exception e) {
+            log.warn("Impossible d'instancier le workflow WF-RH-RECRUTEMENT: {}", e.getMessage());
+        }
+
+        contratTravailRepository.save(contrat);
 
         // Traçabilité ClickHouse
-        trackClickHouse(MakerCheckerEntityName.EMPLOYE.name(), id.toString(), Map.of(
-                "action", "SOUMISSION_CREER_EMPLOYE",
+        trackClickHouse(MakerCheckerEntityName.EMPLOYE.name(), employeId.toString(), Map.of(
+                "action", "CREATION_EMPLOYE_CONTRAT_WORKFLOW",
                 "matricule", matricule,
                 "nom", req.getNom(),
                 "prenom", req.getPrenom(),
-                "ticket", uuid.toString()
+                "numeroContrat", numeroContrat,
+                "ticketMakerChecker", ticketUuid.toString(),
+                "workflowInstanceId", wfInstanceId != null ? wfInstanceId.toString() : "N/A"
         ));
 
-        if (canValidate(Permissions.VALIDATE_EMPLOYE)) {
-            log.info("Utilisateur habilité, validation automatique de l'employé {}", matricule);
-            try {
-                validateOrRejectEmploye(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique de l'employé {}: {}", matricule, e.getMessage());
-            }
-        }
-
-        final UniteOrganisationnelleEntity finalUnite = unite;
-        final PosteEntity finalPoste = poste;
-        final GrilleSalarialeEntity finalGrille = grille;
-        final UtilisateurEntity finalUtilisateur = utilisateur;
-
-        return employeRepository.findById(id)
-                .map(this::mapToEmployeResponse)
-                .orElseGet(() -> EmployeResponse.builder()
-                        .id(id)
-                        .matricule(matricule)
-                        .nom(req.getNom())
-                        .prenom(req.getPrenom())
-                        .nomComplet(req.getPrenom() + " " + req.getNom())
-                        .sexe(req.getSexe())
-                        .dateNaissance(req.getDateNaissance())
-                        .lieuNaissance(req.getLieuNaissance())
-                        .situationMatrimoniale(req.getSituationMatrimoniale())
-                        .nombreEnfantsACharge(req.getNombreEnfantsACharge() != null ? req.getNombreEnfantsACharge() : 0)
-                        .email(req.getEmail() != null ? req.getEmail() : finalUtilisateur.getEmail())
-                        .telephone(req.getTelephone())
-                        .adresse(req.getAdresse())
-                        .numeroCnps(req.getNumeroCnps())
-                        .compteBancaireRib(req.getCompteBancaireRib())
-                        .banqueNom(req.getBanqueNom())
-                        .typeContrat(req.getTypeContrat())
-                        .dateEmbauche(req.getDateEmbauche())
-                        .dateFinEssai(req.getDateFinEssai())
-                        .dateFinContrat(req.getDateFinContrat())
-                        .statutActivite(StatutActivite.EN_FONCTION)
-                        .uniteId(finalUnite != null ? finalUnite.getId() : null)
-                        .uniteCode(finalUnite != null ? finalUnite.getCode() : null)
-                        .uniteIntitule(finalUnite != null ? finalUnite.getIntitule() : null)
-                        .posteId(finalPoste != null ? finalPoste.getId() : null)
-                        .posteCode(finalPoste != null ? finalPoste.getCodePoste() : null)
-                        .posteIntitule(finalPoste != null ? finalPoste.getIntitule() : null)
-                        .grilleId(finalGrille != null ? finalGrille.getId() : null)
-                        .categorie(finalGrille != null ? finalGrille.getCategorie() : null)
-                        .echelon(finalGrille != null ? finalGrille.getEchelon() : null)
-                        .groupe(finalGrille != null ? finalGrille.getGroupe() : null)
-                        .salaireBase(finalGrille != null ? finalGrille.getSalaireBase() : null)
-                        .tauxHoraire(finalGrille != null ? finalGrille.getTauxHoraire() : null)
-                        .utilisateurId(finalUtilisateur.getId())
-                        .username(finalUtilisateur.getUsername())
-                        .userId(finalUtilisateur.getId().toString())
-                        .build());
+        return mapToEmployeResponse(employe);
     }
 
     @Transactional
@@ -784,6 +834,18 @@ public class RhService {
                    .tauxHoraire(e.getGrilleSalariale().getTauxHoraire());
         }
 
+        // Contrat de travail le plus récent
+        contratTravailRepository.findFirstByEmployeIdOrderByDateCreationDesc(e.getId()).ifPresent(c -> {
+            builder.contratId(c.getId())
+                   .numeroContrat(c.getNumeroContrat())
+                   .statutContrat(c.getStatut())
+                   .referenceNoteServiceDg(c.getReferenceNoteServiceDg())
+                   .dateSignatureDg(c.getDateSignatureDg())
+                   .signeParDg(c.getSigneParDg())
+                   .workflowInstanceId(c.getWorkflowInstanceId())
+                   .makerCheckerTicketId(c.getMakerCheckerTicketId());
+        });
+
         return builder.build();
     }
 
@@ -813,6 +875,151 @@ public class RhService {
                 .salaireBase(g.getSalaireBase())
                 .tauxHoraire(g.getTauxHoraire())
                 .actif(g.getActif())
+                .build();
+    }
+
+    // =========================================================================
+    // GESTION DES CONTRATS ET APPROBATION FINALE DU DIRECTEUR GÉNÉRAL
+    // =========================================================================
+
+    @Transactional
+    public void finaliserApprobationRecrutementDg(UUID employeId, String commentaire, UUID dgUserId) {
+        log.info("Finalisation de l'approbation DG du recrutement pour l'employé: {}", employeId);
+
+        EmployeEntity employe = employeRepository.findById(employeId).orElse(null);
+        if (employe == null) {
+            log.warn("Employé introuvable pour la finalisation DG: {}", employeId);
+            return;
+        }
+
+        ContratTravailEntity contrat = contratTravailRepository.findFirstByEmployeIdOrderByDateCreationDesc(employeId).orElse(null);
+        if (contrat == null) {
+            log.warn("Aucun contrat de travail trouvé pour l'employé {}", employe.getMatricule());
+            return;
+        }
+
+        String refNoteService = (commentaire != null && !commentaire.isBlank())
+                ? commentaire.trim()
+                : String.format("NS-%d/%03d/DG/SODEPA", LocalDate.now().getYear(), contratTravailRepository.count());
+
+        contrat.setStatut(StatutContrat.APPROUVE_DG);
+        contrat.setSigneParDg(true);
+        contrat.setDateSignatureDg(LocalDate.now());
+        contrat.setReferenceNoteServiceDg(refNoteService);
+        contratTravailRepository.save(contrat);
+
+        employe.setStatutActivite(StatutActivite.EN_FONCTION);
+        employeRepository.save(employe);
+
+        if (contrat.getMakerCheckerTicketId() != null) {
+            try {
+                MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(contrat.getMakerCheckerTicketId());
+                if (checkerOutput.status() == MakerCheckerStatus.PENDING) {
+                    makerCheckerEngine.update(
+                            contrat.getMakerCheckerTicketId(),
+                            MakerCheckerStatus.ACCEPTED,
+                            "Approbation définitive par le Directeur Général (Note de Service: " + refNoteService + ")",
+                            dgUserId != null ? dgUserId.toString() : "DIRECTEUR_GENERAL"
+                    );
+                }
+            } catch (Exception e) {
+                log.warn("Erreur mise à jour ticket Maker-Checker lors de l'approbation DG: {}", e.getMessage());
+            }
+        }
+
+        trackClickHouse(MakerCheckerEntityName.EMPLOYE.name(), employeId.toString(), Map.of(
+                "action", "APPROBATION_FINALE_DG_RECRUTEMENT",
+                "matricule", employe.getMatricule(),
+                "numeroContrat", contrat.getNumeroContrat(),
+                "referenceNoteServiceDg", refNoteService,
+                "approbateurDg", dgUserId != null ? dgUserId.toString() : "DIRECTEUR_GENERAL"
+        ));
+
+        log.info("Recrutement employé {} validé par le DG avec la note de service {}", employe.getMatricule(), refNoteService);
+    }
+
+    @Transactional
+    public ContratTravailResponse approuverContratDg(UUID contratId, ApprobationContratDgRequest req) {
+        utilsService.hasPermission(Permissions.VALIDATE_EMPLOYE);
+
+        ContratTravailEntity contrat = contratTravailRepository.findById(contratId)
+                .orElseThrow(() -> new IllegalArgumentException("Contrat introuvable avec l'ID: " + contratId));
+
+        contrat.setStatut(StatutContrat.APPROUVE_DG);
+        contrat.setSigneParDg(true);
+        contrat.setDateSignatureDg(req.getDateSignature() != null ? req.getDateSignature() : LocalDate.now());
+        contrat.setReferenceNoteServiceDg(req.getReferenceNoteServiceDg());
+        contrat = contratTravailRepository.save(contrat);
+
+        EmployeEntity employe = contrat.getEmploye();
+        if (employe != null) {
+            employe.setStatutActivite(StatutActivite.EN_FONCTION);
+            employeRepository.save(employe);
+        }
+
+        if (contrat.getMakerCheckerTicketId() != null) {
+            try {
+                makerCheckerEngine.update(
+                        contrat.getMakerCheckerTicketId(),
+                        MakerCheckerStatus.ACCEPTED,
+                        "Approbation formelle DG : " + req.getReferenceNoteServiceDg(),
+                        utilsService.getCurrentUserData().userId()
+                );
+            } catch (Exception e) {
+                log.warn("Erreur Maker-Checker lors de l'approbation contrat {}: {}", contratId, e.getMessage());
+            }
+        }
+
+        trackClickHouse("CONTRAT_TRAVAIL", contratId.toString(), Map.of(
+                "action", "APPROBATION_MANUELLE_DG_CONTRAT",
+                "numeroContrat", contrat.getNumeroContrat(),
+                "referenceNoteServiceDg", req.getReferenceNoteServiceDg()
+        ));
+
+        return mapToContratResponse(contrat);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContratTravailResponse> listerContrats(UUID employeId, StatutContrat statut) {
+        return contratTravailRepository.findAll().stream()
+                .filter(c -> employeId == null || (c.getEmploye() != null && c.getEmploye().getId().equals(employeId)))
+                .filter(c -> statut == null || c.getStatut() == statut)
+                .map(this::mapToContratResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public ContratTravailResponse getContratById(UUID id) {
+        return contratTravailRepository.findById(id)
+                .map(this::mapToContratResponse)
+                .orElseThrow(() -> new IllegalArgumentException("Contrat introuvable avec l'ID: " + id));
+    }
+
+    public ContratTravailResponse mapToContratResponse(ContratTravailEntity c) {
+        return ContratTravailResponse.builder()
+                .id(c.getId())
+                .numeroContrat(c.getNumeroContrat())
+                .employeId(c.getEmploye() != null ? c.getEmploye().getId() : null)
+                .employeMatricule(c.getEmploye() != null ? c.getEmploye().getMatricule() : null)
+                .employeNomComplet(c.getEmploye() != null ? c.getEmploye().getPrenom() + " " + c.getEmploye().getNom() : null)
+                .typeContrat(c.getTypeContrat())
+                .statut(c.getStatut())
+                .dateDebut(c.getDateDebut())
+                .dateFinEssai(c.getDateFinEssai())
+                .dateFinContrat(c.getDateFinContrat())
+                .categorie(c.getCategorie())
+                .echelon(c.getEchelon())
+                .salaireBase(c.getSalaireBase())
+                .referenceNoteServiceDg(c.getReferenceNoteServiceDg())
+                .dateSignatureDg(c.getDateSignatureDg())
+                .signeParDg(c.getSigneParDg())
+                .workflowInstanceId(c.getWorkflowInstanceId())
+                .makerCheckerTicketId(c.getMakerCheckerTicketId())
+                .uniteId(c.getUniteOrganisationnelle() != null ? c.getUniteOrganisationnelle().getId() : null)
+                .uniteIntitule(c.getUniteOrganisationnelle() != null ? c.getUniteOrganisationnelle().getIntitule() : null)
+                .posteId(c.getPoste() != null ? c.getPoste().getId() : null)
+                .posteIntitule(c.getPoste() != null ? c.getPoste().getIntitule() : null)
+                .dateCreation(c.getDateCreation())
                 .build();
     }
 }

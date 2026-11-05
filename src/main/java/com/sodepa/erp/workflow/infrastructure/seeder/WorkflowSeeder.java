@@ -51,10 +51,7 @@ public class WorkflowSeeder implements CommandLineRunner {
     public void run(String... args) {
         log.info("Démarrage de la vérification et initialisation des workflows SODEPA...");
 
-        if (workflowDefinitionRepository.count() > 0) {
-            log.info("Des workflows existent déjà en base. Aucune action de création n'est nécessaire.");
-            return;
-        }
+        seedRhWorkflows();
         seedGouvernanceWorkflows();
         seedDafWorkflows();
         seedDpcWorkflows();
@@ -110,6 +107,23 @@ public class WorkflowSeeder implements CommandLineRunner {
 
         workflowDefinitionRepository.save(def);
         log.info("Workflow créé : [{}] - {} ({} étapes)", code, intitule, etapes.size());
+    }
+
+    // =========================================================================
+    // 0. RESSOURCES HUMAINES & RECRUTEMENT
+    // =========================================================================
+    private void seedRhWorkflows() {
+        seedWorkflowIfNotExists(
+                "WF-RH-RECRUTEMENT",
+                "Recrutement, Intégration et Contrat de Travail d'un Salarié",
+                "Circuit officiel d'embauche et d'intégration : création du compte utilisateur, dossier employé, classification indiciaire et approbation finale du Directeur Général par Note de Service ou Circulaire (Maker-Checker)",
+                WorkflowDomaine.RH,
+                List.of(
+                        new EtapeSeed("RH_01_INSTRUCTION_DRH", "Instruction du dossier et classification indiciaire (DRH / SDRH)", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.UN_SEUL_SUFFIT, StrategieAssignation.POSTE_SPECIFIQUE, "SOUS_DIRECTEUR_RH", 48, ActionDepassementSla.RELANCE_EMAIL),
+                        new EtapeSeed("RH_02_VISA_BUDGETAIRE_DAF", "Validation de la soutenabilité budgétaire DAF", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.UN_SEUL_SUFFIT, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_DAF", 24, ActionDepassementSla.RELANCE_EMAIL),
+                        new EtapeSeed("RH_03_APPROBATION_NOTE_SERVICE_DG", "Approbation finale et signature de la Note de Service / Contrat (Directeur Général)", TypeEtapeWorkflow.SIGNATURE_ELECTRONIQUE, PolitiqueValidation.UN_SEUL_SUFFIT, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_GENERAL", 48, ActionDepassementSla.ESCALADE_MANAGER)
+                )
+        );
     }
 
     // =========================================================================

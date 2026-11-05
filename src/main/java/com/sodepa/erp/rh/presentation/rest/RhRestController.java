@@ -9,6 +9,9 @@ import com.sodepa.erp.rh.presentation.requests.CreerEmployeRequest;
 import com.sodepa.erp.rh.presentation.requests.ModifierEmployeRequest;
 import com.sodepa.erp.rh.presentation.responses.EmployeResponse;
 import com.sodepa.erp.rh.presentation.responses.GrilleSalarialeResponse;
+import com.sodepa.erp.rh.infrastructure.entities.StatutContrat;
+import com.sodepa.erp.rh.presentation.requests.ApprobationContratDgRequest;
+import com.sodepa.erp.rh.presentation.responses.ContratTravailResponse;
 import com.sodepa.erp.share.RejectOrValidateSubmitRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -129,5 +132,31 @@ public class RhRestController {
     public ResponseEntity<List<DerogationPermissionResponse>> listerDerogations(
             @RequestParam(required = false) UUID utilisateurId) {
         return ResponseEntity.ok(rhService.listerDerogations(utilisateurId));
+    }
+
+    // ==========================================
+    // CONTRATS DE TRAVAIL & APPROBATION DG
+    // ==========================================
+
+    @GetMapping("/contrats")
+    @Operation(summary = "Lister les contrats de travail du personnel SODEPA")
+    public ResponseEntity<List<ContratTravailResponse>> listerContrats(
+            @RequestParam(required = false) UUID employeId,
+            @RequestParam(required = false) StatutContrat statut) {
+        return ResponseEntity.ok(rhService.listerContrats(employeId, statut));
+    }
+
+    @GetMapping("/contrats/{id}")
+    @Operation(summary = "Consulter les détails d'un contrat de travail par son ID")
+    public ResponseEntity<ContratTravailResponse> getContratById(@PathVariable UUID id) {
+        return ResponseEntity.ok(rhService.getContratById(id));
+    }
+
+    @PostMapping("/contrats/{id}/approuver-dg")
+    @Operation(summary = "Approbation définitive du contrat par le Directeur Général (avec Note de Service ou Circulaire)")
+    public ResponseEntity<ContratTravailResponse> approuverContratDg(
+            @PathVariable UUID id,
+            @Valid @RequestBody ApprobationContratDgRequest request) {
+        return ResponseEntity.ok(rhService.approuverContratDg(id, request));
     }
 }
