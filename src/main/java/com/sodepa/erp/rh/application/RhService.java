@@ -118,7 +118,29 @@ public class RhService {
         }
 
         if (utilisateur == null) {
-            throw new IllegalArgumentException("Un compte utilisateur existant est obligatoire pour créer un dossier employé (tout employé est obligatoirement un utilisateur SODEPA).");
+            String baseEmail = (req.getEmail() != null && !req.getEmail().isBlank())
+                    ? req.getEmail().trim().toLowerCase()
+                    : (req.getPrenom().toLowerCase().trim().replaceAll("\\s+", ".") + "." +
+                       req.getNom().toLowerCase().trim().replaceAll("\\s+", ".") + "@sodepa.cm");
+            String username = baseEmail.split("@")[0];
+            if (userRepository.findByUsername(username).isPresent()) {
+                username = username + "." + (employeRepository.count() + 1);
+            }
+            final String finalUsername = username;
+            utilisateur = userRepository.findByEmail(baseEmail).orElseGet(() -> {
+                UtilisateurEntity u = UtilisateurEntity.builder()
+                        .id(UUID.randomUUID())
+                        .username(finalUsername)
+                        .nom(req.getNom() != null ? req.getNom().trim() : "")
+                        .prenom(req.getPrenom() != null ? req.getPrenom().trim() : "")
+                        .email(baseEmail)
+                        .photoProfile("")
+                        .actif(true)
+                        .telephones(req.getTelephone() != null && !req.getTelephone().isBlank() ? java.util.Set.of(req.getTelephone()) : java.util.Collections.emptySet())
+                        .permissions(new java.util.HashSet<>())
+                        .build();
+                return userRepository.save(u);
+            });
         }
 
         // Contrainte absolue : admin_maker et admin_checker ne sont JAMAIS des employés
@@ -370,6 +392,32 @@ public class RhService {
             utilisateur = userRepository.findById(req.getUtilisateurId()).orElse(null);
         } else if (req.getEmail() != null && !req.getEmail().isBlank()) {
             utilisateur = userRepository.findByEmail(req.getEmail().trim()).orElse(null);
+        }
+
+        if (utilisateur == null) {
+            String baseEmail = (req.getEmail() != null && !req.getEmail().isBlank())
+                    ? req.getEmail().trim().toLowerCase()
+                    : (req.getPrenom().toLowerCase().trim().replaceAll("\\s+", ".") + "." +
+                       req.getNom().toLowerCase().trim().replaceAll("\\s+", ".") + "@sodepa.cm");
+            String username = baseEmail.split("@")[0];
+            if (userRepository.findByUsername(username).isPresent()) {
+                username = username + "." + (employeRepository.count() + 1);
+            }
+            final String finalUsername = username;
+            utilisateur = userRepository.findByEmail(baseEmail).orElseGet(() -> {
+                UtilisateurEntity u = UtilisateurEntity.builder()
+                        .id(UUID.randomUUID())
+                        .username(finalUsername)
+                        .nom(req.getNom() != null ? req.getNom().trim() : "")
+                        .prenom(req.getPrenom() != null ? req.getPrenom().trim() : "")
+                        .email(baseEmail)
+                        .photoProfile("")
+                        .actif(true)
+                        .telephones(req.getTelephone() != null && !req.getTelephone().isBlank() ? java.util.Set.of(req.getTelephone()) : java.util.Collections.emptySet())
+                        .permissions(new java.util.HashSet<>())
+                        .build();
+                return userRepository.save(u);
+            });
         }
 
         GrilleSalarialeEntity grille = grilleSalarialeRepository
