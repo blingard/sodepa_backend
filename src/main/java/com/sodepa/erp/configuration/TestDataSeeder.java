@@ -56,8 +56,8 @@ import java.util.*;
  * et propose un repli robuste en cas d'absence de connectivité (Keycloak, MinIO).
  */
 @Component
-@Profile("test")
-@Order(3)
+//@Profile("test")
+@Order(4)
 @RequiredArgsConstructor
 @Slf4j
 public class TestDataSeeder implements CommandLineRunner {
@@ -106,51 +106,7 @@ public class TestDataSeeder implements CommandLineRunner {
     private static final UUID MAKER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID CHECKER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
 
-    private static final String[] CAMEROON_LASTNAMES = {
-        // 1. Adamaoua
-        "Nyako", "Hamadjoda", "Bobbo", "Garga", "Yaya", "Djoulde", "Bello", "Dewa", "Bakari", "Bouba",
-        // 2. Centre
-        "Atangana", "Owona", "Essomba", "Mbida", "Ondoua", "Mballa", "Bidzogo", "Biloa", "Ngono", "Tsanga",
-        // 3. Est
-        "Mpouel", "Ndanga", "Mbazo'o", "Ze", "Bilo'o", "Meyanga", "Belinga", "Ndongo", "Mendomo", "Mvondo",
-        // 4. Extrême-Nord
-        "Boukar", "Adoum", "Gonji", "Vondou", "Tchinda", "Zra", "Wandji", "Tikela", "Djao", "Wassouni",
-        // 5. Littoral
-        "Epee", "Ndoumbe", "Lobe", "Eteki", "Mpondo", "Moukouri", "Nsame", "Dikongue", "Titi", "Mouelle",
-        // 6. Nord
-        "Mohamadou", "Sadou", "Iya", "Dairou", "Nana", "Alhadji", "Garga", "Bello", "Ousmane", "Sali",
-        // 7. Nord-Ouest
-        "Foncha", "Ndi", "Fobi", "Jua", "Mbah", "Ngwa", "Suh", "Bih", "Fru", "Che",
-        // 8. Ouest
-        "Kamga", "Fotso", "Tagne", "Foko", "Wambo", "Kengne", "Sop", "Defo", "Simo", "Djoko",
-        // 9. Sud
-        "Obama", "Ndong", "Mengue", "Evina", "Bekolo", "Nnanga", "Ela", "Assoumou", "Medjo", "Angoula",
-        // 10. Sud-Ouest
-        "Tabot", "Ebai", "Ashu", "Enow", "Manyi", "Taku", "Egbe", "Tambe", "Bessem", "Ayuk"
-    };
 
-    private static final String[] CAMEROON_FIRSTNAMES = {
-        // 1. Adamaoua
-        "Haman", "Balkissou", "Ousmanou", "Fadimatou", "Alim", "Aissatou", "Mohamadou", "Djamilatou", "Halilou", "Nana",
-        // 2. Centre
-        "Jean-Pierre", "Chantal", "Dieudonné", "Thérèse", "Marc-Aurèle", "Marie-Claire", "Guy-Roger", "Solange", "Christian", "Jacqueline",
-        // 3. Est
-        "Jean-Marie", "Philomène", "Justin", "Sidonie", "Boniface", "Clarisse", "Apollinaire", "Gertrude", "Blaise", "Emilienne",
-        // 4. Extrême-Nord
-        "Hamadou", "Fadimatou", "Ousmane", "Hinna", "Bladi", "Aminatou", "Bouba", "Gounoko", "Asta", "Halima",
-        // 5. Littoral
-        "Samuel", "Charlotte", "Joseph", "Suzanne", "David", "Henriette", "Pierre", "Georgette", "Emmanuel", "Alice",
-        // 6. Nord
-        "Bello", "Asta", "Aminatou", "Iya", "Dairou", "Nana", "Mohamadou", "Sadou", "Garga", "Sali",
-        // 7. Nord-Ouest
-        "John", "Comfort", "Augustine", "Beatrice", "Emmanuel", "Evelyn", "Peter", "Grace", "Richard", "Mercy",
-        // 8. Ouest
-        "Jean-Claude", "Monique", "Pascal", "Florence", "Rodrigue", "Sandrine", "Ghislain", "Colette", "Michel", "Veronique",
-        // 9. Sud
-        "Paul", "Jeanne", "François", "Chantal", "Marc", "Marie", "Charles", "Solange", "Pierre", "Therese",
-        // 10. Sud-Ouest
-        "Daniel", "Elizabeth", "Christopher", "Patricia", "George", "Sarah", "William", "Catherine", "Thomas", "Martha"
-    };
 
     private final Map<String, UUID> bankIds = new HashMap<>();
     private final Map<String, UUID> tiersIds = new HashMap<>();
@@ -159,19 +115,19 @@ public class TestDataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        //log.info("═══════════════════════════════════════════════════════════════");
-        //log.info("  Démarrage du peuplement complet SODEPA (Historique 10 ans)");
-        //log.info("═══════════════════════════════════════════════════════════════");
+        log.info("═══════════════════════════════════════════════════════════════");
+        log.info("  Démarrage du peuplement complet SODEPA (Historique 10 ans)");
+        log.info("═══════════════════════════════════════════════════════════════");
 
         try {
-            //seedRefData();
-            //seedHistoricalData();
-            //seedTreasuryData();
-            //log.info("═══════════════════════════════════════════════════════════════");
-            //log.info("  Peuplement des données de test terminé avec succès ✓");
-            //log.info("═══════════════════════════════════════════════════════════════");
+            seedRefData();
+            seedHistoricalData();
+            seedTreasuryData();
+            log.info("═══════════════════════════════════════════════════════════════");
+            log.info("  Peuplement des données de test terminé avec succès ✓");
+            log.info("═══════════════════════════════════════════════════════════════");
         } catch (Exception e) {
-            //log.error("Erreur lors de l'exécution du seeder de test : ", e);
+            log.error("Erreur lors de l'exécution du seeder de test : ", e);
         } finally {
             //SecurityContextHolder.clearContext();
         }
@@ -214,14 +170,14 @@ public class TestDataSeeder implements CommandLineRunner {
                     ((UserAdapter) adapter).validateOrReject(validationInput);
                 }
             } catch (Exception e) {
-                //log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
+                log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
             }
         }
         authenticate("admin_maker", MAKER_ID);
     }
 
     private void seedRefData() {
-        //log.info("  ↳ Données de référence (Journaux, Banques, Tiers, Users, Immo, Analytique)...");
+        log.info("  ↳ Données de référence (Journaux, Banques, Tiers, Users, Immo, Analytique)...");
         authenticate("admin_maker", MAKER_ID);
 
         // 1. Journaux
@@ -234,7 +190,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         .typeJournal("DIVERS")
                         .build());
             } catch (Exception e) {
-                //log.error("Échec de création du journal " + code, e);
+                log.error("Échec de création du journal " + code, e);
             }
         }
         approvePendingRequests(MakerCheckerEntityName.JOURNAL, journalAdapter);
@@ -256,7 +212,7 @@ public class TestDataSeeder implements CommandLineRunner {
                 DummyMultipartFile logoFile = new DummyMultipartFile("logo", "logo.png", "image/png", logoBytes);
                 bankAdapter.initCreateBank(new CreateBankInput((String) b[0], (String) b[1], (String) b[2], logoFile));
             } catch (Exception e) {
-                //log.warn("Échec flow normal Banque {}, repli direct...", b[0]);
+                log.warn("Échec flow normal Banque {}, repli direct...", b[0]);
                 banqueRepository.save(BanqueEntity.builder()
                         .id(UUID.randomUUID()).code((String) b[0]).nom((String) b[1]).compteComptableCode((String) b[2]).logo((String) b[3]).status(true).build());
             }
@@ -288,7 +244,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         (String) p[0], (String) p[1], (String) p[2], (String) p[3], (String) p[4], (TypeTiers) p[5], (String) p[6]
                 ));
             } catch (Exception e) {
-                //log.warn("Échec flow normal Tiers {}, repli direct...", p[0]);
+                log.warn("Échec flow normal Tiers {}, repli direct...", p[0]);
                 tiersRepository.save(TiersEntity.builder()
                         .id(UUID.randomUUID()).code((String) p[0]).raisonSociale((String) p[1]).adresse((String) p[2])
                         .telephone((String) p[3]).email((String) p[4]).typeTiers((TypeTiers) p[5]).compteCollectifCode((String) p[6]).actif(true).build());
@@ -297,60 +253,6 @@ public class TestDataSeeder implements CommandLineRunner {
         approvePendingRequests(MakerCheckerEntityName.TIERS, tiersAdapter);
         tiersRepository.findAll().forEach(t -> tiersIds.put(t.getCode(), t.getId()));
 
-        // 4. 100 Utilisateurs avec différentes permissions
-        for (int i = 1; i <= 100; i++) {
-            String nom = CAMEROON_LASTNAMES[i - 1];
-            String prenom = CAMEROON_FIRSTNAMES[i - 1];
-            String username = Normalizer
-                    .normalize(nom, Normalizer.Form.NFD)
-                    .replaceAll("\\p{M}", "")
-                    .replaceAll("[^a-zA-Z0-9]", "")+"_"+
-                    Normalizer
-                            .normalize(prenom, Normalizer.Form.NFD)
-                            .replaceAll("\\p{M}", "")
-                            .replaceAll("[^a-zA-Z0-9]", "");
-            String email = username + "@sodepa.cm";
-            Set<Permissions> perms = new HashSet<>();
-            if (i <= 10) { // Admins
-                perms.addAll(Arrays.asList(Permissions.values()));
-            } else if (i <= 50) { // Makers
-                for (Permissions p : Permissions.values()) {
-                    if (p.name().startsWith("INIT_") || p.name().startsWith("GET_")) perms.add(p);
-                }
-            } else if (i <= 90) { // Checkers
-                for (Permissions p : Permissions.values()) {
-                    if (p.name().startsWith("VALIDATE_") || p.name().startsWith("GET_")) perms.add(p);
-                }
-            } else { // Consultants
-                for (Permissions p : Permissions.values()) {
-                    if (p.name().startsWith("GET_")) perms.add(p);
-                }
-            }
-
-            Optional<UtilisateurEntity> existing = userRepository.findByUsername(username);
-            if (existing.isPresent()) {
-                UtilisateurEntity user = existing.get();
-                if (!nom.equals(user.getNom()) || !prenom.equals(user.getPrenom())) {
-                    user.setNom(nom);
-                    user.setPrenom(prenom);
-                    userRepository.save(user);
-                    //log.info("Mise à jour de l'utilisateur {} avec le nom réel : {} {}", username, prenom, nom);
-                }
-                continue;
-            }
-
-            try {
-                userAdapter.initCreateUser(new CreateUserInput(
-                        username, nom, prenom, email, Set.of("+23769" + String.format("%07d", i)), perms,
-                        new DummyMultipartFile("photo", "photo.png", "image/png", new byte[0])
-                ));
-            } catch (Exception e) {
-                // Repli direct en base
-                userRepository.save(UtilisateurEntity.builder()
-                        .id(UUID.randomUUID()).iam(UUID.randomUUID()).username(username).nom(nom).prenom(prenom)
-                        .email(email).telephones(Set.of("+23769" + String.format("%07d", i))).permissions(perms).actif(true).build());
-            }
-        }
         approvePendingRequests(MakerCheckerEntityName.USER, userAdapter);
 
         // 5. Immobilisations
@@ -369,7 +271,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         (ModeAmortissement) im[4], (int) im[5], BigDecimal.ZERO
                 ));
             } catch (Exception e) {
-                //log.warn("Échec flow normal Immobilisation {}, repli direct...", im[0]);
+                log.warn("Échec flow normal Immobilisation {}, repli direct...", im[0]);
                 immobilisationRepository.save(ImmobilisationEntity.builder()
                         .id(UUID.randomUUID()).code((String) im[0]).designation((String) im[1]).valeurOrigine(BigDecimal.valueOf((int) im[2]))
                         .dateAcquisition((LocalDate) im[3]).dateMiseEnService((LocalDate) im[3]).modeAmortissement((ModeAmortissement) im[4])
@@ -406,7 +308,7 @@ public class TestDataSeeder implements CommandLineRunner {
     }
 
     private void seedHistoricalData() {
-        //log.info("  ↳ Production de l'historique financier et budgétaire sur 10 ans (2017-2026)...");
+        log.info("  ↳ Production de l'historique financier et budgétaire sur 10 ans (2017-2026)...");
 
         List<String> realClients = List.of("CLI001", "CLI002", "CLI003", "CLI004");
         List<String> realSuppliers = List.of("FOU005", "FOU006", "FOU007", "FOU008");
@@ -434,7 +336,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     authenticate("admin_checker", CHECKER_ID);
                     approuverPlanUseCase.execute(new ApprouverPlanUseCase.Input(planId, CHECKER_ID));
                 } catch (Exception e) {
-                    //log.error("Échec création budget " + annee + " : " + e.getMessage());
+                    log.error("Échec création budget " + annee + " : " + e.getMessage());
                 }
             }
 
@@ -490,7 +392,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    //log.debug("Erreur écriture HA: {}", e.getMessage());
+                    log.debug("Erreur écriture HA: {}", e.getMessage());
                 }
 
                 // 2. Transaction de Vente mensuelle (Produit 701)
@@ -534,7 +436,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    //log.debug("Erreur écriture VT: {}", e.getMessage());
+                    log.debug("Erreur écriture VT: {}", e.getMessage());
                 }
 
                 // 3. Transaction de Paie mensuelle (Salaires 661)
@@ -573,7 +475,7 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    //log.debug("Erreur écriture BQ: {}", e.getMessage());
+                    log.debug("Erreur écriture BQ: {}", e.getMessage());
                 }
             }
 
@@ -599,7 +501,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     }
                 });
             } catch (Exception e) {
-                //log.debug("Erreur budget analytique {}: {}", finalAnnee, e.getMessage());
+                log.debug("Erreur budget analytique {}: {}", finalAnnee, e.getMessage());
             }
 
             // D. Dotations aux Amortissements
@@ -620,7 +522,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     }
                 });
             } catch (Exception e) {
-                //log.debug("Erreur amortissement annuel {}: {}", finalAnnee, e.getMessage());
+                log.debug("Erreur amortissement annuel {}: {}", finalAnnee, e.getMessage());
             }
 
             // E. Clôture Comptable de l'Exercice
@@ -641,14 +543,14 @@ public class TestDataSeeder implements CommandLineRunner {
                         }
                     });
                 } catch (Exception e) {
-                    //log.debug("Erreur clôture comptable {}: {}", finalAnnee, e.getMessage());
+                    log.debug("Erreur clôture comptable {}: {}", finalAnnee, e.getMessage());
                 }
             }
         }
     }
 
     private void seedTreasuryData() {
-        //log.info("  ↳ Trésorerie, Financements et Couvertures (Exercice 2026)...");
+        log.info("  ↳ Trésorerie, Financements et Couvertures (Exercice 2026)...");
         authenticate("admin_maker", MAKER_ID);
 
         UUID afrilandId = bankIds.get("AFB");
@@ -725,8 +627,13 @@ public class TestDataSeeder implements CommandLineRunner {
     }
 
     private byte[] downloadBytes(String urlString) {
-        try (InputStream in = new URL(urlString).openStream()) {
-            return in.readAllBytes();
+        try {
+            java.net.URLConnection conn = new java.net.URI(urlString).toURL().openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            try (InputStream in = conn.getInputStream()) {
+                return in.readAllBytes();
+            }
         } catch (Exception e) {
             return new byte[0];
         }

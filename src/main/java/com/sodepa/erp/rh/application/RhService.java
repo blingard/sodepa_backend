@@ -116,6 +116,19 @@ public class RhService {
         utilsService.hasPermission(Permissions.CREATE_EMPLOYE);
 
         // =========================================================================
+        // ÉTAPE 0 : Contrôle d'éligibilité du Maker et existence du Workflow
+        // =========================================================================
+        if (utilsService.getCurrentUserData() != null && utilsService.getCurrentUserData().userId() != null) {
+            try {
+                UUID currentUserId = UUID.fromString(utilsService.getCurrentUserData().userId());
+                workflowService.verifierEligibiliteMaker("WF-RH-RECRUTEMENT", currentUserId);
+            } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+                log.warn("Contrôle Maker workflow pour le recrutement : {}", e.getMessage());
+                throw e;
+            }
+        }
+
+        // =========================================================================
         // ÉTAPE 1 : Création / Liaison du Compte Utilisateur SODEPA
         // =========================================================================
         UtilisateurEntity utilisateur = null;

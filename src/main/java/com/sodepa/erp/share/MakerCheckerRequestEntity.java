@@ -63,6 +63,12 @@ public class MakerCheckerRequestEntity {
     @Column(nullable = false, length = 50)
     MakerCheckerOperationType checkerOperationType;
 
+    /**
+     * Identifiant de l'instance de workflow universel liée.
+     */
+    @Column(name = "workflow_instance_id")
+    private UUID workflowInstanceId;
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {

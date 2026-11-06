@@ -19,6 +19,11 @@ import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.Permissions;
+import com.sodepa.erp.comptabilite.generale.infrastructure.entities.BanqueEntity;
+import com.sodepa.erp.comptabilite.generale.infrastructure.entities.TiersEntity;
+import com.sodepa.erp.utils.TypeTiers;
+import com.sodepa.erp.comptabilite.generale.infrastructure.repo.BanqueRepository;
+import com.sodepa.erp.comptabilite.generale.infrastructure.repo.TiersRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +73,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
     private final ParametreSystemeRepository parametreSystemeRepository;
     private final ParametreConfigurationService parametreConfigurationService;
     private final KeycloakProvisioningPort keycloakProvisioningPort;
+    private final BanqueRepository banqueRepository;
+    private final TiersRepository tiersRepository;
     private final ClickHouseManager clickHouseManager;
     private final ObjectMapper objectMapper;
 
@@ -88,10 +95,6 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
             log.info("SODEPA Data Seeder désactivé par configuration (sodepa.seed.enabled=false).");
             return;
         }
-        if (employeRepository.count() > 0) {
-            log.info("La base de données contient déjà des employés. Le peuplement SODEPA est ignoré pour éviter les doublons.");
-            return;
-        }
 
         log.info("═══════════════════════════════════════════════════════════════════════");
         log.info("     DÉMARRAGE DU PEUPLEMENT DES DONNÉES OFFICIELLES SODEPA            ");
@@ -99,6 +102,9 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
 
         if (purgeOnStartup) {
             purgeDatabaseAndKeycloak();
+        } else if (employeRepository.count() > 0) {
+            log.info("La base de données contient déjà des employés. Le peuplement SODEPA est ignoré pour éviter les doublons.");
+            return;
         }
 
         // Étape 0.1 : Initialiser les super-administrateurs système bootstrap
@@ -122,6 +128,9 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         // Étape 6 : Créer l'ensemble des utilisateurs, dossiers employés et affectations du personnel réel
         seedCollaborateurs(unitesMap, postesMap, grillesMap);
 
+        // Étape 7 : Initialiser les banques et les tiers partenaires officiels SODEPA
+        seedBanquesEtTiers();
+
         // Étape 0.2 : Désactivation stricte des comptes bootstrap 'admin_maker' et 'admin_checker'
         //deactivateBootstrapRoots();
 
@@ -137,6 +146,14 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
     private void purgeDatabaseAndKeycloak() {
         log.warn("Lancement de la purge complète en base de données et dans Keycloak...");
 
+        // 0. Purge ClickHouse
+        try {
+            clickHouseManager.truncateAllTables();
+            log.info("Entrepôt analytique ClickHouse purgé avec succès.");
+        } catch (Exception e) {
+            log.warn("Avertissement lors de la purge ClickHouse : {}", e.getMessage());
+        }
+
         // 1. Purge Keycloak
         try {
             keycloakProvisioningPort.purgeAllKeycloakUsers();
@@ -145,27 +162,32 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
             log.warn("Avertissement lors de la purge Keycloak : {}", e.getMessage());
         }
 
-        // 2. Purge PostgreSQL (ordre avec CASCADE)
+        // 2. Purge PostgreSQL dynamique (toutes les tables existantes du schéma public hors Liquibase)
         try {
             entityManager.createNativeQuery("""
-                TRUNCATE TABLE
-                    derogations_permissions,
-                    affectations_postes,
-                    rh_employes,
-                    poste_permissions,
-                    postes,
-                    objectifs_unites,
-                    unites_organisationnelles,
-                    types_structures,
-                    utilisateur_permissions,
-                    utilisateur_telephones,
-                    utilisateurs,
-                    app_parametres_systeme
-                CASCADE
+                DO $$
+                DECLARE
+                    stmt TEXT;
+                BEGIN
+                    ALTER TABLE IF EXISTS public.workflows_etapes_definitions
+                        ADD COLUMN IF NOT EXISTS actif boolean NOT NULL DEFAULT true;
+                    ALTER TABLE IF EXISTS public.workflows_etapes_acteurs_definitions
+                        ADD COLUMN IF NOT EXISTS actif boolean NOT NULL DEFAULT true;
+
+                    SELECT 'TRUNCATE TABLE ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' RESTART IDENTITY CASCADE'
+                    INTO stmt
+                    FROM pg_tables
+                    WHERE schemaname = 'public'
+                      AND tablename NOT IN ('databasechangelog', 'databasechangeloglock');
+
+                    IF stmt IS NOT NULL THEN
+                        EXECUTE stmt;
+                    END IF;
+                END $$;
             """).executeUpdate();
             entityManager.flush();
             entityManager.clear();
-            log.info("Tables PostgreSQL purgées avec succès.");
+            log.info("Toutes les tables PostgreSQL ont été purgées avec succès.");
         } catch (Exception e) {
             log.error("Erreur lors de la purge PostgreSQL : {}", e.getMessage(), e);
         }
@@ -1432,4 +1454,75 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
             log.debug("Tracé ClickHouse ignoré (ClickHouse non connecté) : {}", e.getMessage());
         }
     }
+
+    private void seedBanquesEtTiers() {
+        log.info("Peuplement des Banques et des Tiers partenaires de la SODEPA...");
+
+        // Banques
+        Object[][] banks = {
+                {"AFB", "Afriland First Bank", "521", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfStUncJi6M6LEadtwnXw6jYy2aNssdl4TPTHr4oE9Pg&s=10"},
+                {"SGC", "Société Générale Cameroun", "522", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQbRpJVLtz-pYv26LnHMp9MNyx7PRglJmMMYhvwLoxItA&s=10"},
+                {"BICEC", "BICEC", "523", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQObxQAhL3gs41eD4uHVT-sH1MujkDzVV7vgYSyh98iFQ&s=10"},
+                {"CBC", "Commercial Bank of Cameroon", "524", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQgpOLwLzUf8vC9cN2fW_czKAlvi9RfbJuiDuXRCLgVJQ&s=10"},
+                {"ECO", "Ecobank Cameroun", "525", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQrymqgneRE1OOQf5QLhihQnM3bSKfVmy_wl5SMv3fFEQ&s=10"},
+                {"UBA", "UBA Cameroun", "526", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTIpO4KursaiwAzpIYskhhaV3ZpETftfNf7Wa4sz07XhQ&s=10"},
+                {"CCA", "CCA-Bank Cameroun", "527", ""},
+                {"SCB", "SCB Cameroun", "528", ""}
+        };
+
+        for (Object[] b : banks) {
+            String code = (String) b[0];
+            if (banqueRepository.findByCode(code).isEmpty()) {
+                banqueRepository.save(BanqueEntity.builder()
+                        .id(UUID.randomUUID())
+                        .code(code)
+                        .nom((String) b[1])
+                        .compteComptableCode((String) b[2])
+                        .logo((String) b[3])
+                        .status(true)
+                        .build());
+                log.info("Banque créée : [{}] - {}", code, b[1]);
+            }
+        }
+
+        // Tiers partenaires
+        Object[][] partners = {
+                {"CLI001", "Carrefour Cameroun (CFAO Retail)", "Playce Yaoundé", "+237 222 00 11 22", "retail@carrefour.cm", TypeTiers.CLIENT, "411"},
+                {"CLI002", "Supermarchés Casino Douala", "Akwa Douala", "+237 233 44 55 66", "achats@casino.cm", TypeTiers.CLIENT, "411"},
+                {"CLI003", "Congelcam S.A.", "Zone Industrielle Bassa", "+237 233 55 66 77", "congelcam@congelcam.cm", TypeTiers.CLIENT, "411"},
+                {"CLI004", "Boucherie Centrale Yaoundé", "Marché Central", "+237 222 11 22 33", "centrale@boucherie.cm", TypeTiers.CLIENT, "411"},
+                {"CLI005", "Boucherie Moderne Akwa Douala", "Rue Pau", "+237 233 42 18 90", "contact@boucheriemoderne.cm", TypeTiers.CLIENT, "411"},
+                {"CLI006", "Hôtellerie du Centre S.A.", "Quartier Administratif Yaoundé", "+237 222 23 45 67", "achats@hotelducentre.cm", TypeTiers.CLIENT, "411"},
+
+                {"FOU001", "MTN Cameroon", "Boulevard de la Liberté", "+237 679 00 00 00", "entreprise@mtn.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU002", "CAMRAIL (AGL)", "Gare de Bessengue", "+237 233 30 30 30", "logistique@camrail.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU003", "CFAO Motors Cameroun", "Avenue de Gaulle", "+237 233 40 40 40", "auto@cfao.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU004", "LANAVET (Garoua)", "Laboratoire Vétérinaire", "+237 222 27 12 85", "lanavet@lanavet.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU005", "SODECOTON", "Garoua Centre", "+237 222 27 10 77", "sodecoton@sodecoton.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU006", "Provenderie du Cameroun S.A.", "Bonabéri Douala", "+237 233 39 12 34", "spc@spc.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU007", "CAMVET S.A.", "Pharmacie Vétérinaire Yaoundé", "+237 222 21 44 55", "camvet@camvet.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU008", "CENEEMA", "Yaoundé Mvan", "+237 222 30 15 15", "ceneema@ceneema.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU009", "ENEO Cameroun S.A.", "Avenue Koumassi Douala", "+237 233 42 12 50", "grandscomptes@eneo.cm", TypeTiers.FOURNISSEUR, "401"},
+                {"FOU010", "CAMWATER S.A.", "Koumassi Douala", "+237 233 42 71 80", "contact@camwater.cm", TypeTiers.FOURNISSEUR, "401"}
+        };
+
+        for (Object[] p : partners) {
+            String code = (String) p[0];
+            if (tiersRepository.findByCode(code).isEmpty()) {
+                tiersRepository.save(TiersEntity.builder()
+                        .id(UUID.randomUUID())
+                        .code(code)
+                        .raisonSociale((String) p[1])
+                        .adresse((String) p[2])
+                        .telephone((String) p[3])
+                        .email((String) p[4])
+                        .typeTiers((TypeTiers) p[5])
+                        .compteCollectifCode((String) p[6])
+                        .actif(true)
+                        .build());
+                log.info("Tiers créé : [{}] - {}", code, p[1]);
+            }
+        }
+    }
+
 }

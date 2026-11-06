@@ -6,6 +6,9 @@ import lombok.*;
 
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO) pour la soumission d'une décision par un approbateur sur une tâche.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -13,10 +16,20 @@ import java.util.UUID;
 @Builder
 public class TraiterTacheWorkflowRequest {
 
+    /**
+     * Décision formelle prise par le valideur (APPROUVE, REJETE, ou DEMANDE_REVISION).
+     */
     @NotNull(message = "La décision est obligatoire")
     private DecisionWorkflow decision;
 
+    /**
+     * Motivation textuelle ou justification apportée par le valideur.
+     * Requis obligatoirement en cas de rejet ou de demande de révision.
+     */
     private String commentaire;
 
+    /**
+     * Identifiant de l'utilisateur effectuant l'action (optionnel si déduit du contexte de sécurité).
+     */
     private UUID acteurId;
 }

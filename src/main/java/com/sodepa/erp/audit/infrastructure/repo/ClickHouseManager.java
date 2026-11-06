@@ -1,6 +1,7 @@
 package com.sodepa.erp.audit.infrastructure.repo;
 
 import com.sodepa.erp.audit.application.inputs.MakerCheckerMessageInput;
+import com.sodepa.erp.audit.application.inputs.WorkflowEventMessageInput;
 import com.sodepa.erp.configuration.RequestTrackingEvent;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class ClickHouseManager {
     private final static String ACTIVITY_TABLE = "clickhouse_activities";
     private final static String TRANSACTION_TABLE = "clickhouse_transactions";
     private final static String MAKER_CHECKER_TABLE = "clickhouse_maker_checker";
+    private final static String WORKFLOW_TABLE = "clickhouse_workflow_events";
     private final static String CLICKHOUSE_DRIVE = "com.clickhouse.jdbc.ClickHouseDriver";
 
     @PostConstruct
@@ -57,16 +59,38 @@ public class ClickHouseManager {
                 stmt.execute("CREATE TABLE IF NOT EXISTS clickhouse_maker_checker (" +
                         "id UUID, entity_name Nullable(String), entity_pk Nullable(String), maker_id Nullable(String), " +
                         "checker_id Nullable(String), payload Nullable(String), date DateTime) ENGINE = MergeTree() ORDER BY date");
+
+                // Table pour l'audit asynchrone des événements et actions de Workflow
+                stmt.execute("CREATE TABLE IF NOT EXISTS clickhouse_workflow_events (" +
+                        "id UUID, instance_id Nullable(UUID), metier_code Nullable(String), definition_id Nullable(UUID), " +
+                        "etape_id Nullable(UUID), tache_id Nullable(UUID), acteur_id Nullable(UUID), employe_id Nullable(UUID), " +
+                        "matricule Nullable(String), user_id Nullable(String), username Nullable(String), unite_id Nullable(UUID), " +
+                        "action_type varchar, decision Nullable(String), commentaire Nullable(String), payload Nullable(String), " +
+                        "timestamp DateTime) ENGINE = MergeTree() ORDER BY (timestamp, action_type)");
             }
         } catch (Exception e) {
             // Log d'erreur silencieux au démarrage si ClickHouse n'est pas encore lancé
             log.error("Avertissement : Impossible d'initialiser ClickHouse au démarrage (le conteneur est peut-être arrêté) : " + e.getMessage());
-
         }
     }
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(clickhouseUrl, clickhouseUsername, clickhousePassword);
+    }
+
+    /**
+     * Vide intégralement les données analytiques de ClickHouse.
+     */
+    public void truncateAllTables() {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("TRUNCATE TABLE IF EXISTS clickhouse_transactions");
+            stmt.execute("TRUNCATE TABLE IF EXISTS clickhouse_activities");
+            stmt.execute("TRUNCATE TABLE IF EXISTS clickhouse_maker_checker");
+            stmt.execute("TRUNCATE TABLE IF EXISTS clickhouse_workflow_events");
+            log.info("Tables ClickHouse purgées avec succès.");
+        } catch (Exception e) {
+            log.warn("Impossible de vider ClickHouse (le conteneur est peut-être arrêté) : {}", e.getMessage());
+        }
     }
 
     /**
@@ -140,6 +164,37 @@ public class ClickHouseManager {
             pstmt.executeUpdate();
         } catch (SQLException e) {
             log.error("Erreur d'insertion dans ClickHouse (MakerChecker) : " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enregistre un événement de workflow de manière directe dans ClickHouse.
+     */
+    public void saveWorkflowEvent(WorkflowEventMessageInput event) {
+        String sql = "INSERT INTO clickhouse_workflow_events (id, instance_id, metier_code, definition_id, " +
+                "etape_id, tache_id, acteur_id, employe_id, matricule, user_id, username, unite_id, action_type, " +
+                "decision, commentaire, payload, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setObject(1, event.id() != null ? event.id() : UUID.randomUUID());
+            pstmt.setObject(2, event.instanceId());
+            pstmt.setString(3, event.metierCode());
+            pstmt.setObject(4, event.definitionId());
+            pstmt.setObject(5, event.etapeId());
+            pstmt.setObject(6, event.tacheId());
+            pstmt.setObject(7, event.acteurId());
+            pstmt.setObject(8, event.employeId());
+            pstmt.setString(9, event.matricule());
+            pstmt.setString(10, event.userId());
+            pstmt.setString(11, event.username());
+            pstmt.setObject(12, event.uniteId());
+            pstmt.setString(13, event.actionType());
+            pstmt.setString(14, event.decision());
+            pstmt.setString(15, event.commentaire());
+            pstmt.setString(16, event.payload());
+            pstmt.setTimestamp(17, event.timestamp() != null ? Timestamp.valueOf(event.timestamp()) : Timestamp.valueOf(java.time.LocalDateTime.now()));
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            log.error("Erreur d'insertion dans ClickHouse (WorkflowEvent) : " + e.getMessage());
         }
     }
 }

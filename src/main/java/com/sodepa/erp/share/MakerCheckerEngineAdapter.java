@@ -38,6 +38,10 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
     @org.springframework.context.annotation.Lazy
     private UserAdapterInterface userAdapterInterface;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.sodepa.erp.workflow.application.WorkflowService workflowService;
+
     @Value("${app.duration}")
     private Long days;
 
@@ -58,6 +62,28 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
                 .createdAt(Instant.now())
                 .expiredAt(Instant.now().plus(days, ChronoUnit.DAYS))
                 .build();
+
+        // Intégration du Moteur de Workflow Universel SODEPA
+        try {
+            if (workflowService != null) {
+                UUID userUuid = null;
+                try { userUuid = UUID.fromString(makerId); } catch (Exception ignored) {}
+                var wfRes = workflowService.demarrerWorkflow(
+                        com.sodepa.erp.workflow.presentation.requests.DemarrerWorkflowRequest.builder()
+                                .workflowDefinitionCode("WF-METIER-" + entityName.name())
+                                .entityName(entityName.name())
+                                .entityId(entityPk)
+                                .initiateurId(userUuid)
+                                .contexte(appliedPatch)
+                                .build()
+                );
+                if (wfRes != null) {
+                    request.setWorkflowInstanceId(wfRes.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.info("Délégation automatique au circuit de workflow: {}", e.getMessage());
+        }
 
         request = requestRepo.save(request);
         // Publier l'événement de soumission vers ClickHouse via RabbitMQ
@@ -86,6 +112,28 @@ public class MakerCheckerEngineAdapter implements MakerCheckerEnginePort{
                 .createdAt(Instant.now())
                 .expiredAt(Instant.now().plus(days, ChronoUnit.DAYS))
                 .build();
+
+        // Intégration du Moteur de Workflow Universel SODEPA
+        try {
+            if (workflowService != null) {
+                UUID userUuid = null;
+                try { userUuid = UUID.fromString(makerId); } catch (Exception ignored) {}
+                var wfRes = workflowService.demarrerWorkflow(
+                        com.sodepa.erp.workflow.presentation.requests.DemarrerWorkflowRequest.builder()
+                                .workflowDefinitionCode("WF-METIER-" + entityName.name())
+                                .entityName(entityName.name())
+                                .entityId(entityPk)
+                                .initiateurId(userUuid)
+                                .contexte(appliedPatch)
+                                .build()
+                );
+                if (wfRes != null) {
+                    request.setWorkflowInstanceId(wfRes.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.info("Délégation automatique au circuit de workflow: {}", e.getMessage());
+        }
 
         request = requestRepo.save(request);
         // Publier l'événement de soumission vers ClickHouse via RabbitMQ

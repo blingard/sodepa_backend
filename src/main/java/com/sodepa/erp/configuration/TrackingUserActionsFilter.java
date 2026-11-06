@@ -3,9 +3,7 @@ package com.sodepa.erp.configuration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sodepa.erp.audit.application.usecase.AuditEventPublisher;
-import com.sodepa.erp.share.GlobalConstants;
-import com.sodepa.erp.share.UserData;
-import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.share.*;
 import com.sodepa.erp.utils.UserManagementEnginePort;
 import com.sodepa.erp.utils.UserOutput;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,9 +25,7 @@ import java.nio.charset.StandardCharsets;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 
 import java.time.Instant;
-import java.util.Enumeration;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -77,7 +73,8 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                     java.util.Collections.emptySet(),
                     "NO_SESSION",
                     "",
-                    "ANONYMOUS"
+                    "ANONYMOUS",
+                    Collections.emptySet()
             );
         }
 
@@ -126,6 +123,10 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                 return null;
             }
             UserOutput userOutput = userManagementEnginePort.getUserById(UUID.fromString(userId));
+            Set<PosteDto> postes = userManagementEnginePort.getUserAllActivePosteByUserId(UUID.fromString(userId));
+            Set<PosteData> posteData = postes.stream()
+                    .map(PosteData::fromDto)
+                    .collect(Collectors.toSet());
             return new UserData(
                     userOutput.username(),
                     userOutput.nom() + " " + userOutput.prenom(),
@@ -135,7 +136,8 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                     userOutput.permissions(),
                     jwt.getClaimAsString("sid"),
                     jwt.getTokenValue(),
-                    jwt.getSubject()
+                    jwt.getSubject(),
+                    posteData
             );
         } catch (Exception e) {
             log.error("Failed to extract user data from JWT", e);

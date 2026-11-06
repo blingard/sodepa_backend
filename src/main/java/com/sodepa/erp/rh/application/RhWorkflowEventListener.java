@@ -8,13 +8,33 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+/**
+ * Écouteur d'événements asynchrones du module Ressources Humaines (RH).
+ * <p>
+ * Réagit aux événements {@link WorkflowInstanceCompletedEvent} émis par le moteur de workflow universel
+ * lorsque des circuits liés aux employés ou aux recrutements sont totalement validés (ex: signature DG).
+ * </p>
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class RhWorkflowEventListener {
 
+    /** Service applicatif pour les opérations de gestion des employés et carrières. */
     private final RhService rhService;
 
+    /**
+     * Intercepte l'achèvement avec succès d'un circuit de validation pour finaliser les dossiers RH.
+     * <p>
+     * Cas traités :
+     * <ul>
+     *   <li>{@code WF-RH-RECRUTEMENT} ou {@code WF-DAF-07} : déclenche la finalisation de l'approbation DG,
+     *   génère le matricule et active l'employé dans le système.</li>
+     * </ul>
+     * </p>
+     *
+     * @param event Événement de complétion émis par le moteur de workflow universel.
+     */
     @EventListener
     public void onWorkflowCompleted(WorkflowInstanceCompletedEvent event) {
         log.info("Événement de clôture workflow reçu: [{}] pour l'entité {}/{}",

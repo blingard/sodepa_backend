@@ -33,7 +33,7 @@ import java.util.*;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@Order(2)
+@Order(3)
 public class CompteSeeder implements CommandLineRunner {
 
     private final CompteRepository compteRepository;

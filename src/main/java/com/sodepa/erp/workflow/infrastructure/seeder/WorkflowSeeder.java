@@ -2,6 +2,7 @@ package com.sodepa.erp.workflow.infrastructure.seeder;
 
 import com.sodepa.erp.workflow.infrastructure.entities.*;
 import com.sodepa.erp.workflow.infrastructure.repo.WorkflowDefinitionRepository;
+import com.sodepa.erp.workflow.infrastructure.repo.WorkflowMetierRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -33,8 +34,25 @@ import java.util.UUID;
 @Slf4j
 public class WorkflowSeeder implements CommandLineRunner {
 
+    /** Référentiel pour la persistance et la vérification d'existence des définitions de workflow. */
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
 
+    /** Référentiel des opérations métiers universelles. */
+    private final WorkflowMetierRepository workflowMetierRepository;
+
+    /**
+     * Enregistrement (Record) immuable modélisant les paramètres de configuration
+     * d'une étape de workflow à initialiser dans la base de données.
+     *
+     * @param codeEtape              Code fonctionnel unique de l'étape au sein du circuit.
+     * @param intitule               Libellé descriptif de l'étape affiché à l'écran.
+     * @param typeEtape              Type d'étape (validation humaine, signature qualifiée, etc.).
+     * @param politiqueValidation    Règle d'approbation (un seul suffit, tous doivent valider, etc.).
+     * @param strategieAssignation   Stratégie de résolution de l'approbateur (poste, rôle, manager).
+     * @param valeurAssignation      Valeur cible associée à la stratégie (ex: "DIRECTEUR_GENERAL").
+     * @param delaiSlaHeures         Délai limite maximal alloué pour traiter cette étape en heures.
+     * @param actionDepassementSla   Action automatique à déclencher si le délai SLA expire.
+     */
     public record EtapeSeed(
             String codeEtape,
             String intitule,
@@ -46,11 +64,18 @@ public class WorkflowSeeder implements CommandLineRunner {
             ActionDepassementSla actionDepassementSla
     ) {}
 
+    /**
+     * Point d'entrée exécuté au démarrage de Spring Boot.
+     * Déclenche séquentiellement l'initialisation des circuits pour chaque structure organisationnelle.
+     *
+     * @param args Arguments de la ligne de commande.
+     */
     @Override
     @Transactional
     public void run(String... args) {
         log.info("Démarrage de la vérification et initialisation des workflows SODEPA...");
 
+        seedMetiers();
         seedRhWorkflows();
         seedGouvernanceWorkflows();
         seedDafWorkflows();
@@ -63,11 +88,36 @@ public class WorkflowSeeder implements CommandLineRunner {
         log.info("Vérification des workflows SODEPA terminée avec succès.");
     }
 
+    /**
+     * Persiste une définition de workflow et l'ensemble de ses étapes ordonnées si le circuit
+     * n'existe pas encore en base (mécanisme idempotent évitant les doublons).
+     *
+     * @param code        Code fonctionnel unique du circuit (ex: "WF-DG-01").
+     * @param intitule    Intitulé lisible du circuit.
+     * @param description Description des objectifs et des règles métier.
+     * @param domaine     Domaine d'application fonctionnel.
+     * @param etapes      Liste ordonnée des étapes à configurer.
+     */
     private void seedWorkflowIfNotExists(
             String code,
             String intitule,
             String description,
             WorkflowDomaine domaine,
+            List<EtapeSeed> etapes
+    ) {
+        seedWorkflowIfNotExists(code, intitule, description, domaine, null, null, etapes);
+    }
+
+    /**
+     * Persiste une définition de workflow avec contrôle d'éligibilité Maker et acteurs d'étapes.
+     */
+    private void seedWorkflowIfNotExists(
+            String code,
+            String intitule,
+            String description,
+            WorkflowDomaine domaine,
+            String rolesInitiateurs,
+            String postesInitiateurs,
             List<EtapeSeed> etapes
     ) {
         if (workflowDefinitionRepository.existsByCode(code)) {
@@ -81,11 +131,16 @@ public class WorkflowSeeder implements CommandLineRunner {
                 .intitule(intitule)
                 .description(description)
                 .domaine(domaine)
+                .rolesInitiateurs(rolesInitiateurs)
+                .postesInitiateurs(postesInitiateurs)
                 .version(1)
                 .actif(true)
                 .etapes(new ArrayList<>())
                 .dateCreation(Instant.now())
                 .build();
+
+        // Liaison automatique au métier correspondant dans le référentiel SODEPA
+        resolveMetierForWorkflow(code, domaine).ifPresent(def::setMetier);
 
         int ordre = 1;
         for (EtapeSeed e : etapes) {
@@ -101,7 +156,24 @@ public class WorkflowSeeder implements CommandLineRunner {
                     .valeurAssignation(e.valeurAssignation())
                     .delaiSlaHeures(e.delaiSlaHeures())
                     .actionDepassementSla(e.actionDepassementSla() != null ? e.actionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
+                    .actif(true)
+                    .acteurs(new ArrayList<>())
                     .build();
+
+            // Création de l'acteur de validation attendu (REQUIRED = true, ACTIF = true)
+            WorkflowEtapeActeurDefinitionEntity acteur = WorkflowEtapeActeurDefinitionEntity.builder()
+                    .id(UUID.randomUUID())
+                    .etapeDefinition(etape)
+                    .intituleAction(e.intitule())
+                    .strategieAssignation(e.strategieAssignation() != null ? e.strategieAssignation() : StrategieAssignation.ROLE_KEYCLOAK)
+                    .valeurAssignation(e.valeurAssignation())
+                    .obligatoire(true)
+                    .actif(true)
+                    .delaiSlaHeures(e.delaiSlaHeures())
+                    .actionDepassementSla(e.actionDepassementSla() != null ? e.actionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
+                    .build();
+            etape.addActeur(acteur);
+
             def.addEtape(etape);
         }
 
@@ -110,14 +182,106 @@ public class WorkflowSeeder implements CommandLineRunner {
     }
 
     // =========================================================================
+    // RÉFÉRENTIEL DES OPÉRATIONS MÉTIERS (Suppression des codes en dur)
+    // =========================================================================
+    /**
+     * Initialise le catalogue officiel des opérations métiers SODEPA (exclusives et transversales).
+     */
+    private void seedMetiers() {
+        // ── Pôle 1 : Ressources Humaines & Personnel ──
+        seedMetierIfNotExists("RECRUITMENT", "Recrutement & Intégration Salarié", "Processus d'embauche et contrat de travail", WorkflowDomaine.RH, false);
+        seedMetierIfNotExists("DEMANDE_CONGE", "Demande de Congés & Permissions", "Validation hiérarchique des absences et congés annuels", WorkflowDomaine.RH, true);
+        seedMetierIfNotExists("FORMATION_PERSONNEL", "Plan de Formation Continue", "Inscription et prise en charge des sessions de formation", WorkflowDomaine.RH, true);
+        seedMetierIfNotExists("AVANCEMENT_ECHELON", "Avancement d'Échelon & Promotion", "Changement de classe ou d'échelon indiciaire", WorkflowDomaine.RH, false);
+        seedMetierIfNotExists("SANCTION_DISCIPLINAIRE", "Procédure Disciplinaire & Sanctions", "Conseil de discipline, avertissement, blâme ou mise à pied", WorkflowDomaine.RH, false);
+        seedMetierIfNotExists("DEMISSION_DEPART", "Départ, Retraite & Démission", "Liquidation des droits et certificat de travail", WorkflowDomaine.RH, false);
+        seedMetierIfNotExists("MISSION_ORDER", "Ordres de Mission sur le Terrain", "Déplacements opérationnels dans les ranchs et abattoirs", WorkflowDomaine.RH, true);
+        seedMetierIfNotExists("PAIE_VARIABLES", "Saisie des Primes & Heures Supplémentaires", "Validation mensuelle des éléments variables de paie", WorkflowDomaine.RH, false);
+        seedMetierIfNotExists("PAIE_CLOTURE", "Clôture & Ordonnancement de la Paie", "Visa DAF et validation de l'état général des salaires", WorkflowDomaine.RH, false);
+
+        // ── Pôle 2 : Finances & Comptabilité ──
+        seedMetierIfNotExists("ACCOUNTING_ENTRY", "Écritures & Lettrages Comptables", "Validation des écritures et pièces sensibles au journal", WorkflowDomaine.COMPTABILITE, false);
+        seedMetierIfNotExists("CLOTURE_EXERCICE", "Clôture d'Exercice Fiscal & Inventaire", "Arrêté des comptes annuels et états financiers OHADA", WorkflowDomaine.COMPTABILITE, false);
+        seedMetierIfNotExists("RAPPROCHEMENT_BANCAIRE", "Rapprochement Bancaire & Relevés", "Pointage mensuel des relevés bancaires et états de rapprochement", WorkflowDomaine.COMPTABILITE, false);
+        seedMetierIfNotExists("METIER_BANQUE", "Ouverture & Modification de Compte Bancaire", "Création de compte bancaire et affectation comptable", WorkflowDomaine.COMPTABILITE, false);
+        seedMetierIfNotExists("METIER_TIERS", "Création & Agrément Partenaire Tiers", "Homologation clients, fournisseurs et partenaires", WorkflowDomaine.COMPTABILITE, true);
+        seedMetierIfNotExists("METIER_COMPTE", "Création & Modification Compte Plan OHADA", "Ajout de sous-compte dans le plan comptable", WorkflowDomaine.COMPTABILITE, false);
+        seedMetierIfNotExists("METIER_IMMOBILISATION", "Acquisition & Amortissement d'Immobilisation", "Mise en service et calcul de dotations aux amortissements", WorkflowDomaine.COMPTABILITE, false);
+
+        // ── Pôle 3 : Trésorerie & Caisse ──
+        seedMetierIfNotExists("ORDRE_VIREMENT", "Émission d'Ordre de Virement Bancaire", "Double signature DAF/DG pour virements bancaires", WorkflowDomaine.FINANCE, false);
+        seedMetierIfNotExists("DECAISSEMENT_CAISSE", "Décaissement & Approvisionnement Caisse", "Retrait de fonds et justification des menues dépenses", WorkflowDomaine.FINANCE, false);
+        seedMetierIfNotExists("REGIE_AVANCES", "Gestion des Régies d'Avances Ranches & Abattoirs", "Dotation et apurement des régies décentralisées", WorkflowDomaine.FINANCE, true);
+
+        // ── Pôle 4 : Gestion Budgétaire ──
+        seedMetierIfNotExists("BUDGET_INITIALISATION", "Élaboration & Adoption Budget Annuel", "Validation des prévisions budgétaires par unité", WorkflowDomaine.BUDGET, false);
+        seedMetierIfNotExists("BUDGET_COMMITMENT", "Engagement Budgétaire de Dépenses", "Réservation de crédits et visa du contrôleur financier", WorkflowDomaine.BUDGET, true);
+        seedMetierIfNotExists("BUDGET_VIREMENT_CREDIT", "Virement & Réallocation de Crédits", "Transfert de crédits entre lignes budgétaires", WorkflowDomaine.BUDGET, false);
+
+        // ── Pôle 5 : Achats & Marchés Publics ──
+        seedMetierIfNotExists("DEMANDE_ACHAT", "Expression de Besoin & Demande d'Achat", "Demande interne d'approvisionnement", WorkflowDomaine.ACHATS, true);
+        seedMetierIfNotExists("PURCHASE_ORDER", "Bons de Commande & Achats Locaux", "Validation d'achats de fournitures et intrants", WorkflowDomaine.ACHATS, true);
+        seedMetierIfNotExists("MARCHE_PUBLIC", "Dossier d'Appel d'Offres & Marché Public", "Commission de passation des marchés et attribution", WorkflowDomaine.ACHATS, false);
+        seedMetierIfNotExists("RECEPTION_PV", "Procès-Verbal de Réception Livraison", "Contrôle de conformité et visa de réception magasin", WorkflowDomaine.ACHATS, true);
+        seedMetierIfNotExists("FACTURE_LIQUIDATION", "Liquidation & Mandatement de Facture", "Certification du service fait et ordre de paiement", WorkflowDomaine.ACHATS, false);
+        seedMetierIfNotExists("METIER_FOURNISSEUR", "Homologation & Évaluation Fournisseur", "Inscription au fichier des fournisseurs agréés SODEPA", WorkflowDomaine.ACHATS, false);
+
+        // ── Pôle 6 : Ranches Pastoraux & Élevage Bovin ──
+        seedMetierIfNotExists("CHEPTEL_ENTREE", "Déclaration de Naissances & Achats Bétail", "Enregistrement boucle auriculaire et fiche zootechnique", WorkflowDomaine.PASTORAL, false);
+        seedMetierIfNotExists("CHEPTEL_SORTIE", "Sortie, Réforme & Vente de Cheptel", "Bon de sortie de troupeau validé par chef de ranch", WorkflowDomaine.PASTORAL, false);
+        seedMetierIfNotExists("CHEPTEL_TRANSFERT", "Transfert Bétail Inter-Ranches", "Mouvement d'animaux entre Faro, Ndokayo et Dumbo", WorkflowDomaine.PASTORAL, false);
+        seedMetierIfNotExists("CAMPAGNE_VACCINATION", "Campagne Vétérinaire & Traitement Sanitaire", "Vaccination annuelle et prophylaxie contre le charbon/dermatose", WorkflowDomaine.PASTORAL, false);
+        seedMetierIfNotExists("INTRANTS_PASTORAUX", "Dotation en Sel, Compléments & Aliments", "Approvisionnement des parcs de nuit et stations de pesée", WorkflowDomaine.PASTORAL, false);
+        seedMetierIfNotExists("CATTLE_SALE", "Vente de Bétail sur Pied & Foires Pastorales", "Facturation foraine et adjudication d'animaux", WorkflowDomaine.COMMERCIAL, true);
+
+        // ── Pôle 7 : Abattoirs Industriels & Filière Viande ──
+        seedMetierIfNotExists("ABATTOIR_RECEPTION", "Réception & Stabulation Bétail Abattoir", "Contrôle sanitaire d'entrée en bouverie (Yaoundé, Douala)", WorkflowDomaine.ABATTOIR, false);
+        seedMetierIfNotExists("CONTROLE_VETERINAIRE", "Inspection Vétérinaire Ante & Post-Mortem", "Saisie sanitaire ou estampillage carcasse 'Salubre'", WorkflowDomaine.ABATTOIR, false);
+        seedMetierIfNotExists("ABATTOIR_ABATTAGE", "Ordre d'Abattage & Chaîne de Découpe", "Planification journalière de la tuerie et pesée fiscale", WorkflowDomaine.ABATTOIR, false);
+        seedMetierIfNotExists("CHAMBRE_FROIDE_STOCK", "Mise en Stock & Transfert Frigorifique", "Entrée et ressuage en chambres froides", WorkflowDomaine.ABATTOIR, false);
+        seedMetierIfNotExists("VENTE_VIANDE_GROS", "Vente et Expédition Viande en Gros", "Livraison grossistes, boucheries centrales et supermarchés", WorkflowDomaine.COMMERCIAL, true);
+
+        // ── Pôle 8 : Gouvernance, Organisation & IT ──
+        seedMetierIfNotExists("SERVICE_MEMO", "Rédaction de Note de Service Interne", "Diffusion de directives et notes de service", WorkflowDomaine.GOUVERNANCE, true);
+        seedMetierIfNotExists("CIRCULAIRE_DG", "Émission de Circulaire Direction Générale", "Circulaire officielle et instructions d'application", WorkflowDomaine.GOUVERNANCE, false);
+        seedMetierIfNotExists("DELEGATION_POUVOIR", "Délégation de Signature & Intérim", "Arrêté portant intérim ou délégation de pouvoir", WorkflowDomaine.GOUVERNANCE, false);
+        seedMetierIfNotExists("CONTRAT_CONVENTION", "Validation Juridique Convention & Partenariat", "Visa du contentieux et signature DG", WorkflowDomaine.GED, true);
+        seedMetierIfNotExists("CREATION_METIER", "Création et Homologation de Processus Métier", "Création d'une nouvelle opération métier dans l'ERP", WorkflowDomaine.GOUVERNANCE, false);
+        seedMetierIfNotExists("DEMANDE_EQUIPEMENT_INFO", "Demande de Matériel & Accès Informatique", "Dotation matériel IT et ouverture de comptes applicatifs", WorkflowDomaine.GOUVERNANCE, true);
+    }
+
+    private void seedMetierIfNotExists(String code, String title, String description, WorkflowDomaine domain, boolean isTransversal) {
+        if (!workflowMetierRepository.existsByCode(code)) {
+            WorkflowMetierEntity m = WorkflowMetierEntity.builder()
+                    .id(UUID.randomUUID())
+                    .code(code)
+                    .title(title)
+                    .description(description)
+                    .domain(domain)
+                    .isTransversal(isTransversal)
+                    .isActive(true)
+                    .createdAt(Instant.now())
+                    .build();
+            workflowMetierRepository.save(m);
+            log.info("Opération Métier initialisée : [{}] - {}", code, title);
+        }
+    }
+
+    // =========================================================================
     // 0. RESSOURCES HUMAINES & RECRUTEMENT
     // =========================================================================
+    /**
+     * Initialise les circuits de validation transverses du pôle Ressources Humaines
+     * (Recrutement, titularisation, contrat de travail sous visa DRH, DAF et signature DG).
+     */
     private void seedRhWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-RH-RECRUTEMENT",
                 "Recrutement, Intégration et Contrat de Travail d'un Salarié",
                 "Circuit officiel d'embauche et d'intégration : création du compte utilisateur, dossier employé, classification indiciaire et approbation finale du Directeur Général par Note de Service ou Circulaire (Maker-Checker)",
                 WorkflowDomaine.RH,
+                "ROLE_DRH,ROLE_GESTIONNAIRE_RH,ROLE_RH",
+                "SOUS_DIRECTEUR_RH,GESTIONNAIRE_RH",
                 List.of(
                         new EtapeSeed("RH_01_INSTRUCTION_DRH", "Instruction du dossier et classification indiciaire (DRH / SDRH)", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.UN_SEUL_SUFFIT, StrategieAssignation.POSTE_SPECIFIQUE, "SOUS_DIRECTEUR_RH", 48, ActionDepassementSla.RELANCE_EMAIL),
                         new EtapeSeed("RH_02_VISA_BUDGETAIRE_DAF", "Validation de la soutenabilité budgétaire DAF", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.UN_SEUL_SUFFIT, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_DAF", 24, ActionDepassementSla.RELANCE_EMAIL),
@@ -129,6 +293,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 1. DIRECTION GÉNÉRALE & GOUVERNANCE (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation de la Direction Générale et de la Gouvernance SODEPA
+     * (Plans stratégiques, conventions d'État, partenariats internationaux, délégations de signature).
+     */
     private void seedGouvernanceWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-DG-01",
@@ -245,6 +413,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 2. DIRECTION ADMINISTRATIVE ET FINANCIÈRE (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation de la Direction Administrative et Financière
+     * (Engagements budgétaires, virements bancaires, inventaires, réallocations de crédits, marchés publics).
+     */
     private void seedDafWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-DAF-01",
@@ -364,6 +536,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 3. DIRECTION PRODUCTION & COMMERCIALISATION (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation de la Direction de la Production et de la Commercialisation
+     * (Programmes d'embouche, campagnes de vaccination, tarifs de vente du bétail, circuits forains).
+     */
     private void seedDpcWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-DPC-01",
@@ -480,6 +656,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 4. DCAI / DPD / QHSE (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation du Contrôle, de l'Audit Interne et de la Prospective
+     * (Audits inopinés, cartographie des risques, plans d'investissements, non-conformités sanitaires QHSE).
+     */
     private void seedAuditProspectiveWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-DCAI-01",
@@ -595,6 +775,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 5. RANCHS PASTORAUX (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation des Ranches Pastoraux (Faro, Dumbo, Ndokayo)
+     * (Transhumance, réapprovisionnement en intrants vétérinaires, constats de mortalité, réfection des clôtures).
+     */
     private void seedRanchsWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-RANCH-01",
@@ -711,6 +895,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 6. ABATTOIRS FRIGORIFIQUES INDUSTRIELS (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation des Abattoirs Industriels (Douala, Yaoundé, Ngaoundéré)
+     * (Abattages d'urgence, saisies vétérinaires sanitaires, maintenance de la chaîne du froid, déconsignations).
+     */
     private void seedAbattoirsWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-ABAT-01",
@@ -826,6 +1014,10 @@ public class WorkflowSeeder implements CommandLineRunner {
     // =========================================================================
     // 7. STATION D'ÉLEVAGE ET LAITERIE DE JAKIRI (10 Workflows)
     // =========================================================================
+    /**
+     * Initialise les circuits de validation de la Station d'Élevage et Laiterie Spécialisée de Jakiri
+     * (Insémination artificielle, pasteurisation du lait, collecte locale, production de yaourt et fromage).
+     */
     private void seedJakiriWorkflows() {
         seedWorkflowIfNotExists(
                 "WF-JAK-01",
@@ -937,4 +1129,68 @@ public class WorkflowSeeder implements CommandLineRunner {
                 )
         );
     }
+
+    /**
+     * Résout intelligemment le métier SODEPA rattaché à un code de workflow.
+     */
+    private java.util.Optional<WorkflowMetierEntity> resolveMetierForWorkflow(String code, WorkflowDomaine domaine) {
+        if (code == null) return java.util.Optional.empty();
+        String c = code.toUpperCase();
+        if (c.contains("RECRUT")) return workflowMetierRepository.findByCode("RECRUITMENT");
+        if (c.contains("CONGE")) return workflowMetierRepository.findByCode("DEMANDE_CONGE");
+        if (c.contains("FORMATION")) return workflowMetierRepository.findByCode("FORMATION_PERSONNEL");
+        if (c.contains("AVANCEMENT") || c.contains("PROMOTION")) return workflowMetierRepository.findByCode("AVANCEMENT_ECHELON");
+        if (c.contains("SANCTION") || c.contains("DISCIPLIN")) return workflowMetierRepository.findByCode("SANCTION_DISCIPLINAIRE");
+        if (c.contains("DEPART") || c.contains("RETRAITE") || c.contains("DEMISSION")) return workflowMetierRepository.findByCode("DEMISSION_DEPART");
+        if (c.contains("MISSION")) return workflowMetierRepository.findByCode("MISSION_ORDER");
+        if (c.contains("VARIABLE") || c.contains("PRIME")) return workflowMetierRepository.findByCode("PAIE_VARIABLES");
+        if (c.contains("PAIE") || c.contains("SALAIRE")) return workflowMetierRepository.findByCode("PAIE_CLOTURE");
+
+        // Finances / Compta / Trésorerie
+        if (c.contains("COMPT") || c.contains("ECRITURE")) return workflowMetierRepository.findByCode("ACCOUNTING_ENTRY");
+        if (c.contains("CLOTURE")) return workflowMetierRepository.findByCode("CLOTURE_EXERCICE");
+        if (c.contains("RAPPROCH")) return workflowMetierRepository.findByCode("RAPPROCHEMENT_BANCAIRE");
+        if (c.contains("VIREMENT") || c.contains("BANQUE")) return workflowMetierRepository.findByCode("ORDRE_VIREMENT");
+        if (c.contains("CAISSE") || c.contains("DECAISS")) return workflowMetierRepository.findByCode("DECAISSEMENT_CAISSE");
+        if (c.contains("REGIE") || c.contains("AVANCE")) return workflowMetierRepository.findByCode("REGIE_AVANCES");
+
+        // Budget
+        if (c.contains("BUDGET-INIT") || c.contains("STRATEG")) return workflowMetierRepository.findByCode("BUDGET_INITIALISATION");
+        if (c.contains("ENGAG") || c.contains("DEPENSE")) return workflowMetierRepository.findByCode("BUDGET_COMMITMENT");
+        if (c.contains("VIREMENT-CREDIT") || c.contains("REALLOC")) return workflowMetierRepository.findByCode("BUDGET_VIREMENT_CREDIT");
+
+        // Achats & Marchés
+        if (c.contains("BESOIN") || c.contains("ACHAT-DEMANDE")) return workflowMetierRepository.findByCode("DEMANDE_ACHAT");
+        if (c.contains("COMMANDE") || c.contains("ACHAT")) return workflowMetierRepository.findByCode("PURCHASE_ORDER");
+        if (c.contains("MARCHE") || c.contains("APPEL-OFFRE")) return workflowMetierRepository.findByCode("MARCHE_PUBLIC");
+        if (c.contains("RECEPTION") || c.contains("PV")) return workflowMetierRepository.findByCode("RECEPTION_PV");
+        if (c.contains("FACTURE") || c.contains("LIQUID")) return workflowMetierRepository.findByCode("FACTURE_LIQUIDATION");
+        if (c.contains("FOURNISSEUR")) return workflowMetierRepository.findByCode("METIER_FOURNISSEUR");
+
+        // Pastoral & Ranches
+        if (c.contains("NAISSANCE") || c.contains("CHEPTEL-IN")) return workflowMetierRepository.findByCode("CHEPTEL_ENTREE");
+        if (c.contains("SORTIE") || c.contains("REFORME")) return workflowMetierRepository.findByCode("CHEPTEL_SORTIE");
+        if (c.contains("TRANSFERT") || c.contains("TRANSHUM")) return workflowMetierRepository.findByCode("CHEPTEL_TRANSFERT");
+        if (c.contains("VACCIN") || c.contains("VET")) return workflowMetierRepository.findByCode("CAMPAGNE_VACCINATION");
+        if (c.contains("INTRANT") || c.contains("ALIMENT")) return workflowMetierRepository.findByCode("INTRANTS_PASTORAUX");
+        if (c.contains("VENTE-BET") || c.contains("CATTLE")) return workflowMetierRepository.findByCode("CATTLE_SALE");
+
+        // Abattoirs
+        if (c.contains("STABUL") || c.contains("ABAT-IN")) return workflowMetierRepository.findByCode("ABATTOIR_RECEPTION");
+        if (c.contains("INSPECT") || c.contains("CONTROLE-VET")) return workflowMetierRepository.findByCode("CONTROLE_VETERINAIRE");
+        if (c.contains("ABATTAGE") || c.contains("DECOUPE")) return workflowMetierRepository.findByCode("ABATTOIR_ABATTAGE");
+        if (c.contains("FROID") || c.contains("RESSUAGE")) return workflowMetierRepository.findByCode("CHAMBRE_FROIDE_STOCK");
+        if (c.contains("VIANDE-GROS") || c.contains("EXPEDITION")) return workflowMetierRepository.findByCode("VENTE_VIANDE_GROS");
+
+        // Gouvernance & Transversal
+        if (c.contains("NOTE") || c.contains("MEMO")) return workflowMetierRepository.findByCode("SERVICE_MEMO");
+        if (c.contains("CIRCULAIRE")) return workflowMetierRepository.findByCode("CIRCULAIRE_DG");
+        if (c.contains("DELEGATION")) return workflowMetierRepository.findByCode("DELEGATION_POUVOIR");
+        if (c.contains("CONVENTION") || c.contains("ACCORD")) return workflowMetierRepository.findByCode("CONTRAT_CONVENTION");
+        if (c.contains("METIER")) return workflowMetierRepository.findByCode("CREATION_METIER");
+        if (c.contains("INFO") || c.contains("IT") || c.contains("ACCES")) return workflowMetierRepository.findByCode("DEMANDE_EQUIPEMENT_INFO");
+
+        return java.util.Optional.empty();
+    }
+
 }

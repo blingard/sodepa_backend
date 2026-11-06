@@ -18,12 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Seeder pour créer les utilisateurs super administrateurs par défaut au démarrage de l'application.
- * Crée les comptes 'admin_maker' et 'admin_checker' avec tous les droits associés, tant en base locale que dans Keycloak.
+ * Seeder officiel pour garantir la présence et l'activation des super-administrateurs système (bootstrap roots).
+ * Initialise ou réactive les comptes 'admin_maker' et 'admin_checker' avec l'ensemble des permissions.
  */
 @Component
 @RequiredArgsConstructor
@@ -45,8 +46,11 @@ public class UserSeeder implements CommandLineRunner {
 
         Set<Permissions> allPermissions = new HashSet<>(Arrays.asList(Permissions.values()));
 
-        if (userRepository.findById(makerId).isEmpty()) {
+        // 1. Initialiser ou réactiver admin_maker
+        Optional<UtilisateurEntity> optMaker = userRepository.findById(makerId);
+        if (optMaker.isEmpty()) {
             try {
+                UUID iamId = createKeycloakUserSafe(makerId, "admin_maker", "Admin", "Maker", "admin.maker@sodepa.com");
                 UtilisateurEntity adminMaker = UtilisateurEntity.builder()
                         .id(makerId)
                         .username("admin_maker")
@@ -57,29 +61,28 @@ public class UserSeeder implements CommandLineRunner {
                         .actif(true)
                         .telephones(Set.of("+237600000001"))
                         .permissions(allPermissions)
+                        .iam(iamId)
                         .build();
-                UUID iamId = createKeycloakUser(makerId, "admin_maker", "Admin", "Maker", "admin.maker@sodepa.com");
-                adminMaker.setIam(iamId);
                 userRepository.save(adminMaker);
-                log.info("Utilisateur par défaut 'admin_maker' (super administrateur) créé avec succès en base de données.");
-                clickHouseManager.saveMakerChecker(
-                        MakerCheckerMessageInput.builder()
-                                .id(UUID.randomUUID())
-                                .entityName(MakerCheckerEntityName.USER.name())
-                                .entityPk(makerId.toString())
-                                .payload(objectMapper.writeValueAsString(adminMaker))
-                                .timestamp(LocalDateTime.now())
-                                .maker_id(origin.toString())
-                                .checker_id(origin.toString())
-                                .build()
-                );
-            }catch (Exception ex){
-                ex.printStackTrace();
+                log.info("Super-administrateur 'admin_maker' créé avec succès en base locale.");
+                auditClickHouse(adminMaker, makerId, origin);
+            } catch (Exception ex) {
+                log.error("Erreur lors de la création de admin_maker : {}", ex.getMessage());
+            }
+        } else {
+            UtilisateurEntity maker = optMaker.get();
+            if (!maker.isActif()) {
+                maker.setActif(true);
+                userRepository.save(maker);
+                log.info("Compte 'admin_maker' réactivé.");
             }
         }
 
-        if (userRepository.findById(checkerId).isEmpty()) {
+        // 2. Initialiser ou réactiver admin_checker
+        Optional<UtilisateurEntity> optChecker = userRepository.findById(checkerId);
+        if (optChecker.isEmpty()) {
             try {
+                UUID iam = createKeycloakUserSafe(checkerId, "admin_checker", "Admin", "Checker", "admin.checker@sodepa.com");
                 UtilisateurEntity adminChecker = UtilisateurEntity.builder()
                         .id(checkerId)
                         .username("admin_checker")
@@ -90,37 +93,50 @@ public class UserSeeder implements CommandLineRunner {
                         .actif(true)
                         .telephones(Set.of("+237600000002"))
                         .permissions(allPermissions)
+                        .iam(iam)
                         .build();
 
-                UUID iam = createKeycloakUser(checkerId, "admin_checker", "Admin", "Checker", "admin.checker@sodepa.com");
-                adminChecker.setIam(iam);
                 userRepository.save(adminChecker);
-                log.info("Utilisateur par défaut 'admin_checker' (super administrateur) créé avec succès en base de données.");
-                clickHouseManager.saveMakerChecker(
-                        MakerCheckerMessageInput.builder()
-                                .id(UUID.randomUUID())
-                                .entityName(MakerCheckerEntityName.USER.name())
-                                .entityPk(makerId.toString())
-                                .payload(objectMapper.writeValueAsString(adminChecker))
-                                .timestamp(LocalDateTime.now())
-                                .maker_id(origin.toString())
-                                .checker_id(origin.toString())
-                                .build()
-                );
-            }catch (Exception ex){
-                ex.printStackTrace();
+                log.info("Super-administrateur 'admin_checker' créé avec succès en base locale.");
+                auditClickHouse(adminChecker, checkerId, origin);
+            } catch (Exception ex) {
+                log.error("Erreur lors de la création de admin_checker : {}", ex.getMessage());
             }
-
+        } else {
+            UtilisateurEntity checker = optChecker.get();
+            if (!checker.isActif()) {
+                checker.setActif(true);
+                userRepository.save(checker);
+                log.info("Compte 'admin_checker' réactivé.");
+            }
         }
     }
 
-    private UUID createKeycloakUser(UUID id, String username, String firstName, String lastName, String email) {
+    private void auditClickHouse(UtilisateurEntity user, UUID userPk, UUID actorId) {
         try {
-            log.info("Administrateur par défaut '{}' enregistré avec succès dans Keycloak.", username);
+            clickHouseManager.saveMakerChecker(
+                    MakerCheckerMessageInput.builder()
+                            .id(UUID.randomUUID())
+                            .entityName(MakerCheckerEntityName.USER.name())
+                            .entityPk(userPk.toString())
+                            .payload(objectMapper.writeValueAsString(user))
+                            .timestamp(LocalDateTime.now())
+                            .maker_id(actorId.toString())
+                            .checker_id(actorId.toString())
+                            .build()
+            );
+        } catch (Exception e) {
+            log.debug("Audit ClickHouse ignoré pour {} : {}", user.getUsername(), e.getMessage());
+        }
+    }
+
+    private UUID createKeycloakUserSafe(UUID id, String username, String firstName, String lastName, String email) {
+        try {
+            log.info("Provisionnement de l'administrateur '{}' dans Keycloak...", username);
             return keycloakProvisioningPort.createKeycloakUser(id, username, email, firstName, lastName, true);
         } catch (Exception e) {
-            log.error("Exception lors du provisionnement Keycloak pour '{}': ", username, e);
-            throw new RuntimeException("Exception lors du provisionnement Keycloak pour : "+username);
+            log.warn("Keycloak non joignable pour '{}' (repli sur ID local) : {}", username, e.getMessage());
+            return id;
         }
     }
 }

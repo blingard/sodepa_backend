@@ -10,6 +10,7 @@ import com.sodepa.erp.organigramme.infrastructure.repo.AffectationPosteRepositor
 import com.sodepa.erp.organigramme.infrastructure.repo.DelegationPouvoirRepository;
 import com.sodepa.erp.organigramme.infrastructure.repo.DerogationPermissionRepository;
 import com.sodepa.erp.share.FileStorageService;
+import com.sodepa.erp.share.PosteDto;
 import com.sodepa.erp.user.application.outputs.UserRecordSmartOutput;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
@@ -18,17 +19,16 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @Component
+@Transactional(readOnly = true)
 public class UserManagementEngine implements UserManagementEnginePort {
 
     private final UserRepository userRepository;
@@ -37,12 +37,16 @@ public class UserManagementEngine implements UserManagementEnginePort {
     private final DelegationPouvoirRepository delegationPouvoirRepository;
     private final DerogationPermissionRepository derogationPermissionRepository;
 
-    @Override
-    public UserOutput getUserById(UUID id) {
+    private UtilisateurEntity getUserEntityById(UUID id) {
         UtilisateurEntity entity = userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
         if (!entity.isActif()) {
             throw new RuntimeException("Current user is not active");
         }
+        return entity;
+    }
+    @Override
+    public UserOutput getUserById(UUID id) {
+        UtilisateurEntity entity = getUserEntityById(id);
 
         Set<Permissions> effectivePermissions = resolveEffectivePermissions(entity);
 
@@ -59,6 +63,47 @@ public class UserManagementEngine implements UserManagementEnginePort {
                 .build();
     }
 
+
+
+    @Override
+    public Set<PosteDto> getUserAllActivePosteByUserId(UUID id) {
+        UtilisateurEntity entity = getUserEntityById(id);
+        return getAllActiveAffectations(entity)
+                .stream()
+                .map(aff -> PosteDto.fromEntity(aff.getPoste()))
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public Set<PosteDto> getUserAllPostByUserId(UUID id) {
+        UtilisateurEntity entity = getUserEntityById(id);
+        return getAllAffectations(entity)
+                .stream()
+                .map(aff -> PosteDto.fromEntity(aff.getPoste()))
+                .collect(Collectors.toSet());
+    }
+
+    private Set<AffectationPosteEntity> getAllAffectations(UtilisateurEntity entity) {
+        return affectationPosteRepository.findByUtilisateurId(entity.getId())
+                .stream().collect(Collectors.toSet());
+    }
+
+    private Set<AffectationPosteEntity> getAllActiveAffectations(UtilisateurEntity entity){
+        final LocalDate today = LocalDate.now();
+        return getAllAffectations(entity)
+                .stream()
+                .filter(affectationPosteEntity -> Objects.equals(affectationPosteEntity.getStatut(), StatutAffectation.ACTIF))
+                .filter(aff -> {
+                    boolean dateDebutOk = aff.getDateDebut() == null || !aff.getDateDebut().isAfter(today);
+                    boolean dateFinOk = aff.getDateFin() == null || !aff.getDateFin().isBefore(today);
+                    if (dateDebutOk && dateFinOk && aff.getPoste() != null && aff.getPoste().getPermissions() != null) {
+                        return true;
+                    }
+                    return false;
+                })
+                .collect(Collectors.toSet());
+    }
+
     /**
      * Résout dynamiquement les permissions d'un utilisateur SODEPA :
      * 1. Exceptions racines : admin_maker et admin_checker possèdent des permissions directes et ne sont pas des employés.
@@ -73,18 +118,12 @@ public class UserManagementEngine implements UserManagementEnginePort {
         }
 
         Set<Permissions> permissions = new HashSet<>();
-        LocalDate today = LocalDate.now();
         Instant now = Instant.now();
 
         // 1. Affectations de postes actives
-        List<AffectationPosteEntity> affectations = affectationPosteRepository.findByUtilisateurIdAndStatut(
-                entity.getId(), StatutAffectation.ACTIF);
+        Set<AffectationPosteEntity> affectations = getAllActiveAffectations(entity);
         for (AffectationPosteEntity aff : affectations) {
-            boolean dateDebutOk = aff.getDateDebut() == null || !aff.getDateDebut().isAfter(today);
-            boolean dateFinOk = aff.getDateFin() == null || !aff.getDateFin().isBefore(today);
-            if (dateDebutOk && dateFinOk && aff.getPoste() != null && aff.getPoste().getPermissions() != null) {
-                permissions.addAll(aff.getPoste().getPermissions());
-            }
+            permissions.addAll(aff.getPoste().getPermissions());
         }
 
         // 2. Délégations actives (en tant que délégataire)

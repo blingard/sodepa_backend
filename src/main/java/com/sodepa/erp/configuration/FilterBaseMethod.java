@@ -1,8 +1,6 @@
 package com.sodepa.erp.configuration;
 
-import com.sodepa.erp.share.CurrentUserAuthenticationToken;
-import com.sodepa.erp.share.GlobalConstants;
-import com.sodepa.erp.share.UserData;
+import com.sodepa.erp.share.*;
 import com.sodepa.erp.utils.UserManagementEnginePort;
 import com.sodepa.erp.utils.UserOutput;
 import lombok.RequiredArgsConstructor;
@@ -75,11 +73,15 @@ public class FilterBaseMethod {
      */
     private UserData extractUserData(Jwt jwt) {
         Map<String, Object> claims = jwt.getClaims();
-        String userId = claims.get("USER_ID") != null
-                ? claims.get("USER_ID").toString()
+        String userId = claims.get(GlobalConstants.USER_ID) != null
+                ? claims.get(GlobalConstants.USER_ID).toString()
                 : null;
         assert userId != null;
         UserOutput userOutput = userManagementEnginePort.getUserById(UUID.fromString(userId));
+        Set<PosteDto> postes = userManagementEnginePort.getUserAllActivePosteByUserId(UUID.fromString(userId));
+        Set<PosteData> posteData = postes.stream()
+                .map(PosteData::fromDto)
+                .collect(Collectors.toSet());
         return new UserData(
                 userOutput.username(),
                 userOutput.nom()+" "+userOutput.prenom(),
@@ -89,7 +91,8 @@ public class FilterBaseMethod {
                 userOutput.permissions(),
                 getPrincipalFromJwt(jwt, "sid"),
                 jwt.getTokenValue(),
-                jwt.getSubject()
+                jwt.getSubject(),
+                posteData
         );
     }
 

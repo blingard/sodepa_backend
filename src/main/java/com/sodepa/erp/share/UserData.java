@@ -3,6 +3,7 @@ package com.sodepa.erp.share;
 import com.sodepa.erp.utils.Permissions;
 import lombok.Builder;
 
+import java.util.Collections;
 import java.util.Set;
 
 @Builder
@@ -21,7 +22,19 @@ public record UserData(
      * `userId` ci-dessus est la clé métier, les deux ne sont pas
      * interchangeables.
      */
-    String iamId
+    String iamId,
+    Set<PosteData> PosteData
 ) {
-
+    public UserData(String username, String name, String userId, Set<String> phoneNumbers, String email, Set<Permissions> permissions, String sessionId, String jwtToken, String iamId, Set<PosteData> PosteData) {
+        this.username = username;
+        this.name = name;
+        this.userId = userId;
+        this.phoneNumbers = phoneNumbers;
+        this.email = email;
+        this.permissions = permissions;
+        this.sessionId = sessionId;
+        this.jwtToken = jwtToken;
+        this.iamId = iamId;
+        this.PosteData = PosteData;
+    }
 }
