@@ -1,6 +1,7 @@
 package com.sodepa.erp.workflow.presentation.requests;
 
 import com.sodepa.erp.workflow.infrastructure.entities.ActionDepassementSla;
+import com.sodepa.erp.workflow.infrastructure.entities.ModeActionValidationEtape;
 import com.sodepa.erp.workflow.infrastructure.entities.PolitiqueValidation;
 import com.sodepa.erp.workflow.infrastructure.entities.StrategieAssignation;
 import com.sodepa.erp.workflow.infrastructure.entities.TypeEtapeWorkflow;
@@ -127,6 +128,40 @@ public class CreerWorkflowDefinitionRequest {
      * Champ delaiSlaHeures : delai sla heures utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
      */
         private Integer delaiSlaHeures;
+        /**
+         * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
+         */
+        @Builder.Default
+        private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+
+        /**
+         * Autorisation d'ajouter un document justificatif (GED).
+         */
+        @Builder.Default
+        private Boolean autoriserAjoutFichier = true;
+
+        /**
+         * Obligation de joindre un fichier pour valider.
+         */
+        @Builder.Default
+        private Boolean fichierValidationObligatoire = false;
+
+        /**
+         * Autorisation de modifier des champs du dossier.
+         */
+        @Builder.Default
+        private Boolean autoriserModificationChamps = true;
+
+        /**
+         * Obligation de modifier des champs du dossier pour valider.
+         */
+        @Builder.Default
+        private Boolean modificationChampsObligatoire = false;
+
+        /**
+         * Liste des champs modifiables autorisés séparés par des virgules.
+         */
+        private String champsModifiablesAutorises;
 
     /**
      * Champ actionDepassementSla : action depassement sla utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -192,6 +227,40 @@ public class CreerWorkflowDefinitionRequest {
      * Champ delaiSlaHeures : delai sla heures utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
      */
         private Integer delaiSlaHeures;
+        /**
+         * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
+         */
+        @Builder.Default
+        private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+
+        /**
+         * Autorisation d'ajouter un document justificatif (GED).
+         */
+        @Builder.Default
+        private Boolean autoriserAjoutFichier = true;
+
+        /**
+         * Obligation de joindre un fichier pour valider.
+         */
+        @Builder.Default
+        private Boolean fichierValidationObligatoire = false;
+
+        /**
+         * Autorisation de modifier des champs du dossier.
+         */
+        @Builder.Default
+        private Boolean autoriserModificationChamps = true;
+
+        /**
+         * Obligation de modifier des champs du dossier pour valider.
+         */
+        @Builder.Default
+        private Boolean modificationChampsObligatoire = false;
+
+        /**
+         * Liste des champs modifiables autorisés séparés par des virgules.
+         */
+        private String champsModifiablesAutorises;
 
     /**
      * Champ actionDepassementSla : action depassement sla utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.

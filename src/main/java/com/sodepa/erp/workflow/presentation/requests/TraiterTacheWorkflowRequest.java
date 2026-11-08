@@ -32,4 +32,19 @@ public class TraiterTacheWorkflowRequest {
      * Identifiant de l'utilisateur effectuant l'action (optionnel si déduit du contexte de sécurité).
      */
     private UUID acteurId;
+
+    /**
+     * Identifiant du document GED joint lors de la validation (si requis ou fourni).
+     */
+    private UUID documentGedId;
+
+    /**
+     * Nom ou URI de la pièce jointe téléversée.
+     */
+    private String pieceJointeUri;
+
+    /**
+     * Données JSON représentant les champs modifiés ou enrichis lors de la validation.
+     */
+    private String champsModifiesJson;
 }

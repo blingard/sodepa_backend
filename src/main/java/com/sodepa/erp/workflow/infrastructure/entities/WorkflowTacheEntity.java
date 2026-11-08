@@ -126,4 +126,28 @@ public class WorkflowTacheEntity {
      */
     @Column(name = "date_decision")
     private Instant dateDecision;
+
+    /**
+     * Identifiant du document justificatif (GED) téléversé lors de la validation.
+     */
+    @Column(name = "document_ged_id")
+    private UUID documentGedId;
+
+    /**
+     * URI ou chemin d'accès au document justificatif joint.
+     */
+    @Column(name = "piece_jointe_uri", length = 500)
+    private String pieceJointeUri;
+
+    /**
+     * Snapshot JSON des valeurs des champs avant modification.
+     */
+    @Column(name = "valeurs_avant_modification_json", columnDefinition = "TEXT")
+    private String valeursAvantModificationJson;
+
+    /**
+     * Données JSON des champs modifiés / enrichis lors de la validation.
+     */
+    @Column(name = "champs_modifies_json", columnDefinition = "TEXT")
+    private String champsModifiesJson;
 }

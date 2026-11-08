@@ -98,6 +98,23 @@ public class WorkflowDefinitionResponse {
 
         /** Délai limite de traitement alloué en heures (SLA). */
         private Integer delaiSlaHeures;
+        /** Mode d'action exigé ou permis pour la validation. */
+        private String modeActionValidation;
+
+        /** Autorisation d'ajouter un document justificatif. */
+        private Boolean autoriserAjoutFichier;
+
+        /** Obligation de joindre un fichier pour valider. */
+        private Boolean fichierValidationObligatoire;
+
+        /** Autorisation de modifier des champs. */
+        private Boolean autoriserModificationChamps;
+
+        /** Obligation de modifier des champs. */
+        private Boolean modificationChampsObligatoire;
+
+        /** Liste des champs autorisés à la modification. */
+        private String champsModifiablesAutorises;
 
         /** Indicateur d'étape active ou suspendue. */
         private boolean actif;
@@ -154,6 +171,23 @@ public class WorkflowDefinitionResponse {
 
         /** Délai SLA spécifique en heures pour cet acteur. */
         private Integer delaiSlaHeures;
+        /** Mode d'action exigé ou permis pour la validation. */
+        private String modeActionValidation;
+
+        /** Autorisation d'ajouter un document justificatif. */
+        private Boolean autoriserAjoutFichier;
+
+        /** Obligation de joindre un fichier pour valider. */
+        private Boolean fichierValidationObligatoire;
+
+        /** Autorisation de modifier des champs. */
+        private Boolean autoriserModificationChamps;
+
+        /** Obligation de modifier des champs. */
+        private Boolean modificationChampsObligatoire;
+
+        /** Liste des champs autorisés à la modification. */
+        private String champsModifiablesAutorises;
 
         /** Indicateur si ce validateur est actif ou désactivé. */
         private boolean actif;

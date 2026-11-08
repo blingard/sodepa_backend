@@ -478,15 +478,38 @@ public class WorkflowService {
             throw new SecurityException("Action interdite : vous n'êtes pas le validateur assigné à cette tâche.");
         }
 
+        WorkflowEtapeDefinitionEntity etapeCourante = tache.getEtapeDefinition();
+
+        // Contrôle de conformité de l'action requise par le validateur à cette étape
+        if (request.getDecision() == DecisionWorkflow.APPROUVE && etapeCourante != null) {
+            ModeActionValidationEtape mode = etapeCourante.getModeActionValidation() != null
+                    ? etapeCourante.getModeActionValidation()
+                    : ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+
+            boolean fichierFourni = request.getDocumentGedId() != null || (request.getPieceJointeUri() != null && !request.getPieceJointeUri().isBlank());
+            boolean champsFournis = request.getChampsModifiesJson() != null && !request.getChampsModifiesJson().isBlank() && !request.getChampsModifiesJson().equals("{}");
+
+            boolean doitFournirFichier = (mode == ModeActionValidationEtape.AJOUT_FICHIER_OBLIGATOIRE || mode == ModeActionValidationEtape.FICHIER_ET_CHAMPS_OBLIGATOIRES || Boolean.TRUE.equals(etapeCourante.getFichierValidationObligatoire()));
+            boolean doitModifierChamps = (mode == ModeActionValidationEtape.MODIFICATION_CHAMPS_OBLIGATOIRE || mode == ModeActionValidationEtape.FICHIER_ET_CHAMPS_OBLIGATOIRES || Boolean.TRUE.equals(etapeCourante.getModificationChampsObligatoire()));
+
+            if (doitFournirFichier && !fichierFourni) {
+                throw new IllegalArgumentException("Action requise non satisfaite : L'étape '" + etapeCourante.getIntitule() + "' impose obligatoirement l'ajout d'une pièce justificative.");
+            }
+            if (doitModifierChamps && !champsFournis) {
+                throw new IllegalArgumentException("Action requise non satisfaite : L'étape '" + etapeCourante.getIntitule() + "' impose obligatoirement la modification de champs autorisés.");
+            }
+        }
+
         tache.setDecision(request.getDecision());
         tache.setCommentaire(request.getCommentaire());
         tache.setDateDecision(Instant.now());
+        tache.setDocumentGedId(request.getDocumentGedId());
+        tache.setPieceJointeUri(request.getPieceJointeUri());
+        tache.setChampsModifiesJson(request.getChampsModifiesJson());
         tache.setStatut(request.getDecision() == DecisionWorkflow.REJETE ? StatutWorkflowTache.REJETEE : StatutWorkflowTache.APPROUVEE);
         workflowTacheRepository.save(tache);
 
         WorkflowInstanceEntity instance = tache.getWorkflowInstance();
-        WorkflowEtapeDefinitionEntity etapeCourante = tache.getEtapeDefinition();
-
         ActionWorkflowAudit actionAudit = switch (request.getDecision()) {
             case APPROUVE -> ActionWorkflowAudit.APPROBATION;
             case REJETE -> ActionWorkflowAudit.REJET;
@@ -856,6 +879,15 @@ public class WorkflowService {
                 .dateCreation(t.getDateCreation())
                 .dateEcheance(t.getDateEcheance())
                 .dateDecision(t.getDateDecision())
+                .documentGedId(t.getDocumentGedId())
+                .pieceJointeUri(t.getPieceJointeUri())
+                .champsModifiesJson(t.getChampsModifiesJson())
+                .modeActionValidation(t.getEtapeDefinition() != null && t.getEtapeDefinition().getModeActionValidation() != null ? t.getEtapeDefinition().getModeActionValidation().name() : null)
+                .autoriserAjoutFichier(t.getEtapeDefinition() != null ? t.getEtapeDefinition().getAutoriserAjoutFichier() : null)
+                .fichierValidationObligatoire(t.getEtapeDefinition() != null ? t.getEtapeDefinition().getFichierValidationObligatoire() : null)
+                .autoriserModificationChamps(t.getEtapeDefinition() != null ? t.getEtapeDefinition().getAutoriserModificationChamps() : null)
+                .modificationChampsObligatoire(t.getEtapeDefinition() != null ? t.getEtapeDefinition().getModificationChampsObligatoire() : null)
+                .champsModifiablesAutorises(t.getEtapeDefinition() != null ? t.getEtapeDefinition().getChampsModifiablesAutorises() : null)
                 .build();
     }
 
@@ -915,6 +947,12 @@ public class WorkflowService {
                         .valeurAssignation(etapeReq.getValeurAssignation())
                         .delaiSlaHeures(etapeReq.getDelaiSlaHeures())
                         .actionDepassementSla(etapeReq.getActionDepassementSla() != null ? etapeReq.getActionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
+                        .modeActionValidation(etapeReq.getModeActionValidation() != null ? etapeReq.getModeActionValidation() : ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS)
+                        .autoriserAjoutFichier(etapeReq.getAutoriserAjoutFichier() != null ? etapeReq.getAutoriserAjoutFichier() : true)
+                        .fichierValidationObligatoire(etapeReq.getFichierValidationObligatoire() != null ? etapeReq.getFichierValidationObligatoire() : false)
+                        .autoriserModificationChamps(etapeReq.getAutoriserModificationChamps() != null ? etapeReq.getAutoriserModificationChamps() : true)
+                        .modificationChampsObligatoire(etapeReq.getModificationChampsObligatoire() != null ? etapeReq.getModificationChampsObligatoire() : false)
+                        .champsModifiablesAutorises(etapeReq.getChampsModifiablesAutorises())
                         .actif(etapeReq.getActif() != null ? etapeReq.getActif() : true)
                         .build();
 
@@ -1000,6 +1038,12 @@ public class WorkflowService {
                         .valeurAssignation(etapeReq.getValeurAssignation())
                         .delaiSlaHeures(etapeReq.getDelaiSlaHeures())
                         .actionDepassementSla(etapeReq.getActionDepassementSla() != null ? etapeReq.getActionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
+                        .modeActionValidation(etapeReq.getModeActionValidation() != null ? etapeReq.getModeActionValidation() : ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS)
+                        .autoriserAjoutFichier(etapeReq.getAutoriserAjoutFichier() != null ? etapeReq.getAutoriserAjoutFichier() : true)
+                        .fichierValidationObligatoire(etapeReq.getFichierValidationObligatoire() != null ? etapeReq.getFichierValidationObligatoire() : false)
+                        .autoriserModificationChamps(etapeReq.getAutoriserModificationChamps() != null ? etapeReq.getAutoriserModificationChamps() : true)
+                        .modificationChampsObligatoire(etapeReq.getModificationChampsObligatoire() != null ? etapeReq.getModificationChampsObligatoire() : false)
+                        .champsModifiablesAutorises(etapeReq.getChampsModifiablesAutorises())
                         .actif(etapeReq.getActif() != null ? etapeReq.getActif() : true)
                         .build();
 
@@ -1247,6 +1291,12 @@ public class WorkflowService {
                             .strategieAssignation(et.getStrategieAssignation() != null ? et.getStrategieAssignation().name() : null)
                             .valeurAssignation(et.getValeurAssignation())
                             .delaiSlaHeures(et.getDelaiSlaHeures())
+                            .modeActionValidation(et.getModeActionValidation() != null ? et.getModeActionValidation().name() : ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS.name())
+                            .autoriserAjoutFichier(et.getAutoriserAjoutFichier())
+                            .fichierValidationObligatoire(et.getFichierValidationObligatoire())
+                            .autoriserModificationChamps(et.getAutoriserModificationChamps())
+                            .modificationChampsObligatoire(et.getModificationChampsObligatoire())
+                            .champsModifiablesAutorises(et.getChampsModifiablesAutorises())
                             .actif(et.getActif() != null ? et.getActif() : true)
                             .acteurs(acteursDto)
                             .build();

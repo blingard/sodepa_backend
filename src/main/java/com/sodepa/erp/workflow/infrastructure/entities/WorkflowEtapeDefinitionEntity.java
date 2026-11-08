@@ -75,6 +75,49 @@ public class WorkflowEtapeDefinitionEntity {
     private TypeEtapeWorkflow typeEtape;
 
     /**
+     * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
+     * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_action_validation", length = 40)
+    @Builder.Default
+    private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+
+    /**
+     * Autorise ou interdit le téléversement d'un document justificatif (GED) lors de la validation.
+     */
+    @Column(name = "autoriser_ajout_fichier")
+    @Builder.Default
+    private Boolean autoriserAjoutFichier = true;
+
+    /**
+     * Rend obligatoire le téléversement d'un fichier pour pouvoir soumettre la validation.
+     */
+    @Column(name = "fichier_validation_obligatoire")
+    @Builder.Default
+    private Boolean fichierValidationObligatoire = false;
+
+    /**
+     * Autorise la mise à jour des valeurs de champs du dossier lors de la validation.
+     */
+    @Column(name = "autoriser_modification_champs")
+    @Builder.Default
+    private Boolean autoriserModificationChamps = true;
+
+    /**
+     * Rend obligatoire la mise à jour d'au moins un champ du dossier pour valider l'étape.
+     */
+    @Column(name = "modification_champs_obligatoire")
+    @Builder.Default
+    private Boolean modificationChampsObligatoire = false;
+
+    /**
+     * Liste des clés ou libellés de champs autorisés à la modification (séparés par des virgules).
+     */
+    @Column(name = "champs_modifiables_autorises", length = 500)
+    private String champsModifiablesAutorises;
+
+    /**
      * Règle de consensus lorsque plusieurs valideurs sont potentiellement éligibles sur cette étape.
      */
     @Enumerated(EnumType.STRING)
