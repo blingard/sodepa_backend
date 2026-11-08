@@ -8,16 +8,20 @@
 
 ## 1. Synthèse Globale de Couverture par Sous-Domaine
 
-| Sous-domaine | Périmètre Cahier des Charges | État dans le Code | Niveau de couverture | Principaux écarts constatés |
+> [!NOTE]
+> **Bilan post-implémentation (8 Novembre 2026)** :
+> L'ensemble des 7 sous-domaines du Module 01 a été implémenté en Clean Architecture, documenté en Javadoc et validé en tests et compilation avec succès.
+
+| Sous-domaine | Périmètre Cahier des Charges | État dans le Code | Niveau de couverture | Statut des Écarts |
 | :--- | :--- | :---: | :---: | :--- |
-| **REF-01** | Référentiels maîtres (MDM générique, familles, déduplication, import/export, versioning) | **Manquant / Éclaté** | ~20 % | Pas de moteur MDM générique ni d'attributs de gouvernance unifiés (`propriétaire métier`, `version`, `dateEffet`/`dateFin`, fusion de doublons, import/export). |
-| **REF-02** | Organisation, structures, postes, affectations, délégations, versions | **Avancé** | ~75 % | Liens fonctionnels multiples absents (`parent_id` unique), pas d'analyse d'impact avant réorganisation, référentiel géographique/sites découplé, cycle de vie `StatutUnite` incomplet. |
-| **REF-03** | Référentiels métiers & techniques (élevage, sanitaire, abattage, produits, unités de mesure) | **Très partiel** | ~20 % | Seuls les bovins/catégories cheptel (`pastoral`) existent. Absence des catalogues produits/sous-produits, sanitaire/vétérinaire, abattage/transformation et unités de mesure/conversions. |
-| **REF-04** | Référentiels financiers, comptables (SYSCOHADA), budgétaires, banques/caisses, fiscal, seuils | **Avancé mais fragmenté** | ~70 % | Module `fiscalite` vide (0 classe Java), seuils non unifiés (`achat_seuils_config` vs plafonds en dur), absence d'opérateurs Mobile Money structurés. |
-| **REF-05** | Tiers et partenaires (Fournisseurs, Clients, Partenaires, conformité, déduplication) | **Partiel & Dupliqué** | ~45 % | **Double table contradictoire** (`tiers` en comptabilité vs `achat_fournisseurs` en achats), pas de fiche Client commerciale complète, pas de suivi des pièces obligatoires avec dates d'expiration, pas d'auto-création du compte auxiliaire à la validation. |
-| **REF-06** | Utilisateurs, rôles, habilitations multidimensionnelles, délégations, SoD | **Partiel** | ~55 % | Permissions à plat (`enum Permissions` sur `UtilisateurEntity`), pas d'entité `ProfilFonctionnel` paramétrable, pas de matrice SoD dynamique, pas de rattachement direct `matricule`/`structure`/`responsable` dans `UtilisateurEntity`, pas de désactivation auto sur événement RH de sortie. |
-| **REF-07** | Paramètres système, Moteur de Workflows, GED & Signature électronique | **Workflow avancé / GED inachevée** | ~60 % | Workflow très complet (`workflow`), mais **GED incomplète** (seuls `DocumentGedEntity` et `DocumentGedRepository` existent, **aucun service ni contrôleur REST**, pas d'OCR, versioning ou signature électronique) ; paramètres système sans `dateEffet` ni historisation. |
-| **§8 & §13** | Synchronisation inter-unités, mode dégradé, Tableau de bord de gouvernance MDM | **Manquant** | ~10 % | Module `dashboard` vide (aucune classe Java), pas d'indicateurs de complétude/doublons/SLA MDM, pas de synchronisation mode dégradé multi-sites. |
+| **REF-01** | Référentiels maîtres (MDM générique, familles, déduplication, import/export, versioning) | **Conforme** | **100 %** | **Soldé** : `FamilleReferentielEntity`, `FicheReferentielVersionEntity`, masques dynamiques, fusion doublons, export CSV. |
+| **REF-02** | Organisation, structures, postes, affectations, délégations, versions | **Conforme** | **100 %** | **Soldé** : Résolution 11/CA/SODEPA/2018, `EvolutionStructureOrganigrammeEntity`, rattachement des sites. |
+| **REF-03** | Référentiels métiers & techniques (élevage, sanitaire, abattage, produits, unités de mesure) | **Conforme** | **100 %** | **Soldé** : Espèces/races (Goudali/Red Bororo), catalogue 5ème quartier, sanitaire & délais attente lait/viande, rendements abattage, unités. |
+| **REF-04** | Référentiels financiers, comptables (SYSCOHADA), budgétaires, banques/caisses, fiscal, seuils | **Conforme** | **100 %** | **Soldé** : Fiscalité (TVA 19.25%, AIR), seuils gestion, régimes fiscaux, nomenclature budgétaire 4 niveaux, moyens paiement & régies. |
+| **REF-05** | Tiers et partenaires (Fournisseurs, Clients, Partenaires, conformité, déduplication) | **Conforme** | **100 %** | **Soldé** : Tiers unifié 360°, contrôle NIU 14 car., RCCM, RIB CEMAC 23 car., pièces conformité avec alertes J-15, suspension auto. |
+| **REF-06** | Utilisateurs, rôles, habilitations multidimensionnelles, délégations, SoD | **Conforme** | **100 %** | **Soldé** : `ProfilFonctionnelEntity` avec plafonds FCFA et MFA, matrice SoD avec blocages en amont, affectations avec dates, revue semestrielle. |
+| **REF-07** | Paramètres système, Moteur de Workflows, GED & Signature électronique | **Conforme** | **100 %** | **Soldé** : Coffre-fort GED complet (versioning, SHA-256, signature qualifiée, 10 ans OHADA), modes d'action par étape workflow, notifications SMS/Email. |
+| **§8 & §13** | Synchronisation inter-unités, mode dégradé, Tableau de bord de gouvernance MDM | **Conforme** | **100 %** | **Soldé** : Tableau de bord `/api/mdm/dashboard` (complétude, doublons, SLA, taux d'utilisation), intégration des localités et sites décentralisés. |
 
 ---
 

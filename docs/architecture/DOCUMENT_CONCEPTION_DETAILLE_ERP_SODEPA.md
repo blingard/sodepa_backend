@@ -345,7 +345,7 @@ Module métier cœur de la SODEPA ([`CheptelService.java`](file:///c:/Users/GLC/
 
 ---
 
-## 4. Modèle Physique de Données Global (19 Changelogs Liquibase)
+## 4. Modèle Physique de Données Global (24 Changelogs Liquibase)
 
 ### 4.1 Vue d'Ensemble des Relations Clés (MCD Global)
 
@@ -380,7 +380,7 @@ erDiagram
     TRESORERIE_REGIES ||--o{ TRESORERIE_REGIE_DEPENSES : "decaisse"
 ```
 
-### 4.2 Cartographie Exhaustive des 19 Changelogs Liquibase
+### 4.2 Cartographie Exhaustive des 24 Changelogs Liquibase
 
 | Changelog | Domaine Cible | Tables Créées / Enrichies & Données de Référence |
 | :---: | :--- | :--- |
@@ -403,12 +403,17 @@ erDiagram
 | **[`17.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-17.0.yaml)** | Paramètres Système | `app_parametres_systeme` (seed 25 paramètres fiscaux, sociaux, pastoraux et seuils) |
 | **[`18.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-18.0.yaml)** | Permissions par Poste | `poste_permissions` (RBAC dynamique lié au poste dans l'organigramme) |
 | **[`19.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-19.0.yaml)** | Liaison RH-User & Dérogations | Colonne `utilisateur_id` unique sur `rh_employes`, table `derogations_permissions` |
+| **[`20.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-20.0.yaml)** | Fiscalité, Budget & Exercices (REF-04) | `ref_fiscalite_taxes` (TVA 19.25%, AIR), `ref_fiscalite_regimes`, `ref_seuils_gestion`, `compta_exercices`, `compta_periodes_mensuelles`, `compta_schemas_ecritures`, `budget_programmes`, `budget_activites`, `budget_sources_financement`, `budget_natures_depenses`, `tresorerie_moyens_paiement` |
+| **[`21.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-21.0.yaml)** | Tiers Unifiés, IAM SoD & GED (REF-05/06/07) | `tiers_pieces_conformite`, `iam_profils_fonctionnels`, `iam_profil_permissions`, `iam_affectations_profils`, `iam_matrice_sod`, colonnes fiscales sur `tiers`, colonnes IAM/MFA sur `utilisateurs`, colonnes versioning/signature sur `ged_documents` |
+| **[`22.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-22.0.yaml)** | Métiers, Pastoral & Géographie (REF-03) | `ref_geo_localites`, `ref_sites_exploitation`, `ref_zoo_especes`, `ref_zoo_races` (Goudali, Red Bororo), `ref_catalogue_produits` (5ème quartier), `ref_sanitaire_veterinaire` (délais attente lait/viande), `ref_abattage_transformation`, `ref_unites_mesure`, `ref_conversion_unites` |
+| **[`23.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-23.0.yaml)** | Socle MDM & Structures CA 2018 (REF-01/02) | `ref_mdm_familles` (masques dynamiques), `ref_mdm_fiches_versions` (cycle de vie, audit avant/après), `ref_organigramme_evolutions` (résolution 11/CA/SODEPA/2018) |
+| **[`24.0`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/db/changelog/db-changelog-24.0.yaml)** | Notifications & Validation Workflow | `sys_notifications` (SMS & E-mail), modes d'action de validation par étape sur `workflows_etapes_definitions` (`ModeActionValidationEtape`) et enrichissements sur `workflows_taches` |
 
 ---
 
-## 5. Séquence d'Initialisation Déterministe au Démarrage (Les 5 Seeders)
+## 5. Séquence d'Initialisation Déterministe au Démarrage (Les 8 Seeders)
 
-Lorsque `sodepa.seed.enabled=true` dans [`application.yml`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/application.yml), l'application exécute une chaîne de 5 `CommandLineRunner` ordonnés via `@Order` :
+Lorsque `sodepa.seed.enabled=true` dans [`application.yml`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/application.yml), l'application exécute une chaîne de 8 `CommandLineRunner` ordonnés via `@Order` :
 
 | Ordre | Classe Seeder | Rôle d'Initialisation |
 | :---: | :--- | :--- |
@@ -417,6 +422,9 @@ Lorsque `sodepa.seed.enabled=true` dans [`application.yml`](file:///c:/Users/GLC
 | **`@Order(3)`** | [`CompteSeeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/comptabilite/generale/infrastructure/adapter/CompteSeeder.java) | Importe le Plan Comptable SYSCOHADA complet depuis [`planComptableOHADA.json`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/resources/planComptableOHADA.json). |
 | **`@Order(4)`** | [`TestDataSeeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/configuration/TestDataSeeder.java) | Génère les journaux comptables, immobilisations, axes et sections analytiques, plans budgétaires et 10 exercices d'historique comptable et financier (2017–2026). |
 | **`@Order(5)`** | [`WorkflowSeeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/workflow/infrastructure/seeder/WorkflowSeeder.java) | Initialise **35+ opérations métiers SODEPA** (`workflows_metiers`) et **70 circuits de workflows** (`workflows_definitions`) multi-étapes reliés aux unités organisationnelles et employés réels. |
+| **`@Order(6)`** | [`Ref04FiscaliteBudgetSeeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/fiscalite/infrastructure/seeder/Ref04FiscaliteBudgetSeeder.java) | Initialise les taxes officielles (TVA 19.25%, précomptes AIR 2.2% à 15%), régimes fiscaux (Réel, Simplifié, Synthétique), table des seuils de passation de marchés et nomenclature budgétaire par programmes. |
+| **`@Order(7)`** | [`Ref05Ref06Ref07Seeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/authorisation/infrastructure/seeder/Ref05Ref06Ref07Seeder.java) | Initialise les profils fonctionnels avec plafonds d'engagement FCFA et contrainte MFA, la matrice de séparation des tâches SoD (incompatibilités bloquantes) et le coffre-fort documentaire GED. |
+| **`@Order(8)`** | [`Ref03TechniqueEtGeoSeeder.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/pastoral/infrastructure/seeder/Ref03TechniqueEtGeoSeeder.java) | Initialise les espèces et races pastorales camerounaises (Goudali, Red Bororo), catalogue 5ème quartier, protocoles vétérinaires avec délais d'attente (viande/lait), barèmes d'abattage et unités de mesure. |
 
 ---
 
