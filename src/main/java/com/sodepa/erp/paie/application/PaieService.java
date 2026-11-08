@@ -34,6 +34,9 @@ import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `PaieService` au sein de la SODEPA.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

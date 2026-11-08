@@ -7,6 +7,9 @@ import lombok.*;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `DerogationPermissionResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

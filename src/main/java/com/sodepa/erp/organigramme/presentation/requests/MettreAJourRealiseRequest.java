@@ -6,6 +6,10 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `MettreAJourRealiseRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record MettreAJourRealiseRequest(
         @NotNull BigDecimal valeurRealisee
 ) {

@@ -23,6 +23,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `MakerCheckerEngineAdapter` du système ERP SODEPA.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

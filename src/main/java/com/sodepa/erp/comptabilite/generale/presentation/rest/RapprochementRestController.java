@@ -23,6 +23,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `RapprochementRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping("/api/comptabilite/rapprochement")
 @RequiredArgsConstructor

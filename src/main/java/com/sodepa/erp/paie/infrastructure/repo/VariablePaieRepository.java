@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `VariablePaieRepository`.
+ */
 @Repository
 public interface VariablePaieRepository extends JpaRepository<VariablePaieEntity, UUID> {
     List<VariablePaieEntity> findByPeriodeId(UUID periodeId);

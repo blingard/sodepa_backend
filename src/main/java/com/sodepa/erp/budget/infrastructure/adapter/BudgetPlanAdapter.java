@@ -46,6 +46,9 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `BudgetPlanAdapter` du système ERP SODEPA.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

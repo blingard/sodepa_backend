@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `PastoralBovinRepository`.
+ */
 @Repository
 public interface PastoralBovinRepository extends JpaRepository<PastoralBovinEntity, UUID> {
     Optional<PastoralBovinEntity> findByMatriculeBoucle(String matriculeBoucle);

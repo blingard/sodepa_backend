@@ -12,6 +12,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `EmployeResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

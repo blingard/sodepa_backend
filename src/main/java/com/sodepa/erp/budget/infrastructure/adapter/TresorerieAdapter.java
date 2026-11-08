@@ -27,6 +27,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+/**
+ * Composant applicatif `TresorerieAdapter` du système ERP SODEPA.
+ */
 @Component
 @RequiredArgsConstructor
 public class TresorerieAdapter {

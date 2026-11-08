@@ -7,6 +7,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.GrantedAuthority;
 
 
+/**
+ * Composant applicatif `CurrentUserAuthenticationToken` du système ERP SODEPA.
+ */
 public class CurrentUserAuthenticationToken extends UsernamePasswordAuthenticationToken {
     private Optional<UserData> userData;
 

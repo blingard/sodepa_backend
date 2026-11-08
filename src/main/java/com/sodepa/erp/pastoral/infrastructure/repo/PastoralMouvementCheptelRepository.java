@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `PastoralMouvementCheptelRepository`.
+ */
 @Repository
 public interface PastoralMouvementCheptelRepository extends JpaRepository<PastoralMouvementCheptelEntity, UUID> {
     Optional<PastoralMouvementCheptelEntity> findByNumeroMouvement(String numeroMouvement);

@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `ClotureRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping("/api/comptabilite/cloture")
 @RequiredArgsConstructor

@@ -8,9 +8,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour les fournisseurs du module Achats.
+ */
 @Repository
 public interface FournisseurRepository extends JpaRepository<FournisseurEntity, UUID> {
+
     Optional<FournisseurEntity> findByCode(String code);
+
     List<FournisseurEntity> findByAgreeSodepaTrueAndActifTrue();
+
     List<FournisseurEntity> findByActifTrue();
+
+    boolean existsByNumeroContribuableIgnoreCase(String numeroContribuable);
 }

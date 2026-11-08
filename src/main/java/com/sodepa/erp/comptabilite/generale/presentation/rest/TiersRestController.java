@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `TiersRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping("/api/v1/caccounting/tiers")
 @RequiredArgsConstructor

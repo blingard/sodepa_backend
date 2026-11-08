@@ -14,6 +14,10 @@ import java.util.UUID;
 @Table(name = "rh_grille_salariale", uniqueConstraints = {
     @UniqueConstraint(name = "uq_grille_cat_echelon", columnNames = {"categorie", "echelon"})
 })
+/**
+ * Entité de persistance représentant `GrilleSalarialeEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,25 +25,46 @@ import java.util.UUID;
 @Builder
 public class GrilleSalarialeEntity {
 
+    /**
+     * Identifiant unique technique dans le cadre des opérations SODEPA.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /**
+     * Catégorie de rattachement administratif ou technique dans le cadre des opérations SODEPA.
+     */
     @Column(nullable = false)
     private Integer categorie;
 
+    /**
+     * Champ echelon : echelon utilisé pour le pilotage et le suivi dans GrilleSalarialeEntity.
+     */
     @Column(nullable = false, length = 2)
     private String echelon;
 
+    /**
+     * Champ groupe : groupe utilisé pour le pilotage et le suivi dans GrilleSalarialeEntity.
+     */
     @Column(nullable = false)
     private Integer groupe;
 
+    /**
+     * Champ salaireBase : salaire base utilisé pour le pilotage et le suivi dans GrilleSalarialeEntity.
+     */
     @Column(name = "salaire_base", nullable = false, precision = 15, scale = 2)
     private BigDecimal salaireBase;
 
+    /**
+     * Taux ou pourcentage (taux horaire) applicable au calcul.
+     */
     @Column(name = "taux_horaire", precision = 10, scale = 2)
     private BigDecimal tauxHoraire;
 
+    /**
+     * Indicateur d'activation opérationnelle (true si actif, false si archivé/désactivé) dans le cadre des opérations SODEPA.
+     */
     @Column(nullable = false)
     @Builder.Default
     private Boolean actif = true;

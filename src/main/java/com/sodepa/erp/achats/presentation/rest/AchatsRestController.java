@@ -28,6 +28,10 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `AchatsRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping({"/api/achats", "/api/v1/achats"})
 @RequiredArgsConstructor

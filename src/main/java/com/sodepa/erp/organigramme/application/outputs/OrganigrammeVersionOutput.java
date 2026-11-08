@@ -7,6 +7,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `OrganigrammeVersionOutput` du système ERP SODEPA.
+ */
 @Builder
 public record OrganigrammeVersionOutput(
         UUID id,

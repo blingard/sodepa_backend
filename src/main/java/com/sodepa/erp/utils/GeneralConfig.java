@@ -6,6 +6,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Composant applicatif `GeneralConfig` du système ERP SODEPA.
+ */
 @Configuration
 public class GeneralConfig {
     @Bean

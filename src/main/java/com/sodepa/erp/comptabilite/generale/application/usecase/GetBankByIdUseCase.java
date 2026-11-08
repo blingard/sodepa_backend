@@ -10,6 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GetBankByIdUseCase` au sein de la SODEPA.
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor

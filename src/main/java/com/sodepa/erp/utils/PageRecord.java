@@ -5,6 +5,9 @@ import org.springframework.data.domain.Sort;
 
 import java.util.List;
 
+/**
+ * Composant applicatif `PageRecord` du système ERP SODEPA.
+ */
 @Builder
 public record PageRecord<T>(
         List<T> content,

@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `ReportingRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping("/api/comptabilite/reporting")
 @RequiredArgsConstructor

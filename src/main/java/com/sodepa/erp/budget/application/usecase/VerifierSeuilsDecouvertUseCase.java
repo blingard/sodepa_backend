@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `VerifierSeuilsDecouvertUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class VerifierSeuilsDecouvertUseCase implements UseCase<Void, List<OverdraftAlertOutput>> {

@@ -16,6 +16,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * Composant applicatif `WebConfig` du système ERP SODEPA.
+ */
 @Configuration
 @RequiredArgsConstructor
 @Slf4j

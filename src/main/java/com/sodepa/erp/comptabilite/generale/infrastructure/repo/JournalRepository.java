@@ -8,6 +8,9 @@ import java.util.UUID;
 
 import com.sodepa.erp.utils.CodeJournal;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `JournalRepository`.
+ */
 @Repository
 public interface JournalRepository extends JpaRepository<JournalEntity, UUID> {
     Optional<JournalEntity> findByCode(CodeJournal code);

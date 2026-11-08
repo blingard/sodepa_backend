@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GetGrandLivreUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class GetGrandLivreUseCase implements UseCase<GetGrandLivreInput, List<ReportingUseCase.GrandLivreAccount>> {

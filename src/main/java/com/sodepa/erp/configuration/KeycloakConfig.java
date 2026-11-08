@@ -6,6 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Composant applicatif `KeycloakConfig` du système ERP SODEPA.
+ */
 @Configuration
 public class KeycloakConfig {
 

@@ -46,6 +46,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `AchatsService` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

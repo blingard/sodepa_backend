@@ -17,17 +17,35 @@ import java.util.UUID;
 @Builder
 public class ModifierWorkflowMetierRequest {
 
+    /**
+     * Champ title : title utilisé pour le pilotage et le suivi dans ModifierWorkflowMetierRequest.
+     */
     @NotBlank
     private String title;
 
+    /**
+     * Description détaillée et informations contextuelles dans le cadre des opérations SODEPA.
+     */
     private String description;
 
+    /**
+     * Champ domain : domain utilisé pour le pilotage et le suivi dans ModifierWorkflowMetierRequest.
+     */
     @NotNull
     private WorkflowDomaine domain;
 
+    /**
+     * Indicateur booléen spécifiant si isTransversal est effectif ou applicable.
+     */
     private Boolean isTransversal;
 
+    /**
+     * Identifiant unique technique (UUID) de l'élément authorizedunit associé.
+     */
     private UUID authorizedUnitId;
 
+    /**
+     * Indicateur booléen spécifiant si isActive est effectif ou applicable.
+     */
     private Boolean isActive;
 }

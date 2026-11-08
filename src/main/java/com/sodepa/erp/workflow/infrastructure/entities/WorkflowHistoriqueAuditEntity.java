@@ -19,6 +19,10 @@ import java.util.UUID;
     @Index(name = "idx_wf_audit_inst", columnList = "workflow_instance_id"),
     @Index(name = "idx_wf_audit_horodate", columnList = "horodatage")
 })
+/**
+ * Entité de persistance représentant `WorkflowHistoriqueAuditEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

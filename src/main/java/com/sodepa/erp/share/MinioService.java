@@ -6,6 +6,9 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.util.List;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `MinioService` au sein de la SODEPA.
+ */
 public interface MinioService {
     /**
      * Upload a file to MinIO

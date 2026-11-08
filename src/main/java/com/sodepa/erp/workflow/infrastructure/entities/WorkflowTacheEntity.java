@@ -22,6 +22,10 @@ import java.util.UUID;
     @Index(name = "idx_wf_tache_employe", columnList = "assigne_employe_id"),
     @Index(name = "idx_wf_tache_statut", columnList = "statut")
 })
+/**
+ * Entité de persistance représentant `WorkflowTacheEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

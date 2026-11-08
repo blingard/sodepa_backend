@@ -1,0 +1,111 @@
+databaseChangeLog:
+  - changeSet:
+      id: ref01-01-create-ref-mdm-familles
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_mdm_familles
+      changes:
+        - createTable:
+            tableName: ref_mdm_familles
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(40), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: VARCHAR(180), constraints: { nullable: false } }
+              - column: { name: sous_domaine, type: VARCHAR(20), constraints: { nullable: false } }
+              - column: { name: proprietaire_metier, type: VARCHAR(60), constraints: { nullable: false } }
+              - column: { name: gestionnaire_technique, type: VARCHAR(60), defaultValue: "CELLULE_INFORMATIQUE", constraints: { nullable: false } }
+              - column: { name: code_famille_parente, type: VARCHAR(40) }
+              - column: { name: masque_codification, type: VARCHAR(60) }
+              - column: { name: regex_validation_code, type: VARCHAR(120) }
+              - column: { name: compteur_courant, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: version_nomenclature, type: INT, defaultValueNumeric: 1, constraints: { nullable: false } }
+              - column: { name: date_effet, type: DATE, constraints: { nullable: false } }
+              - column: { name: statut_cycle_vie, type: VARCHAR(30), defaultValue: "ACTIF", constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref01-02-create-ref-mdm-fiches-versions
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_mdm_fiches_versions
+      changes:
+        - createTable:
+            tableName: ref_mdm_fiches_versions
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code_famille, type: VARCHAR(40), constraints: { nullable: false } }
+              - column: { name: code_fiche, type: VARCHAR(60), constraints: { nullable: false } }
+              - column: { name: libelle, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: numero_version, type: INT, defaultValueNumeric: 1, constraints: { nullable: false } }
+              - column: { name: statut_cycle_vie, type: VARCHAR(30), defaultValue: "BROUILLON", constraints: { nullable: false } }
+              - column: { name: date_effet_debut, type: DATE, constraints: { nullable: false } }
+              - column: { name: date_effet_fin, type: DATE }
+              - column: { name: valeur_avant_json, type: TEXT }
+              - column: { name: valeur_apres_json, type: TEXT }
+              - column: { name: code_unite_perimetre, type: VARCHAR(50) }
+              - column: { name: auteur_username, type: VARCHAR(100) }
+              - column: { name: valideur_metier_username, type: VARCHAR(100) }
+              - column: { name: par_delegation_de, type: VARCHAR(100) }
+              - column: { name: motif_rejet_ou_suspension, type: VARCHAR(500) }
+              - column: { name: transactions_non_soldees_count, type: INT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: fusionnee_vers_code_fiche, type: VARCHAR(60) }
+              - column: { name: horodatage_modification, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: lock_version, type: BIGINT, defaultValueNumeric: 0 }
+
+  - changeSet:
+      id: ref02-03-create-org-evolutions-structures
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: org_evolutions_structures
+      changes:
+        - createTable:
+            tableName: org_evolutions_structures
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code_unite, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: reference_texte_organique, type: VARCHAR(150), defaultValue: "Résolution n° 11/CA/SODEPA/2018", constraints: { nullable: false } }
+              - column: { name: responsable_username, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: rattachements_fonctionnels, type: VARCHAR(500) }
+              - column: { name: centres_couts_rattaches, type: VARCHAR(300) }
+              - column: { name: magasins_rattaches, type: VARCHAR(300) }
+              - column: { name: caisses_rattachees, type: VARCHAR(300) }
+              - column: { name: comptes_bancaires_rattaches, type: VARCHAR(300) }
+              - column: { name: type_evolution, type: VARCHAR(40), defaultValue: "CONSTITUTION_INITIALE", constraints: { nullable: false } }
+              - column: { name: ancien_intitule, type: VARCHAR(180) }
+              - column: { name: nouvel_intitule, type: VARCHAR(180), constraints: { nullable: false } }
+              - column: { name: date_effet, type: DATE, constraints: { nullable: false } }
+              - column: { name: date_debut_fermeture_temporaire, type: DATE }
+              - column: { name: date_reouverture_prevue, type: DATE }
+              - column: { name: rapport_impact_json, type: TEXT }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref07-04-create-ref-modeles-documents-masques
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_modeles_documents_masques
+      changes:
+        - createTable:
+            tableName: ref_modeles_documents_masques
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code_modele, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: VARCHAR(180), constraints: { nullable: false } }
+              - column: { name: type_document, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: masque_numerotation, type: VARCHAR(80), constraints: { nullable: false } }
+              - column: { name: entete_officielle_sodepa, type: VARCHAR(500) }
+              - column: { name: variables_dynamiques, type: VARCHAR(500) }
+              - column: { name: compteur_courant, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: archivage_ged_automatique, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }

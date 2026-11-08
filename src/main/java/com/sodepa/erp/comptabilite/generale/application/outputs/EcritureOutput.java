@@ -15,6 +15,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `EcritureOutput` du système ERP SODEPA.
+ */
 public record EcritureOutput(
         UUID id,
         JournalOutput journal,

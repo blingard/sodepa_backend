@@ -9,6 +9,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `EcritureRepository`.
+ */
 @Repository
 public interface EcritureRepository extends JpaRepository<EcritureEntity, UUID> {
     List<EcritureEntity> findByDateComptableBetween(LocalDate startDate, LocalDate endDate);

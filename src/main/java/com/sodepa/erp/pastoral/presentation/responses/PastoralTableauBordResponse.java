@@ -6,6 +6,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Composant applicatif `PastoralTableauBordResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

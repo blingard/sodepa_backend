@@ -10,6 +10,10 @@ import jakarta.validation.constraints.Size;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `CreerPosteRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record CreerPosteRequest(
         @NotBlank @Size(max = 50) String codePoste,
         @NotBlank @Size(max = 150) String intitule,

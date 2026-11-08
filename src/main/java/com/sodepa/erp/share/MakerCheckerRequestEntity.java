@@ -13,6 +13,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `MakerCheckerRequestEntity` du système ERP SODEPA.
+ */
 @Entity
 @Table(name = "maker_checker_requests")
 @Getter

@@ -32,6 +32,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `CheptelService` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

@@ -8,6 +8,9 @@ import lombok.Builder;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PosteOutput` du système ERP SODEPA.
+ */
 @Builder
 public record PosteOutput(
         UUID id,

@@ -5,6 +5,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Composant applicatif `ErpApplication` du système ERP SODEPA.
+ */
 @SpringBootApplication
 public class ErpApplication {
 

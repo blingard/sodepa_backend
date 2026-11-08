@@ -47,6 +47,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `RhService` au sein de la SODEPA.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

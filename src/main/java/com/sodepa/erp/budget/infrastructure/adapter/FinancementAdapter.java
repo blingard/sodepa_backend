@@ -38,6 +38,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `FinancementAdapter` du système ERP SODEPA.
+ */
 @Component
 @RequiredArgsConstructor
 public class FinancementAdapter {

@@ -7,6 +7,9 @@ import lombok.Builder;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `AffectationOutput` du système ERP SODEPA.
+ */
 @Builder
 public record AffectationOutput(
         UUID id,

@@ -40,6 +40,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
+/**
+ * Composant applicatif `OrganigrammeAdapter` du système ERP SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

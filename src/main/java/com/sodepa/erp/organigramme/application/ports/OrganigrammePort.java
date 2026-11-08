@@ -7,6 +7,9 @@ import com.sodepa.erp.organigramme.application.outputs.*;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `OrganigrammePort` du système ERP SODEPA.
+ */
 public interface OrganigrammePort {
 
     UniteOrganisationnelleOutput creerUnite(CreerUniteInput input);

@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `EcheanceOutput` du système ERP SODEPA.
+ */
 public record EcheanceOutput(
     UUID id,
     LocalDate dateEcheance,

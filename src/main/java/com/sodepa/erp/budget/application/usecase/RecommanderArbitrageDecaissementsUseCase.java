@@ -10,6 +10,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `RecommanderArbitrageDecaissementsUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class RecommanderArbitrageDecaissementsUseCase implements UseCase<RecommanderArbitrageDecaissementsUseCase.Input, List<RecommandationPaiementOutput>> {

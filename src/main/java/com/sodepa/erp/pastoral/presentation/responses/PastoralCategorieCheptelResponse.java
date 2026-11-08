@@ -6,6 +6,9 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PastoralCategorieCheptelResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

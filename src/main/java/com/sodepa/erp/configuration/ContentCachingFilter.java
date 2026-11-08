@@ -11,6 +11,9 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 
+/**
+ * Composant applicatif `ContentCachingFilter` du système ERP SODEPA.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class ContentCachingFilter implements Filter {

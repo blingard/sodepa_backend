@@ -16,6 +16,9 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `FilterBaseMethod` du système ERP SODEPA.
+ */
 @RequiredArgsConstructor
 @Slf4j
 @Component

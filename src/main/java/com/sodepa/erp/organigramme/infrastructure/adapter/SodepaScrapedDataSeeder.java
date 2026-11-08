@@ -169,6 +169,17 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 DECLARE
                     stmt TEXT;
                 BEGIN
+                    ALTER TABLE IF EXISTS public.utilisateurs
+                        ADD COLUMN IF NOT EXISTS mfa_active boolean NOT NULL DEFAULT false;
+                    ALTER TABLE IF EXISTS public.utilisateurs
+                        ADD COLUMN IF NOT EXISTS unite_organisationnelle_id uuid;
+                    ALTER TABLE IF EXISTS public.utilisateurs
+                        ADD COLUMN IF NOT EXISTS date_expiration date;
+                    ALTER TABLE IF EXISTS public.utilisateurs
+                        ADD COLUMN IF NOT EXISTS statut_compte varchar(50) DEFAULT 'ACTIF';
+                    ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "annéee";
+                    ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "date_cleéoture";
+                    ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "cleéoture_par";
                     ALTER TABLE IF EXISTS public.workflows_etapes_definitions
                         ADD COLUMN IF NOT EXISTS actif boolean NOT NULL DEFAULT true;
                     ALTER TABLE IF EXISTS public.workflows_etapes_acteurs_definitions

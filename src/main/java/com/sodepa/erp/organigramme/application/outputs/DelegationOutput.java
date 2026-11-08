@@ -8,6 +8,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `DelegationOutput` du système ERP SODEPA.
+ */
 @Builder
 public record DelegationOutput(
         UUID id,

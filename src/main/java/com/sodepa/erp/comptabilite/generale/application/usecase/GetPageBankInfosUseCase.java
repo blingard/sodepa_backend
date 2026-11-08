@@ -13,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Set;
 
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GetPageBankInfosUseCase` au sein de la SODEPA.
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor

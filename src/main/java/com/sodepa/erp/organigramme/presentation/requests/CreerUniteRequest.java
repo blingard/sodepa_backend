@@ -9,6 +9,10 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `CreerUniteRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record CreerUniteRequest(
         @NotBlank @Size(max = 50) String code,
         @NotBlank @Size(max = 150) String intitule,

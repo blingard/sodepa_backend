@@ -18,6 +18,9 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `ReportingFinancierAdapter`.
+ */
 @Component
 @RequiredArgsConstructor
 public class ReportingFinancierAdapter {

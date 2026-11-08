@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `FormationPlanResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

@@ -8,6 +8,9 @@ import lombok.*;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `StageResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

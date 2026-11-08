@@ -22,6 +22,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `PaieRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping({"/api/paie", "/api/v1/paie"})
 @RequiredArgsConstructor

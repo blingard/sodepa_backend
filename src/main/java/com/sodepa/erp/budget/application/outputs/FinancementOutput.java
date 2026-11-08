@@ -5,6 +5,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `FinancementOutput` du système ERP SODEPA.
+ */
 public record FinancementOutput(
     UUID id,
     UUID banqueId,

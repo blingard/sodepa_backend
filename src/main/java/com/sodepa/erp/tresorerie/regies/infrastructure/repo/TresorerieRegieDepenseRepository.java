@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `TresorerieRegieDepenseRepository`.
+ */
 @Repository
 public interface TresorerieRegieDepenseRepository extends JpaRepository<TresorerieRegieDepenseEntity, UUID> {
     Optional<TresorerieRegieDepenseEntity> findByNumeroPiece(String numeroPiece);

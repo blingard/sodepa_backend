@@ -6,6 +6,10 @@ import lombok.Builder;
 
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `ValidateOrRejectSubmissionInput` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 @Builder
 public record ValidateOrRejectSubmissionInput(
         UUID id,

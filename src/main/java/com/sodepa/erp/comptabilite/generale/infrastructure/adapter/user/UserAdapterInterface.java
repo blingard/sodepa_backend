@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
+/**
+ * Composant applicatif `UserAdapterInterface` du système ERP SODEPA.
+ */
 public interface UserAdapterInterface {
     UserRecordSmartOutput getUserById(@NotNull UUID id);
 }

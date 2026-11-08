@@ -6,6 +6,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `LigneEcritureRepository`.
+ */
 @Repository
 public interface LigneEcritureRepository extends JpaRepository<LigneEcritureEntity, UUID> {
     List<LigneEcritureEntity> findByCompteCode(String compteCode);

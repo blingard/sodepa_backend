@@ -6,6 +6,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GetBilanUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class GetBilanUseCase implements UseCase<LocalDate, ReportingUseCase.BilanReport> {

@@ -336,8 +336,8 @@ management:
 clickhouse:
   url: jdbc:ch://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}?compress=0&decompress=0
   url-http: http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}
-  username: ${CLICKHOUSE_USERNAME}
-  password: ${CLICKHOUSE_PASSWORD}
+  username: ${CLICKHOUSE_USERNAME:default}
+  password: ${CLICKHOUSE_PASSWORD:}
 
 sodepa:
   seed:

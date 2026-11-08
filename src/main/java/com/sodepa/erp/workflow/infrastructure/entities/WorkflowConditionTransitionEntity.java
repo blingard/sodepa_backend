@@ -18,6 +18,10 @@ import java.util.UUID;
     @Index(name = "idx_wf_trans_source", columnList = "etape_source_id"),
     @Index(name = "idx_wf_trans_cible", columnList = "etape_cible_id")
 })
+/**
+ * Entité de persistance représentant `WorkflowConditionTransitionEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

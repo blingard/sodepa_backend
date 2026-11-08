@@ -27,6 +27,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `BudgetCollaboratifAdapter` du système ERP SODEPA.
+ */
 @Component
 @RequiredArgsConstructor
 public class BudgetCollaboratifAdapter {

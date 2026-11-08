@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `EngagementHorsBilanOutput` du système ERP SODEPA.
+ */
 public record EngagementHorsBilanOutput(
     UUID id,
     String type,

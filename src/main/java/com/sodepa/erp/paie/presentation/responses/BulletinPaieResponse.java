@@ -8,6 +8,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `BulletinPaieResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

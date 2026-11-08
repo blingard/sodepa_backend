@@ -3,6 +3,9 @@ package com.sodepa.erp.utils;
 import lombok.Builder;
 import org.springframework.data.domain.Sort;
 
+/**
+ * Composant applicatif `PageableRecord` du système ERP SODEPA.
+ */
 @Builder
 public record PageableRecord(
         long offset,

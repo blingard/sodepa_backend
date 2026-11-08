@@ -5,6 +5,9 @@ import lombok.Builder;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `ChaineHierarchiqueOutput` du système ERP SODEPA.
+ */
 @Builder
 public record ChaineHierarchiqueOutput(
         UUID collaborateurId,

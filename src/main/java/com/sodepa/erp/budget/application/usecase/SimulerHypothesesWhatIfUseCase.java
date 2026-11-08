@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `SimulerHypothesesWhatIfUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class SimulerHypothesesWhatIfUseCase implements UseCase<SimulerHypothesesWhatIfUseCase.Input, SimulationResultOutput> {

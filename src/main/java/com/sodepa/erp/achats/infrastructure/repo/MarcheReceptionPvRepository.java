@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `MarcheReceptionPvRepository`.
+ */
 @Repository
 public interface MarcheReceptionPvRepository extends JpaRepository<MarcheReceptionPvEntity, UUID> {
     Optional<MarcheReceptionPvEntity> findByNumeroPv(String numeroPv);

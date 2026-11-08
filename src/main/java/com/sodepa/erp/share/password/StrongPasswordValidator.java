@@ -4,6 +4,9 @@ import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
 
+/**
+ * Composant applicatif `StrongPasswordValidator` du système ERP SODEPA.
+ */
 public class StrongPasswordValidator implements ConstraintValidator<StrongPassword, StrongPasswordSubject> {
 
     @Override

@@ -6,6 +6,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `LigneReleveBancaireRepository`.
+ */
 @Repository
 public interface LigneReleveBancaireRepository extends JpaRepository<LigneReleveBancaireEntity, UUID> {
     List<LigneReleveBancaireEntity> findByReleveId(UUID releveId);

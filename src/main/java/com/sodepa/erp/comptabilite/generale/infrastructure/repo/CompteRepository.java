@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `CompteRepository`.
+ */
 @Repository
 public interface CompteRepository extends JpaRepository<CompteEntity, UUID> {
     Optional<CompteEntity> findByCode(String code);

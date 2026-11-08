@@ -8,6 +8,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PeriodePaieResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

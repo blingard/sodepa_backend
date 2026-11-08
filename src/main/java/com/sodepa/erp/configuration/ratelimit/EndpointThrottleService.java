@@ -6,6 +6,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `EndpointThrottleService` au sein de la SODEPA.
+ */
 @Service
 @Slf4j
 public class EndpointThrottleService {

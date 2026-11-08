@@ -7,6 +7,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PvEventInput` du système ERP SODEPA.
+ */
 @Builder
 public record PvEventInput (
         UUID id,

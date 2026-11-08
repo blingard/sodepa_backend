@@ -6,6 +6,9 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.List;
 
+/**
+ * Composant applicatif `BudgetPlanOutput` du système ERP SODEPA.
+ */
 public record BudgetPlanOutput(
     UUID id,
     int annee,

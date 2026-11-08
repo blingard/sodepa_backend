@@ -6,6 +6,10 @@ import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `CreerTypeStructureRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record CreerTypeStructureRequest(
         @Size(max = 50) String code,
         @NotBlank @Size(max = 100) String libelle,

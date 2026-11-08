@@ -7,6 +7,10 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `CreerVersionRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record CreerVersionRequest(
         @NotBlank @Size(max = 50) String numeroVersion,
         @NotBlank @Size(max = 150) String libelle,

@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `FormationPlanRepository`.
+ */
 @Repository
 public interface FormationPlanRepository extends JpaRepository<FormationPlanEntity, UUID> {
     Optional<FormationPlanEntity> findByAnneeExercice(Integer anneeExercice);

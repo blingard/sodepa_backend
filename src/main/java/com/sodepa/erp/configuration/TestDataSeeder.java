@@ -57,6 +57,9 @@ import java.util.*;
  */
 @Component
 //@Profile("test")
+/**
+ * Composant applicatif `TestDataSeeder` du système ERP SODEPA.
+ */
 @Order(4)
 @RequiredArgsConstructor
 @Slf4j

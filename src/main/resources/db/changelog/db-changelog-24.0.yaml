@@ -1,0 +1,84 @@
+databaseChangeLog:
+  - changeSet:
+      id: notif-wf-24-01-create-sys-notifications
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: sys_notifications
+      changes:
+        - createTable:
+            tableName: sys_notifications
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: canal, type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: destinataire_utilisateur_id, type: UUID }
+              - column: { name: destinataire_nom, type: VARCHAR(150) }
+              - column: { name: destinataire_email, type: VARCHAR(180) }
+              - column: { name: destinataire_telephone_sms, type: VARCHAR(40) }
+              - column: { name: sujet, type: VARCHAR(250), constraints: { nullable: false } }
+              - column: { name: message_corps, type: TEXT, constraints: { nullable: false } }
+              - column: { name: type_evenement, type: VARCHAR(60), constraints: { nullable: false } }
+              - column: { name: reference_entite_type, type: VARCHAR(60) }
+              - column: { name: reference_entite_id, type: VARCHAR(100) }
+              - column: { name: statut, type: VARCHAR(30), defaultValue: "ENVOYEE", constraints: { nullable: false } }
+              - column: { name: erreur_technique, type: VARCHAR(500) }
+              - column: { name: date_envoi, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: date_lecture, type: TIMESTAMP }
+
+  - changeSet:
+      id: notif-wf-24-02-alter-workflows-etapes-definitions
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: workflows_etapes_definitions
+                columnName: mode_action_validation
+      changes:
+        - addColumn:
+            tableName: workflows_etapes_definitions
+            columns:
+              - column: { name: mode_action_validation, type: VARCHAR(40), defaultValue: "OPTIONNEL_FICHIER_OU_CHAMPS", constraints: { nullable: false } }
+              - column: { name: autoriser_ajout_fichier, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: fichier_validation_obligatoire, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: autoriser_modification_champs, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: modification_champs_obligatoire, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: champs_modifiables_autorises, type: VARCHAR(500) }
+
+  - changeSet:
+      id: notif-wf-24-03-alter-workflows-taches
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: workflows_taches
+                columnName: document_ged_id
+      changes:
+        - addColumn:
+            tableName: workflows_taches
+            columns:
+              - column: { name: document_ged_id, type: UUID }
+              - column: { name: piece_jointe_uri, type: VARCHAR(500) }
+              - column: { name: valeurs_avant_modification_json, type: TEXT }
+              - column: { name: champs_modifies_json, type: TEXT }
+
+  - changeSet:
+      id: notif-wf-24-04-alter-workflows-historique-audit
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: workflows_historique_audit
+                columnName: document_ged_id
+      changes:
+        - addColumn:
+            tableName: workflows_historique_audit
+            columns:
+              - column: { name: document_ged_id, type: UUID }
+              - column: { name: piece_jointe_uri, type: VARCHAR(500) }
+              - column: { name: valeurs_avant_json, type: TEXT }
+              - column: { name: valeurs_apres_json, type: TEXT }

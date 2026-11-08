@@ -1,5 +1,8 @@
 package com.sodepa.erp.utils;
 
+/**
+ * Composant applicatif `Permissions` du système ERP SODEPA.
+ */
 public enum Permissions {
     // Banques
     INIT_CREATE_BANK,

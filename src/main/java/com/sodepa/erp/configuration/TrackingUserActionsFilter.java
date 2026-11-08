@@ -28,6 +28,9 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `TrackingUserActionsFilter` du système ERP SODEPA.
+ */
 @Configuration
 @RequiredArgsConstructor
 @Slf4j

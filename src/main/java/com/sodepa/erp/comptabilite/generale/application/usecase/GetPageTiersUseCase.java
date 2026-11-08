@@ -10,6 +10,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GetPageTiersUseCase` au sein de la SODEPA.
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor

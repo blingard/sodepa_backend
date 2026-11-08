@@ -25,6 +25,10 @@ import java.util.UUID;
     @Index(name = "idx_wf_etape_wf", columnList = "workflow_definition_id"),
     @Index(name = "idx_wf_etape_code", columnList = "code_etape")
 })
+/**
+ * Entité de persistance représentant `WorkflowEtapeDefinitionEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

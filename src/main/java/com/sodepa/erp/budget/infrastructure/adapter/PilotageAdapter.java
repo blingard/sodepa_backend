@@ -19,6 +19,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PilotageAdapter` du système ERP SODEPA.
+ */
 @Component
 @RequiredArgsConstructor
 public class PilotageAdapter {

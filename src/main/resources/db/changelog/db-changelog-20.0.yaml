@@ -1,0 +1,278 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20.0-create-ref-fiscalite-taxes
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_fiscalite_taxes
+      changes:
+        - createTable:
+            tableName: ref_fiscalite_taxes
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(50), constraints: { nullable: false } }
+              - column: { name: libelle, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: categorie_fiscale, type: varchar(50), constraints: { nullable: false } }
+              - column: { name: taux_pourcentage, type: "numeric(8,4)" }
+              - column: { name: montant_fixe_fcfa, type: "numeric(15,2)" }
+              - column: { name: base_calcul, type: varchar(40), defaultValue: "HT", constraints: { nullable: false } }
+              - column: { name: compte_comptable_collecte, type: varchar(20) }
+              - column: { name: compte_comptable_deductible, type: varchar(20) }
+              - column: { name: periodicite_declaration, type: varchar(40), defaultValue: "MENSUELLE_J15" }
+              - column: { name: exonere_export, type: boolean, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: date_effet, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date }
+              - column: { name: reference_texte_loi, type: varchar(180) }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-ref-fiscalite-regimes
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_fiscalite_regimes
+      changes:
+        - createTable:
+            tableName: ref_fiscalite_regimes
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(40), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(150), constraints: { nullable: false } }
+              - column: { name: taux_air_applicable, type: "numeric(6,2)", constraints: { nullable: false } }
+              - column: { name: assujetti_tva, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: description, type: varchar(300) }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-ref-seuils-gestion
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_seuils_gestion
+      changes:
+        - createTable:
+            tableName: ref_seuils_gestion
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(60), constraints: { nullable: false } }
+              - column: { name: domaine, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: libelle, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: montant_min_fcfa, type: "numeric(18,2)", constraints: { nullable: false } }
+              - column: { name: montant_max_fcfa, type: "numeric(18,2)" }
+              - column: { name: nb_proformas_requis, type: integer, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: commission_requise, type: boolean, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: autorite_validation, type: varchar(60), constraints: { nullable: false } }
+              - column: { name: date_effet, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-cleanup-corrupted-columns-compta-exercices
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "annéee";
+              ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "date_cleéoture";
+              ALTER TABLE IF EXISTS public.compta_exercices DROP COLUMN IF EXISTS "cleéoture_par";
+
+  - changeSet:
+      id: 20.0-create-compta-exercices
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: compta_exercices
+      changes:
+        - createTable:
+            tableName: compta_exercices
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(30), constraints: { nullable: false, unique: true } }
+              - column: { name: annee, type: integer, constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(150), constraints: { nullable: false } }
+              - column: { name: date_debut, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date, constraints: { nullable: false } }
+              - column: { name: statut, type: varchar(30), defaultValue: "OUVERT", constraints: { nullable: false } }
+              - column: { name: date_cloture, type: timestamp }
+              - column: { name: cloture_par, type: uuid }
+
+  - changeSet:
+      id: 20.0-create-compta-periodes-mensuelles
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: compta_periodes_mensuelles
+      changes:
+        - createTable:
+            tableName: compta_periodes_mensuelles
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: exercice_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_periode_exercice, references: compta_exercices(id) } }
+              - column: { name: numero_mois, type: integer, constraints: { nullable: false } }
+              - column: { name: code_periode, type: varchar(20), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: date_debut, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date, constraints: { nullable: false } }
+              - column: { name: statut, type: varchar(30), defaultValue: "OUVERTE", constraints: { nullable: false } }
+              - column: { name: journaux_autorises, type: varchar(250), defaultValue: "ACHAT,VENTE,BANQUE,CAISSE,OD,ANOUVEAU" }
+
+  - changeSet:
+      id: 20.0-create-compta-schemas-ecritures
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: compta_schemas_ecritures
+      changes:
+        - createTable:
+            tableName: compta_schemas_ecritures
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(50), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: code_journal, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: type_operation, type: varchar(50), constraints: { nullable: false } }
+              - column: { name: compte_debit_code, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: compte_credit_code, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: compte_taxe_code, type: varchar(20) }
+              - column: { name: compte_retenue_air_code, type: varchar(20) }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-budget-programmes
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_programmes
+      changes:
+        - createTable:
+            tableName: budget_programmes
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(40), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: objectif_strategique, type: varchar(300) }
+              - column: { name: responsable_programme, type: varchar(150) }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-budget-activites
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_activites
+      changes:
+        - createTable:
+            tableName: budget_activites
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(40), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: programme_code, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: unite_organisationnelle_id, type: uuid }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-budget-sources-financement
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_sources_financement
+      changes:
+        - createTable:
+            tableName: budget_sources_financement
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(50), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: type_source, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: bailleur_nom, type: varchar(150) }
+              - column: { name: devise, type: varchar(10), defaultValue: "XAF", constraints: { nullable: false } }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-budget-natures-depenses
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_natures_depenses
+      changes:
+        - createTable:
+            tableName: budget_natures_depenses
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(50), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: categorie, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: prefixe_compte_syscohada, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-create-tresorerie-moyens-paiement
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: tresorerie_moyens_paiement
+      changes:
+        - createTable:
+            tableName: tresorerie_moyens_paiement
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(40), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(150), constraints: { nullable: false } }
+              - column: { name: type_moyen, type: varchar(40), constraints: { nullable: false } }
+              - column: { name: operateur, type: varchar(80) }
+              - column: { name: numero_marchand_ou_shortcode, type: varchar(60) }
+              - column: { name: compte_comptable_associe, type: varchar(20), constraints: { nullable: false } }
+              - column: { name: plafond_transaction_fcfa, type: "numeric(15,2)" }
+              - column: { name: frais_pourcentage, type: "numeric(6,3)", defaultValueNumeric: 0 }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 20.0-alter-budget-item-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.budget_item ADD COLUMN IF NOT EXISTS programme_code VARCHAR(40);
+              ALTER TABLE IF EXISTS public.budget_item ADD COLUMN IF NOT EXISTS activite_code VARCHAR(40);
+              ALTER TABLE IF EXISTS public.budget_item ADD COLUMN IF NOT EXISTS source_financement_code VARCHAR(50);
+              ALTER TABLE IF EXISTS public.budget_item ADD COLUMN IF NOT EXISTS nature_depense_code VARCHAR(50);
+
+  - changeSet:
+      id: 20.0-alter-achat-seuils-config-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.achat_seuils_config ADD COLUMN IF NOT EXISTS date_effet DATE DEFAULT '2026-01-01';
+              ALTER TABLE IF EXISTS public.achat_seuils_config ADD COLUMN IF NOT EXISTS date_fin DATE;
+
+  - changeSet:
+      id: 20.0-alter-tresorerie-regies-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.tresorerie_regies ADD COLUMN IF NOT EXISTS compte_comptable_caisse VARCHAR(20) DEFAULT '571100';

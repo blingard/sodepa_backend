@@ -6,6 +6,9 @@ import lombok.Builder;
 
 import java.util.UUID;
 
+/**
+ * Composant applicatif `UserRecordSmartOutput` du système ERP SODEPA.
+ */
 @Builder
 public record UserRecordSmartOutput(
         @NotNull UUID id,

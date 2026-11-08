@@ -1,5 +1,9 @@
 package com.sodepa.erp.paie.infrastructure.entities;
 
+/**
+ * Entité de persistance représentant `TypeRubrique` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 public enum TypeRubrique {
     SALAIRE_BASE,
     SUR_SALAIRE,

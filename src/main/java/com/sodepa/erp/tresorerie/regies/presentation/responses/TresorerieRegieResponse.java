@@ -7,6 +7,9 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `TresorerieRegieResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

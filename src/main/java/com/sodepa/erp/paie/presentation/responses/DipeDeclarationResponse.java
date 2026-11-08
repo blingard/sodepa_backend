@@ -6,6 +6,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `DipeDeclarationResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `PastoralCategorieCheptelRepository`.
+ */
 @Repository
 public interface PastoralCategorieCheptelRepository extends JpaRepository<PastoralCategorieCheptelEntity, UUID> {
     Optional<PastoralCategorieCheptelEntity> findByCode(String code);

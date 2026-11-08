@@ -6,6 +6,9 @@ import lombok.Builder;
 import java.util.Collections;
 import java.util.Set;
 
+/**
+ * Composant applicatif `UserData` du système ERP SODEPA.
+ */
 @Builder
 public record UserData(
     String username,

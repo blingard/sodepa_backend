@@ -53,5 +53,8 @@ public class BanqueEntity {
     @Column(name = "logo", nullable = false, length = 250)
     private String logo;
 
+    /**
+     * Statut opérationnel de status selon le workflow de gestion SODEPA.
+     */
     private boolean status;
 }

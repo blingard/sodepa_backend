@@ -2,6 +2,9 @@ package com.sodepa.erp.configuration;
 
 import java.time.Instant;
 
+/**
+ * Composant applicatif `RequestTrackingEvent` du système ERP SODEPA.
+ */
 public record RequestTrackingEvent(
         String correlationId,
         String sessionId,

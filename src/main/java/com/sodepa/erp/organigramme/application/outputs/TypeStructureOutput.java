@@ -5,6 +5,9 @@ import lombok.Builder;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `TypeStructureOutput` du système ERP SODEPA.
+ */
 @Builder
 public record TypeStructureOutput(
         UUID id,

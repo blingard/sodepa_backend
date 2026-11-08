@@ -8,6 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Composant applicatif `MinioConfig` du système ERP SODEPA.
+ */
 @Slf4j
 @Configuration
 public class MinioConfig {

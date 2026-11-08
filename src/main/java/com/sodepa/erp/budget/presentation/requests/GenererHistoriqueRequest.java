@@ -5,6 +5,10 @@ import java.util.UUID;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `GenererHistoriqueRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record GenererHistoriqueRequest(
     @Positive int anneeSource,
     @Positive int anneeCible,

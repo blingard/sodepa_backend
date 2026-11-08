@@ -8,6 +8,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `ObjectifUniteOutput` du système ERP SODEPA.
+ */
 @Builder
 public record ObjectifUniteOutput(
         UUID id,

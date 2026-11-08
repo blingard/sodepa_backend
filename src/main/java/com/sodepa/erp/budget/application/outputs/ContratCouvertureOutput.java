@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `ContratCouvertureOutput` du système ERP SODEPA.
+ */
 public record ContratCouvertureOutput(
     UUID id,
     String reference,

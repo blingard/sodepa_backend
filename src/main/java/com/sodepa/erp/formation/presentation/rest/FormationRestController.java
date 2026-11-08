@@ -19,6 +19,10 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `FormationRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping({"/api/formation", "/api/v1/formation"})
 @RequiredArgsConstructor

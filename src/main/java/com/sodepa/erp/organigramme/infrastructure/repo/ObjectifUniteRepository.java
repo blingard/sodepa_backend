@@ -11,6 +11,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `ObjectifUniteRepository`.
+ */
 @Repository
 public interface ObjectifUniteRepository extends JpaRepository<ObjectifUniteEntity, UUID> {
 

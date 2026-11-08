@@ -7,6 +7,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `PastoralBovinResponse` du système ERP SODEPA.
+ */
 @Getter
 @Setter
 @NoArgsConstructor

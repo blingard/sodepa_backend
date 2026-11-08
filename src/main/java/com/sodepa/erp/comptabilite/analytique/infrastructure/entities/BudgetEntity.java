@@ -14,6 +14,10 @@ import java.util.UUID;
     name = "budgets",
     uniqueConstraints = @UniqueConstraint(name = "uq_budget_period_section_account", columnNames = {"annee", "section_id", "compte_code"})
 )
+/**
+ * Entité de persistance représentant `BudgetEntity` au sein du système ERP SODEPA.
+ * Assure le stockage relationnel et la traçabilité des données du domaine.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

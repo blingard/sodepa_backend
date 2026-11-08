@@ -12,6 +12,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Composant applicatif `EndpointRateLimitInterceptor` du système ERP SODEPA.
+ */
 public class EndpointRateLimitInterceptor implements HandlerInterceptor {
 
     private static final String PREFERRED_USERNAME = "preferred_username";

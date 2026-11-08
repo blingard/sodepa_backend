@@ -6,6 +6,9 @@ import com.sodepa.erp.utils.UseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `GenererBudgetDepuisHistoriqueUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class GenererBudgetDepuisHistoriqueUseCase implements UseCase<GenererHistoriqueInput, Void> {

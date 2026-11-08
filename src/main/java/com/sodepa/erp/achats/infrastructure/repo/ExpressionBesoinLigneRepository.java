@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `ExpressionBesoinLigneRepository`.
+ */
 @Repository
 public interface ExpressionBesoinLigneRepository extends JpaRepository<ExpressionBesoinLigneEntity, UUID> {
     List<ExpressionBesoinLigneEntity> findByExpressionBesoinIdOrderByOrdreAsc(UUID ebId);

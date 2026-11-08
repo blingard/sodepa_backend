@@ -12,6 +12,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Contrôleur REST exposant les points de terminaison pour `AchatSeuilsRestController`.
+ * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
+ */
 @RestController
 @RequestMapping({"/api/achats/seuils", "/api/v1/achats/seuils"})
 @RequiredArgsConstructor

@@ -6,6 +6,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `ParametreSystemeRepository`.
+ */
 @Repository
 public interface ParametreSystemeRepository extends JpaRepository<ParametreSystemeEntity, String> {
 

@@ -27,6 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `SecurityConfig` du système ERP SODEPA.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity

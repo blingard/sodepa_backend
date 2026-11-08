@@ -1,0 +1,202 @@
+databaseChangeLog:
+  - changeSet:
+      id: ref03-01-create-ref-geo-localites
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_geo_localites
+      changes:
+        - createTable:
+            tableName: ref_geo_localites
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(40), constraints: { nullable: false, unique: true } }
+              - column: { name: nom, type: VARCHAR(150), constraints: { nullable: false } }
+              - column: { name: niveau_administratif, type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: parent_code, type: VARCHAR(40) }
+              - column: { name: zone_agro_ecologique, type: VARCHAR(60) }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-02-create-ref-sites-exploitation
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_sites_exploitation
+      changes:
+        - createTable:
+            tableName: ref_sites_exploitation
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: nom, type: VARCHAR(180), constraints: { nullable: false } }
+              - column: { name: type_site, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: code_localite, type: VARCHAR(40), constraints: { nullable: false } }
+              - column: { name: unite_organisationnelle_id, type: UUID }
+              - column: { name: superficie_hectares, type: "DECIMAL(12,2)" }
+              - column: { name: capacite_stockage_tonnes, type: "DECIMAL(12,2)" }
+              - column: { name: latitude, type: "DECIMAL(10,6)" }
+              - column: { name: longitude, type: "DECIMAL(10,6)" }
+              - column: { name: propose_par_unite_locale, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: statut_validation, type: VARCHAR(30), defaultValue: "VALIDE_CENTRAL", constraints: { nullable: false } }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-03-create-ref-zoo-especes
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_zoo_especes
+      changes:
+        - createTable:
+            tableName: ref_zoo_especes
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(30), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: VARCHAR(120), constraints: { nullable: false } }
+              - column: { name: nom_scientifique, type: VARCHAR(120) }
+              - column: { name: duree_gestation_jours, type: INT }
+              - column: { name: age_sevrage_mois, type: INT }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-04-create-ref-zoo-races
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_zoo_races
+      changes:
+        - createTable:
+            tableName: ref_zoo_races
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(40), constraints: { nullable: false, unique: true } }
+              - column: { name: nom, type: VARCHAR(150), constraints: { nullable: false } }
+              - column: { name: code_espece, type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: origine_geographique, type: VARCHAR(120) }
+              - column: { name: aptitude_principale, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: poids_moyen_adulte_kg, type: "DECIMAL(8,2)" }
+              - column: { name: rendement_carcasse_reference_pct, type: "DECIMAL(5,2)" }
+              - column: { name: schema_croisement_autorise, type: VARCHAR(200) }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-05-create-ref-catalogue-produits
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_catalogue_produits
+      changes:
+        - createTable:
+            tableName: ref_catalogue_produits
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: designation, type: VARCHAR(200), constraints: { nullable: false, unique: true } }
+              - column: { name: categorie_produit, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: code_espece, type: VARCHAR(30) }
+              - column: { name: code_unite_mesure, type: VARCHAR(20), constraints: { nullable: false } }
+              - column: { name: mode_conservation, type: VARCHAR(40), constraints: { nullable: false } }
+              - column: { name: duree_conservation_jours, type: INT }
+              - column: { name: prix_reference_ht_fcfa, type: "DECIMAL(15,2)" }
+              - column: { name: compte_produit_syscohada, type: VARCHAR(20) }
+              - column: { name: statut_commercial, type: VARCHAR(30), defaultValue: "COMMERCIALISABLE", constraints: { nullable: false } }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-06-create-ref-sanitaire-veterinaire
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_sanitaire_veterinaire
+      changes:
+        - createTable:
+            tableName: ref_sanitaire_veterinaire
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: type_element, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: code_espece, type: VARCHAR(30), defaultValue: "BOVINE", constraints: { nullable: false } }
+              - column: { name: agent_pathogene_ou_vaccin, type: VARCHAR(180) }
+              - column: { name: posologie_recommandee, type: VARCHAR(250) }
+              - column: { name: delai_attente_abattage_jours, type: INT, defaultValueNumeric: 0 }
+              - column: { name: periodicite_rappel_mois, type: INT }
+              - column: { name: declaration_obligatoire_minepia, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-07-create-ref-abattage-transformation
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_abattage_transformation
+      changes:
+        - createTable:
+            tableName: ref_abattage_transformation
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: type_norme, type: VARCHAR(50), constraints: { nullable: false } }
+              - column: { name: code_espece, type: VARCHAR(30), defaultValue: "BOVINE", constraints: { nullable: false } }
+              - column: { name: code_race, type: VARCHAR(40) }
+              - column: { name: rendement_min_pct, type: "DECIMAL(5,2)" }
+              - column: { name: rendement_cible_pct, type: "DECIMAL(5,2)" }
+              - column: { name: rendement_max_pct, type: "DECIMAL(5,2)" }
+              - column: { name: perte_max_ressuyage_pct, type: "DECIMAL(5,2)" }
+              - column: { name: temperature_consigne_celsius, type: "DECIMAL(5,2)" }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-08-create-ref-unites-mesure
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_unites_mesure
+      changes:
+        - createTable:
+            tableName: ref_unites_mesure
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(20), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: symbole, type: VARCHAR(20), constraints: { nullable: false } }
+              - column: { name: dimension_physique, type: VARCHAR(40), constraints: { nullable: false } }
+              - column: { name: decimales_autorisees, type: INT, defaultValueNumeric: 2, constraints: { nullable: false } }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: ref03-09-create-ref-conversions-unites
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: ref_conversions_unites
+      changes:
+        - createTable:
+            tableName: ref_conversions_unites
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code_unite_source, type: VARCHAR(20), constraints: { nullable: false } }
+              - column: { name: code_unite_cible, type: VARCHAR(20), constraints: { nullable: false } }
+              - column: { name: facteur_multiplication, type: "DECIMAL(18,6)", constraints: { nullable: false } }
+              - column: { name: code_produit_specifique, type: VARCHAR(50) }
+              - column: { name: actif, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }

@@ -1,0 +1,153 @@
+databaseChangeLog:
+  - changeSet:
+      id: 21.0-ref05-tiers-colonnes-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS numero_contribuable VARCHAR(50);
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS rccm VARCHAR(80);
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS regime_fiscal VARCHAR(40) DEFAULT 'REEL';
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS banque_nom VARCHAR(120);
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS compte_bancaire_rib VARCHAR(60);
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS segment_client VARCHAR(50);
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS conditions_paiement VARCHAR(50) DEFAULT 'COMPTANT';
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS plafond_credit_fcfa NUMERIC(18,2) DEFAULT 0;
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS statut_tiers VARCHAR(30) DEFAULT 'ACTIF';
+              ALTER TABLE IF EXISTS public.tiers ADD COLUMN IF NOT EXISTS motif_suspension VARCHAR(300);
+
+  - changeSet:
+      id: 21.0-ref05-tiers-pieces
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: tiers_pieces_conformite
+      changes:
+        - createTable:
+            tableName: tiers_pieces_conformite
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tiers_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: code_tiers, type: varchar(30), constraints: { nullable: false } }
+              - column: { name: type_piece, type: varchar(60), constraints: { nullable: false } }
+              - column: { name: numero_reference, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: date_emission, type: date, constraints: { nullable: false } }
+              - column: { name: date_expiration, type: date }
+              - column: { name: document_ged_id, type: uuid }
+              - column: { name: obligatoire, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: verifiee, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: alerte_j15_envoyee, type: boolean, defaultValueBoolean: false, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 21.0-ref06-utilisateurs-colonnes-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS matricule VARCHAR(50);
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS unite_organisationnelle_id UUID;
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS responsable_hierarchique_id UUID;
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS date_expiration DATE;
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS statut_compte VARCHAR(30) DEFAULT 'ACTIF';
+              ALTER TABLE IF EXISTS public.utilisateurs ADD COLUMN IF NOT EXISTS mfa_active BOOLEAN DEFAULT false;
+
+  - changeSet:
+      id: 21.0-ref06-iam-profils
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: iam_profils_fonctionnels
+      changes:
+        - createTable:
+            tableName: iam_profils_fonctionnels
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(60), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(180), constraints: { nullable: false } }
+              - column: { name: description, type: varchar(400) }
+              - column: { name: plafond_engagement_fcfa, type: "numeric(18,2)" }
+              - column: { name: mfa_requis, type: boolean, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 21.0-ref06-iam-permissions
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: iam_profil_permissions
+      changes:
+        - createTable:
+            tableName: iam_profil_permissions
+            columns:
+              - column: { name: profil_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_iam_prof_perm, references: iam_profils_fonctionnels(id) } }
+              - column: { name: permission, type: varchar(100), constraints: { nullable: false } }
+
+  - changeSet:
+      id: 21.0-ref06-iam-affectations
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: iam_affectations_profils
+      changes:
+        - createTable:
+            tableName: iam_affectations_profils
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: utilisateur_id, type: uuid, constraints: { nullable: false } }
+              - column: { name: profil_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_iam_aff_profil, references: iam_profils_fonctionnels(id) } }
+              - column: { name: unite_organisationnelle_id, type: uuid }
+              - column: { name: code_magasin_ou_site, type: varchar(60) }
+              - column: { name: exercice_autorise, type: integer }
+              - column: { name: plafond_specifique_fcfa, type: "numeric(18,2)" }
+              - column: { name: date_debut, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 21.0-ref06-iam-matrice-sod
+      author: sodepa-team
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: iam_matrice_sod
+      changes:
+        - createTable:
+            tableName: iam_matrice_sod
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: varchar(50), constraints: { nullable: false, unique: true } }
+              - column: { name: libelle, type: varchar(200), constraints: { nullable: false } }
+              - column: { name: type_incompatibilite, type: varchar(40), defaultValue: "PERMISSION_VS_PERMISSION", constraints: { nullable: false } }
+              - column: { name: element_a, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: element_b, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: regle_gestion_ref, type: varchar(30), constraints: { nullable: false } }
+              - column: { name: risque_metier, type: varchar(300) }
+              - column: { name: bloquant, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+
+  - changeSet:
+      id: 21.0-ref07-ged-colonnes-idempotent
+      author: sodepa-team
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS categorie_documentaire VARCHAR(60) DEFAULT 'PIECE_JUSTIFICATIVE';
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS numero_version INTEGER DEFAULT 1;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS document_parent_id UUID;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS duree_conservation_annees INTEGER DEFAULT 10;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS date_fin_conservation DATE;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS statut_cycle_vie VARCHAR(30) DEFAULT 'ARCHIVE';
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS signe_electroniquement BOOLEAN DEFAULT false;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS signataire_nom VARCHAR(150);
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS date_signature TIMESTAMP;
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS empreinte_signature VARCHAR(128);
+              ALTER TABLE IF EXISTS public.ged_documents ADD COLUMN IF NOT EXISTS mots_cles_indexation TEXT;

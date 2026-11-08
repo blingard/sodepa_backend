@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `ConsulterAuditTrailBudgetUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class ConsulterAuditTrailBudgetUseCase implements UseCase<ConsulterAuditTrailBudgetUseCase.Input, List<AuditTrailOutput>> {

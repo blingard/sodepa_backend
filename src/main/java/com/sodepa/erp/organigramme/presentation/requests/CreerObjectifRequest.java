@@ -10,6 +10,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Objet de transfert de données (DTO / Requête) pour l'opération `CreerObjectifRequest` dans l'ERP SODEPA.
+ * Encapsule les paramètres requis avec leurs règles de validation.
+ */
 public record CreerObjectifRequest(
         @NotBlank @Size(max = 150) String intitule,
         String description,

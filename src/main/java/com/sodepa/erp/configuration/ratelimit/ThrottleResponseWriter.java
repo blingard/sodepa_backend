@@ -11,6 +11,9 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Composant applicatif `ThrottleResponseWriter` du système ERP SODEPA.
+ */
 @Component
 public class ThrottleResponseWriter {
 

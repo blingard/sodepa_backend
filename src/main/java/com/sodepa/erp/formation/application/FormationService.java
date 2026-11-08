@@ -26,6 +26,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `FormationService` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

@@ -8,6 +8,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `ArborescenceNoeudOutput` du système ERP SODEPA.
+ */
 @Builder
 public record ArborescenceNoeudOutput(
         UUID id,

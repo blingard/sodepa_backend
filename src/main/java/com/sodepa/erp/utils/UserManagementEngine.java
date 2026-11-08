@@ -26,6 +26,9 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Composant applicatif `UserManagementEngine` du système ERP SODEPA.
+ */
 @RequiredArgsConstructor
 @Component
 @Transactional(readOnly = true)

@@ -8,6 +8,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `UniteOrganisationnelleOutput` du système ERP SODEPA.
+ */
 @Builder
 public record UniteOrganisationnelleOutput(
         UUID id,

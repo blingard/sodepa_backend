@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `ReleveBancaireRepository`.
+ */
 @Repository
 public interface ReleveBancaireRepository extends JpaRepository<ReleveBancaireEntity, UUID> {
 

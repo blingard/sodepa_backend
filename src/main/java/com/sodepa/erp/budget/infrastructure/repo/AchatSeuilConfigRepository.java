@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `AchatSeuilConfigRepository`.
+ */
 @Repository
 public interface AchatSeuilConfigRepository extends JpaRepository<AchatSeuilConfigEntity, UUID> {
     Optional<AchatSeuilConfigEntity> findByTypeProcedure(String typeProcedure);

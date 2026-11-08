@@ -5,6 +5,9 @@ import lombok.Builder;
 
 import java.util.Set;
 
+/**
+ * Composant applicatif `PosteData` du système ERP SODEPA.
+ */
 @Builder
 public record PosteData(
     String id,

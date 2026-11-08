@@ -6,6 +6,9 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Composant applicatif `EndpointThrottleProperties` du système ERP SODEPA.
+ */
 @Component
 @ConfigurationProperties(prefix = "app.interceptor-throttle")
 public class EndpointThrottleProperties {

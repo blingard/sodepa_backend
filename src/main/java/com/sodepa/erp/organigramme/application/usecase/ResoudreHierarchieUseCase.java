@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
+/**
+ * Service métier d'application implémentant la logique et les règles de gestion pour `ResoudreHierarchieUseCase` au sein de la SODEPA.
+ */
 @Service
 @RequiredArgsConstructor
 public class ResoudreHierarchieUseCase {

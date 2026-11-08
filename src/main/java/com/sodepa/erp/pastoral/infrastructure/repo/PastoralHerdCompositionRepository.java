@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour l'accès aux données et la persistance de `PastoralHerdCompositionRepository`.
+ */
 @Repository
 public interface PastoralHerdCompositionRepository extends JpaRepository<PastoralHerdCompositionEntity, UUID> {
     List<PastoralHerdCompositionEntity> findByAnneeExerciceOrderByDateInventaireDesc(Integer annee);

@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `BudgetEngagementOutput` du système ERP SODEPA.
+ */
 public record BudgetEngagementOutput(
     UUID id,
     UUID budgetItemId,

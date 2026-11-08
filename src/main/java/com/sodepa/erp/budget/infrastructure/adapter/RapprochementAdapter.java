@@ -25,6 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Composant applicatif `RapprochementAdapter` du système ERP SODEPA.
+ */
 @Component("budgetRapprochementAdapter")
 @RequiredArgsConstructor
 public class RapprochementAdapter {

@@ -7,11 +7,16 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Dépôt Spring Data JPA pour les demandes Maker-Checker et leur synchronisation avec le moteur de workflow.
+ */
 @Repository
 public interface MakerCheckerRequestJpaRepo extends JpaRepository<MakerCheckerRequestEntity, UUID> {
+
     Page<MakerCheckerRequestEntity> findAllByStatus(MakerCheckerStatus status, Pageable pageable);
 
     Page<MakerCheckerRequestEntity> findAllByEntityName(MakerCheckerEntityName entityName, Pageable pageable);
@@ -30,4 +35,9 @@ public interface MakerCheckerRequestJpaRepo extends JpaRepository<MakerCheckerRe
             String makerId, Pageable pageable);
 
     Optional<MakerCheckerRequestEntity> findByEntityPkAndEntityName(String entityPk, MakerCheckerEntityName entityName);
+
+    Optional<MakerCheckerRequestEntity> findByWorkflowInstanceId(UUID workflowInstanceId);
+
+    List<MakerCheckerRequestEntity> findByEntityPkAndEntityNameAndStatusOrderByCreatedAtDesc(
+            String entityPk, MakerCheckerEntityName entityName, MakerCheckerStatus status);
 }

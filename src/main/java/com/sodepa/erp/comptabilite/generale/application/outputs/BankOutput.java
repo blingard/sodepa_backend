@@ -4,6 +4,9 @@ import jakarta.persistence.Column;
 
 import java.util.UUID;
 
+/**
+ * Composant applicatif `BankOutput` du système ERP SODEPA.
+ */
 public record BankOutput(
         UUID id,
         String code,
