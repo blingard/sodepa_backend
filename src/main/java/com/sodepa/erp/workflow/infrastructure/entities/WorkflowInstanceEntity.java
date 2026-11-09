@@ -62,7 +62,7 @@ public class WorkflowInstanceEntity {
     private WorkflowDefinitionEntity workflowDefinition;
 
     /**
-     * Nom fonctionnel de la typologie d'entité métier ciblée (ex: "BON_COMMANDE", "ENGAGEMENT_BUDGETAIRE", "CONGE").
+     * Nom fonctionnel de la typologie d'entité métier ciblée (ex: "com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity").
      */
     @Column(name = "entity_name", nullable = false, length = 60)
     private String entityName;

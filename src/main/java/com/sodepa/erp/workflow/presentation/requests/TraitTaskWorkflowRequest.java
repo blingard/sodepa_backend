@@ -34,8 +34,6 @@ public class TraitTaskWorkflowRequest {
 
     private boolean accept;
     private MultipartFile file;
-    private UUID documentGedId;
-    private String pieceJointeUri;
     /**
      * Données JSON représentant les champs modifiés ou enrichis lors de la validation.
      */

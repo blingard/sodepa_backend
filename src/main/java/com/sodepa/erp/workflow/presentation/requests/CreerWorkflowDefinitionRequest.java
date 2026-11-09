@@ -132,7 +132,7 @@ public class CreerWorkflowDefinitionRequest {
          * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
          */
         @Builder.Default
-        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
+        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
 
         /**
          * Autorisation d'ajouter un document justificatif (GED).
@@ -231,7 +231,7 @@ public class CreerWorkflowDefinitionRequest {
          * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
          */
         @Builder.Default
-        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
+        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
 
         /**
          * Autorisation d'ajouter un document justificatif (GED).

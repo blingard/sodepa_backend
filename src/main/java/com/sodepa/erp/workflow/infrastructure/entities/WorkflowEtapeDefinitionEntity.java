@@ -83,12 +83,13 @@ public class WorkflowEtapeDefinitionEntity {
 
     /**
      * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
-     * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
+     * (DO_NOTHING, ADD_FILE, SET_ATTRIBUTE, FILE_AND_ATTRIBUTE, OPTIONAL_FILE_OR_ATTRIBUTE).
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_action_validation", length = 40)
     @Builder.Default
-    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
+    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
+
 
     /**
      * Autorise ou interdit le téléversement d'un document justificatif (GED) lors de la validation.

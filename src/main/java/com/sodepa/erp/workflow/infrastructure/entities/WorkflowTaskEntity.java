@@ -142,29 +142,9 @@ public class WorkflowTaskEntity {
 
     @Column(name = "date_decision")
     private Instant dateDecision;
-    /**
-     * Identifiant du document GED téléversé lors de la validation.
-     */
-    @Column(name = "document_ged_id")
-    private UUID documentGedId;
-
-    /**
-     * URI ou chemin MinIO vers le document joint.
-     */
-    @Column(name = "piece_jointe_uri", length = 500)
-    private String pieceJointeUri;
-
-    @Column(name = "champs_modifies_json", columnDefinition = "TEXT")
-    private String champsModifiesJson;
 
     @Column(name = "entity_package_reference", length = 150)
     private String entityPackageReference;
-
-
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "previous_json_data", columnDefinition = "jsonb")
-    private Map<String, Object> previousData;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "current_json_data", columnDefinition = "jsonb")
@@ -175,6 +155,15 @@ public class WorkflowTaskEntity {
 
     @Column(name = "is_first_task_of_step", nullable = false, columnDefinition = "boolean default false")
     private boolean isFirstTaskOfStep;
+
+    /**
+     * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
+     * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_action_validation", length = 40)
+    @Builder.Default
+    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.ADD_FILE;
 
     // --- Alias de rétrocompatibilité d'accès ---
     public EmployeEntity getAssigneAEmploye() {
@@ -203,5 +192,23 @@ public class WorkflowTaskEntity {
             this.assigneUser = user;
             return this;
         }
+    }
+
+    public UUID getDocumentGedId() {
+        return null;
+    }
+
+    public String getPieceJointeUri() {
+        if (currentData != null && currentData.containsKey("fileUrl")) {
+            return String.valueOf(currentData.get("fileUrl"));
+        }
+        return null;
+    }
+
+    public String getChampsModifiesJson() {
+        if (currentData != null && id != null && currentData.containsKey(id.toString())) {
+            return String.valueOf(currentData.get(id.toString()));
+        }
+        return null;
     }
 }
