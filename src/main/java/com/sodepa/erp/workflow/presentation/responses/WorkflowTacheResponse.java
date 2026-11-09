@@ -1,6 +1,6 @@
 package com.sodepa.erp.workflow.presentation.responses;
 
-import com.sodepa.erp.workflow.infrastructure.entities.DecisionWorkflow;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDecision;
 import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache;
 import lombok.*;
 
@@ -67,7 +67,7 @@ public class WorkflowTacheResponse {
     private StatutWorkflowTache statut;
 
     /** Décision prise par l'approbateur (APPROUVE, REJETE, DEMANDE_REVISION). */
-    private DecisionWorkflow decision;
+    private WorkflowDecision decision;
 
     /** Commentaire ou motivation déposée par l'approbateur. */
     private String commentaire;

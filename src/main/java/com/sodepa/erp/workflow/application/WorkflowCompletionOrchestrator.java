@@ -328,7 +328,7 @@ public class WorkflowCompletionOrchestrator {
                     .email("workflow@sodepa.cm")
                     .permissions(allPermissions)
                     .phoneNumbers(Collections.emptySet())
-                    .PosteData(Collections.emptySet())
+                    .posteData(Collections.emptySet())
                     .build();
 
             CurrentUserAuthenticationToken elevatedToken = new CurrentUserAuthenticationToken(

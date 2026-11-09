@@ -1,7 +1,7 @@
 package com.sodepa.erp.workflow.presentation.requests;
 
 import com.sodepa.erp.workflow.infrastructure.entities.ActionDepassementSla;
-import com.sodepa.erp.workflow.infrastructure.entities.ModeActionValidationEtape;
+import com.sodepa.erp.workflow.infrastructure.entities.ValidationStepActionMode;
 import com.sodepa.erp.workflow.infrastructure.entities.PolitiqueValidation;
 import com.sodepa.erp.workflow.infrastructure.entities.StrategieAssignation;
 import com.sodepa.erp.workflow.infrastructure.entities.TypeEtapeWorkflow;
@@ -114,7 +114,7 @@ public class CreerWorkflowDefinitionRequest {
      * Champ politiqueValidation : politique validation utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
      */
         @Builder.Default
-        private PolitiqueValidation politiqueValidation = PolitiqueValidation.UN_SEUL_SUFFIT;
+        private PolitiqueValidation politiqueValidation = PolitiqueValidation.ONLY_ONE_CAN_VALIDATE;
 
     /**
      * Champ strategieAssignation : strategie assignation utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -132,7 +132,7 @@ public class CreerWorkflowDefinitionRequest {
          * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
          */
         @Builder.Default
-        private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
 
         /**
          * Autorisation d'ajouter un document justificatif (GED).
@@ -231,7 +231,7 @@ public class CreerWorkflowDefinitionRequest {
          * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
          */
         @Builder.Default
-        private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
 
         /**
          * Autorisation d'ajouter un document justificatif (GED).

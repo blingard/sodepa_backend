@@ -13,7 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Service applicatif central de gestion des notifications multi-canaux (Email et SMS) de l'ERP SODEPA.
@@ -56,12 +58,35 @@ public class NotificationService {
             String sujet,
             String messageCorps,
             String typeEvenement,
+            CanalNotification chanel) {
+
+        log.info("[NOTIFICATION-EMAIL] Envoi à {} <{}> | Sujet: {} | Événement: {}",
+                destinataireNom, email, sujet, typeEvenement);
+
+        NotificationEntity notif = NotificationEntity.builder()
+                .canal(chanel)
+                .destinataireUtilisateurId(utilisateurId)
+                .destinataireNom(destinataireNom)
+                .destinataireEmail(email.trim())
+                .sujet(sujet)
+                .messageCorps(messageCorps)
+                .typeEvenement(typeEvenement != null ? typeEvenement : "NOTIFICATION_GENERALE")
+                .statut(StatutNotification.PENDING)
+                .dateEnvoi(LocalDateTime.now())
+                .build();
+
+        return notificationRepository.save(notif);
+    }
+    @Transactional
+    public NotificationEntity envoyerEmail(
+            UUID utilisateurId,
+            String destinataireNom,
+            String email,
+            String sujet,
+            String messageCorps,
+            String typeEvenement,
             String referenceEntiteType,
             String referenceEntiteId) {
-
-        if (email == null || email.isBlank()) {
-            throw new IllegalArgumentException("L'adresse email du destinataire est obligatoire pour un envoi EMAIL.");
-        }
 
         log.info("[NOTIFICATION-EMAIL] Envoi à {} <{}> | Sujet: {} | Événement: {}",
                 destinataireNom, email, sujet, typeEvenement);
@@ -70,17 +95,34 @@ public class NotificationService {
                 .canal(CanalNotification.EMAIL)
                 .destinataireUtilisateurId(utilisateurId)
                 .destinataireNom(destinataireNom)
-                .destinataireEmail(email.trim())
+                .destinataireEmail(email != null ? email.trim() : null)
                 .sujet(sujet)
                 .messageCorps(messageCorps)
                 .typeEvenement(typeEvenement != null ? typeEvenement : "NOTIFICATION_GENERALE")
                 .referenceEntiteType(referenceEntiteType)
                 .referenceEntiteId(referenceEntiteId)
-                .statut(StatutNotification.ENVOYEE)
+                .statut(StatutNotification.PENDING)
                 .dateEnvoi(LocalDateTime.now())
                 .build();
 
         return notificationRepository.save(notif);
+    }
+
+
+
+    @Transactional
+    public void sendNotificationList(Set<SendNotificationInput> utilisateurIds) {
+        utilisateurIds.forEach(input -> {
+            envoyerEmail(
+                    input.recipientId(),
+                    input.recipientName(),
+                    input.recipientEmail(),
+                    input.title(),
+                    input.message(),
+                    input.workflowInstanceCodes(),
+                    input.chanel()
+            );
+        });
     }
 
     /**
@@ -126,7 +168,7 @@ public class NotificationService {
                 .typeEvenement(typeEvenement != null ? typeEvenement : "NOTIFICATION_SMS")
                 .referenceEntiteType(referenceEntiteType)
                 .referenceEntiteId(referenceEntiteId)
-                .statut(StatutNotification.ENVOYEE)
+                .statut(StatutNotification.SEND)
                 .dateEnvoi(LocalDateTime.now())
                 .build();
 
@@ -184,7 +226,7 @@ public class NotificationService {
                 .typeEvenement(typeEvenement)
                 .referenceEntiteType(referenceEntiteType)
                 .referenceEntiteId(referenceEntiteId)
-                .statut(StatutNotification.ENVOYEE)
+                .statut(StatutNotification.SEND)
                 .dateEnvoi(LocalDateTime.now())
                 .build();
 
@@ -353,7 +395,7 @@ public class NotificationService {
     public NotificationEntity marquerCommeLue(UUID notificationId) {
         NotificationEntity notif = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Notification introuvable : " + notificationId));
-        notif.setStatut(StatutNotification.LUE);
+        notif.setStatut(StatutNotification.READ);
         notif.setDateLecture(LocalDateTime.now());
         return notificationRepository.save(notif);
     }

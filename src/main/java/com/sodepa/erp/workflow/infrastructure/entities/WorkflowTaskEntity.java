@@ -1,11 +1,15 @@
 package com.sodepa.erp.workflow.infrastructure.entities;
 
+import com.sodepa.erp.organigramme.infrastructure.entities.PosteEntity;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -20,6 +24,7 @@ import java.util.UUID;
     @Index(name = "idx_wf_tache_inst", columnList = "workflow_instance_id"),
     @Index(name = "idx_wf_tache_assigne", columnList = "assigne_utilisateur_id"),
     @Index(name = "idx_wf_tache_employe", columnList = "assigne_employe_id"),
+    @Index(name = "idx_wf_tache_poste", columnList = "assigne_poste_id"),
     @Index(name = "idx_wf_tache_statut", columnList = "statut")
 })
 /**
@@ -31,7 +36,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class WorkflowTacheEntity {
+public class WorkflowTaskEntity {
 
     /**
      * Identifiant unique universel (UUID) de la tâche de workflow.
@@ -52,6 +57,8 @@ public class WorkflowTacheEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "etape_definition_id", nullable = false)
     private WorkflowEtapeDefinitionEntity etapeDefinition;
+
+    private String notificationTemplate;
 
     /**
      * Définition spécifique de l'acteur et de l'action attendue pour cette tâche.
@@ -74,19 +81,31 @@ public class WorkflowTacheEntity {
     @Builder.Default
     private boolean obligatoire = true;
 
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean isDelegated = false;
+
     /**
      * Employé assigné à la tâche (Clé métier centrale, matricule, unité, poste).
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigne_employe_id")
-    private EmployeEntity assigneAEmploye;
+    private EmployeEntity assigneEmploye;
 
     /**
      * Utilisateur désigné pour traiter cette tâche (liaison technique pour l'authentification et session).
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigne_utilisateur_id", nullable = false)
-    private UtilisateurEntity assigneA;
+    private UtilisateurEntity assigneUser;
+
+    /**
+     * Utilisateur désigné pour traiter cette tâche (liaison technique pour l'authentification et session).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigne_poste_id")
+    private PosteEntity assignePoste;
 
     /**
      * Statut actuel de la tâche (EN_ATTENTE, APPROUVEE, REJETEE, DELEGUEE, EXPIREE).
@@ -94,14 +113,14 @@ public class WorkflowTacheEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default
-    private StatutWorkflowTache statut = StatutWorkflowTache.EN_ATTENTE;
+    private StatutWorkflowTache statut = StatutWorkflowTache.PENDING;
 
     /**
      * Décision finale enregistrée par le valideur lors de son traitement.
      */
     @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    private DecisionWorkflow decision;
+    private WorkflowDecision decision;
 
     /**
      * Commentaire explicatif, réserves ou observations formulées par le valideur.
@@ -121,33 +140,68 @@ public class WorkflowTacheEntity {
     @Column(name = "date_echeance")
     private Instant dateEcheance;
 
-    /**
-     * Date et heure effectives auxquelles le valideur a soumis sa décision.
-     */
     @Column(name = "date_decision")
     private Instant dateDecision;
-
     /**
-     * Identifiant du document justificatif (GED) téléversé lors de la validation.
+     * Identifiant du document GED téléversé lors de la validation.
      */
     @Column(name = "document_ged_id")
     private UUID documentGedId;
 
     /**
-     * URI ou chemin d'accès au document justificatif joint.
+     * URI ou chemin MinIO vers le document joint.
      */
     @Column(name = "piece_jointe_uri", length = 500)
     private String pieceJointeUri;
 
-    /**
-     * Snapshot JSON des valeurs des champs avant modification.
-     */
-    @Column(name = "valeurs_avant_modification_json", columnDefinition = "TEXT")
-    private String valeursAvantModificationJson;
-
-    /**
-     * Données JSON des champs modifiés / enrichis lors de la validation.
-     */
     @Column(name = "champs_modifies_json", columnDefinition = "TEXT")
     private String champsModifiesJson;
+
+    @Column(name = "entity_package_reference", length = 150)
+    private String entityPackageReference;
+
+
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "previous_json_data", columnDefinition = "jsonb")
+    private Map<String, Object> previousData;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "current_json_data", columnDefinition = "jsonb")
+    private Map<String, Object> currentData;
+
+    @Column(name = "is_last_task_of_step", nullable = false, columnDefinition = "boolean default false")
+    private boolean isLastTaskOfStep;
+
+    @Column(name = "is_first_task_of_step", nullable = false, columnDefinition = "boolean default false")
+    private boolean isFirstTaskOfStep;
+
+    // --- Alias de rétrocompatibilité d'accès ---
+    public EmployeEntity getAssigneAEmploye() {
+        return this.assigneEmploye;
+    }
+
+    public void setAssigneAEmploye(EmployeEntity emp) {
+        this.assigneEmploye = emp;
+    }
+
+    public UtilisateurEntity getAssigneA() {
+        return this.assigneUser;
+    }
+
+    public void setAssigneA(UtilisateurEntity user) {
+        this.assigneUser = user;
+    }
+
+    public static class WorkflowTaskEntityBuilder {
+        public WorkflowTaskEntityBuilder assigneAEmploye(EmployeEntity emp) {
+            this.assigneEmploye = emp;
+            return this;
+        }
+
+        public WorkflowTaskEntityBuilder assigneA(UtilisateurEntity user) {
+            this.assigneUser = user;
+            return this;
+        }
+    }
 }

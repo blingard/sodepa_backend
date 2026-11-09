@@ -26,9 +26,16 @@ public record UserData(
      * interchangeables.
      */
     String iamId,
-    Set<PosteData> PosteData
+    Set<PosteData> posteData,
+    boolean isAdmin,
+    boolean isDaf,
+    boolean isDg
 ) {
-    public UserData(String username, String name, String userId, Set<String> phoneNumbers, String email, Set<Permissions> permissions, String sessionId, String jwtToken, String iamId, Set<PosteData> PosteData) {
+    public UserData(String username, String name, String userId, Set<String> phoneNumbers, String email, Set<Permissions> permissions, String sessionId, String jwtToken, String iamId, Set<PosteData> posteData) {
+        this(username, name, userId, phoneNumbers, email, permissions, sessionId, jwtToken, iamId, posteData, false, false, false);
+    }
+
+    public UserData(String username, String name, String userId, Set<String> phoneNumbers, String email, Set<Permissions> permissions, String sessionId, String jwtToken, String iamId, Set<PosteData> posteData, boolean isAdmin, boolean isDaf, boolean isDg) {
         this.username = username;
         this.name = name;
         this.userId = userId;
@@ -38,6 +45,9 @@ public record UserData(
         this.sessionId = sessionId;
         this.jwtToken = jwtToken;
         this.iamId = iamId;
-        this.PosteData = PosteData;
+        this.posteData = posteData;
+        this.isAdmin = isAdmin;
+        this.isDaf = isDaf;
+        this.isDg = isDg;
     }
 }

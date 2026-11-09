@@ -2,11 +2,14 @@ package com.sodepa.erp.workflow.infrastructure.repo;
 
 import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDefinitionEntity;
 import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDomaine;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,6 +35,39 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
      * @return {@code true} si un circuit possède déjà ce code, {@code false} sinon.
      */
     boolean existsByCode(String code);
+
+    @Query("""
+    SELECT w
+    FROM WorkflowDefinitionEntity w
+    WHERE w.actif = :enable
+      AND EXISTS (
+          SELECT 1
+          FROM WorkflowEtapeDefinitionEntity e
+          JOIN e.acteurs a
+          WHERE e.workflowDefinition = w
+            AND e.actif = :enable
+            AND a.actif = :enable
+            AND a.poste.id IN :posteId
+            AND a.poste.uniteOrganisationnelle.id = w.uniteOrganisationnelle.id
+      )
+    """)
+    Page<WorkflowDefinitionEntity> findPageByPoste(@Param("posteId") Collection<UUID> posteId,
+                                                   @Param("enable") boolean enable,
+                                                   Pageable pageable);
+
+    @Query("""
+    SELECT DISTINCT w
+    FROM WorkflowDefinitionEntity w
+    JOIN FETCH w.etapes e
+    JOIN FETCH e.acteurs a
+    WHERE w.id IN :ids
+      AND e.actif = :enable
+      AND a.actif = :enable
+      AND a.poste.id IN :posteId
+    """)
+    List<WorkflowDefinitionEntity> findDetailsByIds(@Param("ids") List<UUID> ids,
+                                                    @Param("posteId") Collection<UUID> posteId,
+                                                    @Param("enable") boolean enable);
 
     /**
      * Recherche le circuit actif configuré pour un métier et une unité organisationnelle donnés.

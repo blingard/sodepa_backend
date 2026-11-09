@@ -1,11 +1,15 @@
 package com.sodepa.erp.workflow.infrastructure.entities;
 
+import com.sodepa.erp.organigramme.infrastructure.entities.PosteEntity;
 import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,6 +31,7 @@ import java.util.UUID;
     @Index(name = "idx_wf_acteur_etape", columnList = "etape_definition_id"),
     @Index(name = "idx_wf_acteur_user", columnList = "utilisateur_id"),
     @Index(name = "idx_wf_acteur_employe", columnList = "employe_id"),
+    @Index(name = "idx_wf_acteur_poste", columnList = "poste_id"),
     @Index(name = "idx_wf_acteur_unite", columnList = "unite_organisationnelle_id")
 })
 /**
@@ -82,12 +87,33 @@ public class WorkflowEtapeActeurDefinitionEntity {
     private UniteOrganisationnelleEntity uniteOrganisationnelle;
 
     /**
+     * Unité organisationnelle d'appartenance exigée pour le validateur (ex: Cellule Informatique).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "poste_id")
+    private PosteEntity poste;
+
+    /**
      * Stratégie de résolution dynamique si aucun employé fixe n'est directement renseigné
      * (ex: POSTE_SPECIFIQUE, ROLE_KEYCLOAK, MANAGER_N1, RESPONSABLE_STRUCTURE).
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "strategie_assignation", nullable = false, length = 40)
     private StrategieAssignation strategieAssignation;
+
+    /**
+     * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
+     * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_action_validation", length = 40)
+    @Builder.Default
+    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.ADD_FILE;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "donnees_json", columnDefinition = "jsonb")
+    private Map<String, Object> donnees;
+
 
     /**
      * Valeur de consigne associée à la stratégie d'assignation
@@ -108,6 +134,10 @@ public class WorkflowEtapeActeurDefinitionEntity {
     @Builder.Default
     private boolean obligatoire = true;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean canBeDelegate = true;
+
     /**
      * Délai limite SLA spécifique en heures pour cet acteur (si différent du délai global de l'étape).
      */
@@ -127,5 +157,13 @@ public class WorkflowEtapeActeurDefinitionEntity {
      */
     @Column(nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
-    private Boolean actif = true;
+    private boolean actif = true;
+
+    public boolean isActif() {
+        return this.actif;
+    }
+
+    public boolean getActif() {
+        return this.actif;
+    }
 }

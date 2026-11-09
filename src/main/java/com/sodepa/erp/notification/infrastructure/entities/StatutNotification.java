@@ -5,11 +5,12 @@ package com.sodepa.erp.notification.infrastructure.entities;
  */
 public enum StatutNotification {
     /** Notification enregistrée et en file d'attente d'expédition. */
-    EN_ATTENTE,
+    PENDING,
     /** Notification transmise avec succès à la passerelle SMTP ou SMS. */
-    ENVOYEE,
+    SEND,
     /** Échec d'acheminement technique (trace d'erreur conservée pour relance). */
-    ECHEC,
+    FAILED,
     /** Notification consultée et acquittée par le destinataire. */
+    READ,
     LUE
 }

@@ -37,10 +37,5 @@ public enum StrategieAssignation {
      * Attribution selon le code officiel de la fiche de poste dans le référentiel RH
      * (ex: "PST-DIR-TECH", "PST-CHEF-COMPTABLE").
      */
-    POSTE_SPECIFIQUE,
-
-    /**
-     * Attribution directe à un utilisateur fixe nommément identifié par son identifiant unique.
-     */
-    UTILISATEUR_FIXE
+    POSTE_SPECIFIQUE
 }

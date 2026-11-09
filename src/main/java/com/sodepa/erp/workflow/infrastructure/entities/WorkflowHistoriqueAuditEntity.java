@@ -67,7 +67,7 @@ public class WorkflowHistoriqueAuditEntity {
      */
     @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    private DecisionWorkflow decision;
+    private WorkflowDecision decision;
 
     /**
      * Commentaire ou motivation textuelle fournie par l'opérateur (obligatoire en cas de rejet).

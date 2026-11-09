@@ -124,7 +124,7 @@ public class RhService {
         if (utilsService.getCurrentUserData() != null && utilsService.getCurrentUserData().userId() != null) {
             try {
                 UUID currentUserId = UUID.fromString(utilsService.getCurrentUserData().userId());
-                workflowService.verifierEligibiliteMaker("WF-RH-RECRUTEMENT", currentUserId);
+                workflowService.verifierEligibiliteMaker("WF-RH-RECRUTEMENT");
             } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
                 log.warn("Contrôle Maker workflow pour le recrutement : {}", e.getMessage());
                 throw e;

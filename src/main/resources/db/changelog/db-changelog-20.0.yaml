@@ -1,7 +1,7 @@
 databaseChangeLog:
   - changeSet:
       id: 20.0-create-ref-fiscalite-taxes
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -29,7 +29,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-ref-fiscalite-regimes
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -49,7 +49,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-ref-seuils-gestion
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -74,7 +74,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-cleanup-corrupted-columns-compta-exercices
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       changes:
         - sql:
             sql: |
@@ -84,7 +84,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-compta-exercices
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -106,7 +106,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-compta-periodes-mensuelles
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -128,7 +128,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-compta-schemas-ecritures
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -151,7 +151,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-budget-programmes
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -170,7 +170,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-budget-activites
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -189,7 +189,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-budget-sources-financement
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -209,7 +209,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-budget-natures-depenses
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -228,7 +228,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-create-tresorerie-moyens-paiement
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       preConditions:
         - onFail: MARK_RAN
         - not:
@@ -251,7 +251,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-alter-budget-item-idempotent
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       changes:
         - sql:
             sql: |
@@ -262,7 +262,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-alter-achat-seuils-config-idempotent
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       changes:
         - sql:
             sql: |
@@ -271,7 +271,7 @@ databaseChangeLog:
 
   - changeSet:
       id: 20.0-alter-tresorerie-regies-idempotent
-      author: sodepa-team
+      author: ELLA BELINGA Jean Paul
       changes:
         - sql:
             sql: |

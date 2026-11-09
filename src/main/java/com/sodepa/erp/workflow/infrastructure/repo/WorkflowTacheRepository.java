@@ -1,7 +1,7 @@
 package com.sodepa.erp.workflow.infrastructure.repo;
 
 import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache;
-import com.sodepa.erp.workflow.infrastructure.entities.WorkflowTacheEntity;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowTaskEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,7 +17,7 @@ import java.util.UUID;
  * Interface Spring Data JPA pour le requêtage et la manipulation des tâches de workflow assignées aux utilisateurs.
  */
 @Repository
-public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEntity, UUID> {
+public interface WorkflowTacheRepository extends JpaRepository<WorkflowTaskEntity, UUID> {
 
     /**
      * Recherche l'ensemble des tâches rattachées à une instance de workflow spécifique.
@@ -25,7 +25,7 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEnti
      * @param workflowInstanceId Identifiant de l'instance d'exécution.
      * @return Liste de toutes les tâches (historiques et courantes) de l'instance.
      */
-    List<WorkflowTacheEntity> findByWorkflowInstanceId(UUID workflowInstanceId);
+    List<WorkflowTaskEntity> findByWorkflowInstanceId(UUID workflowInstanceId);
 
     /**
      * Recherche les tâches d'une instance filtrées par leur statut d'avancement (ex: EN_ATTENTE).
@@ -34,7 +34,7 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEnti
      * @param statut             Le statut recherché pour les tâches.
      * @return Liste des tâches correspondantes.
      */
-    List<WorkflowTacheEntity> findByWorkflowInstanceIdAndStatut(UUID workflowInstanceId, StatutWorkflowTache statut);
+    List<WorkflowTaskEntity> findByWorkflowInstanceIdAndStatut(UUID workflowInstanceId, StatutWorkflowTache statut);
 
     /**
      * Recherche toutes les tâches associées à une étape précise d'une instance de workflow.
@@ -44,7 +44,7 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEnti
      * @param etapeDefinitionId  Identifiant de l'étape concernée.
      * @return Liste des tâches de l'étape.
      */
-    List<WorkflowTacheEntity> findByWorkflowInstanceIdAndEtapeDefinitionId(UUID workflowInstanceId, UUID etapeDefinitionId);
+    List<WorkflowTaskEntity> findByWorkflowInstanceIdAndEtapeDefinitionId(UUID workflowInstanceId, UUID etapeDefinitionId);
 
     /**
      * Recherche avec pagination les tâches assignées à un utilisateur donné filtrées par statut
@@ -55,7 +55,7 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEnti
      * @param pageable   Options de pagination et de tri.
      * @return Une page de tâches pour l'utilisateur.
      */
-    Page<WorkflowTacheEntity> findByAssigneAIdAndStatut(UUID assigneAId, StatutWorkflowTache statut, Pageable pageable);
+    Page<WorkflowTaskEntity> findByAssigneAIdAndStatut(UUID assigneAId, StatutWorkflowTache statut, Pageable pageable);
 
     /**
      * Dénombre le total de tâches ayant un certain statut pour un utilisateur donné
@@ -74,6 +74,6 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTacheEnti
      * @param maintenant Horodatage de référence pour vérifier le dépassement d'échéance.
      * @return Liste des tâches en souffrance / hors délai.
      */
-    @Query("SELECT t FROM WorkflowTacheEntity t WHERE t.statut = 'EN_ATTENTE' AND t.dateEcheance IS NOT NULL AND t.dateEcheance < :maintenant")
-    List<WorkflowTacheEntity> findTachesEnDepassementSla(@Param("maintenant") Instant maintenant);
+    @Query("SELECT t FROM WorkflowTaskEntity t WHERE t.statut = 'EN_ATTENTE' AND t.dateEcheance IS NOT NULL AND t.dateEcheance < :maintenant")
+    List<WorkflowTaskEntity> findTachesEnDepassementSla(@Param("maintenant") Instant maintenant);
 }

@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,18 +46,29 @@ public class WorkflowRestController {
         return ResponseEntity.ok(workflowService.listerMetiers());
     }
 
+
     /**
-     * Récupère la liste de tous les circuits de validation configurés dans l'ERP,
+     * Récupère la liste de toutes les opérations métiers paramétrées active (ex: RECRUITMENT, SERVICE_MEMO).
+     *
+     * @return Réponse HTTP 200 contenant la liste des métiers.
+     */
+    @GetMapping("/metiers/active")
+    @Operation(summary = "Lister les opérations métiers active(Recrutement, Note de service, Budget, etc.)")
+    public ResponseEntity<Page<WorkflowMetierResponse>> listerActiveMetiers(@PageableDefault(size = 20) @NotNull Pageable pageable) {
+        return ResponseEntity.ok(workflowService.listerActiveMetiers(pageable));
+    }
+
+    /**
+     * Récupère la liste de tous les circuits de validation configurés dans l'ERP par page,
      * filtrés selon l'unité organisationnelle de l'utilisateur connecté (sauf Superviseur/Admin).
      *
-     * @param connectedUserId Identifiant optionnel de l'utilisateur pour le filtrage par unité.
+     * @param pageable Paramètres de pagination (page, size, sort).
      * @return Réponse HTTP 200 contenant la liste des définitions autorisées.
      */
     @GetMapping("/definitions")
-    @Operation(summary = "Lister les circuits de validation configurés (avec filtrage par unité organisationnelle)")
-    public ResponseEntity<List<WorkflowDefinitionResponse>> listerDefinitions(
-            @RequestParam(required = false) UUID connectedUserId) {
-        return ResponseEntity.ok(workflowService.listerDefinitions(connectedUserId));
+    @Operation(summary = "Lister les circuits de validation configurés par page (avec filtrage par unité organisationnelle)")
+    public ResponseEntity<Page<WorkflowDefinitionResponse>> listerDefinitions(@PageableDefault(size = 20) @NotNull Pageable pageable, @RequestParam(required = false, name = "active") boolean active) {
+        return ResponseEntity.ok(workflowService.listerPageDefinitions(pageable, active));
     }
 
     /**
@@ -65,46 +77,22 @@ public class WorkflowRestController {
     @GetMapping("/verifier-maker")
     @Operation(summary = "Vérifier si un utilisateur est habilité à initier un workflow (Maker pre-check)")
     public ResponseEntity<Boolean> verifierMaker(
-            @Parameter(description = "Code du circuit de validation") @RequestParam String code,
-            @Parameter(description = "Identifiant de l'utilisateur initiateur") @RequestParam UUID utilisateurId) {
-        return ResponseEntity.ok(workflowService.peutInitierWorkflow(code, utilisateurId));
+            @Parameter(description = "Code du circuit de validation") @RequestParam(name = "code") String code) {
+        return ResponseEntity.ok(workflowService.canInitiateWorkflow(code));
     }
 
-    /**
-     * Démarre une nouvelle instance de workflow en s'appuyant sur le RÉFÉRENTIEL DES MÉTIERS et l'EMPLOYÉ.
-     * Supprime tout code de workflow en dur.
-     *
-     * @param request Paramètres contenant codeMetier, employeId, entityName, entityId et contexte.
-     * @return Réponse HTTP 201 contenant l'instance créée.
-     */
-    @PostMapping("/instances/demarrer-metier")
-    @Operation(summary = "Démarrer un workflow via une opération métier (sans code de circuit en dur)")
-    public ResponseEntity<WorkflowInstanceResponse> demarrerWorkflowMetier(@Valid @RequestBody DemarrerWorkflowMetierRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.demarrerWorkflowMetier(request));
-    }
-
-    /**
-     * Démarre une instance de workflow classique via code ou ID direct (rétrocompatibilité).
-     */
-    @PostMapping("/instances/demarrer")
-    @Operation(summary = "Démarrer une nouvelle instance de workflow pour un objet métier")
-    public ResponseEntity<WorkflowInstanceResponse> demarrerWorkflow(@Valid @RequestBody DemarrerWorkflowRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.demarrerWorkflow(request));
-    }
 
     /**
      * Récupère le détail d'une instance avec application stricte du principe Need-to-Know et bypass Superviseurs.
      *
      * @param id              Identifiant de l'instance.
-     * @param connectedUserId Identifiant de l'agent connecté pour contrôle d'accès.
      * @return L'instance si autorisée.
      */
     @GetMapping("/instances/{id}")
     @Operation(summary = "Consulter le détail et l'avancement d'une instance (sécurité Need-to-Know)")
     public ResponseEntity<WorkflowInstanceResponse> getInstanceById(
-            @Parameter(description = "Identifiant UUID de l'instance") @PathVariable UUID id,
-            @RequestParam(required = false) UUID connectedUserId) {
-        return ResponseEntity.ok(workflowService.getInstanceById(id, connectedUserId));
+            @Parameter(description = "Identifiant UUID de l'instance") @PathVariable UUID id) {
+        return ResponseEntity.ok(workflowService.getInstanceById(id));
     }
 
     /**
@@ -135,12 +123,10 @@ public class WorkflowRestController {
     /**
      * Enregistre la décision d'un approbateur avec verrou anti-usurpation d'assignation.
      */
-    @PostMapping("/taches/{tacheId}/decision")
+    @PostMapping("/tack/decision")
     @Operation(summary = "Approuver, rejeter ou demander des modifications sur une tâche")
-    public ResponseEntity<WorkflowTacheResponse> traiterTache(
-            @PathVariable UUID tacheId,
-            @Valid @RequestBody TraiterTacheWorkflowRequest request) {
-        return ResponseEntity.ok(workflowService.traiterTache(tacheId, request));
+    public ResponseEntity<WorkflowTacheResponse> traiterTache(@Valid @RequestBody TraitTaskWorkflowRequest request) {
+        return ResponseEntity.ok(workflowService.traiterTache(request));
     }
 
     /**

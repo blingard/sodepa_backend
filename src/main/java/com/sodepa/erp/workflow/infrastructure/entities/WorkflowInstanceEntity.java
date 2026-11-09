@@ -1,5 +1,6 @@
 package com.sodepa.erp.workflow.infrastructure.entities;
 
+import com.sodepa.erp.organigramme.infrastructure.entities.PosteEntity;
 import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
@@ -33,6 +34,7 @@ import java.util.UUID;
     @Index(name = "idx_wf_inst_statut", columnList = "statut"),
     @Index(name = "idx_wf_inst_initiateur", columnList = "initiateur_id"),
     @Index(name = "idx_wf_inst_employe", columnList = "initiateur_employe_id"),
+    @Index(name = "idx_wf_inst_poste", columnList = "poste_id"),
     @Index(name = "idx_wf_inst_unite", columnList = "unite_organisationnelle_id")
 })
 /**
@@ -94,6 +96,14 @@ public class WorkflowInstanceEntity {
     private UniteOrganisationnelleEntity uniteOrganisationnelle;
 
     /**
+     * Unité organisationnelle d'appartenance de l'initiateur au moment de la soumission.
+     * Sert de base au cloisonnement territorial et cellulaire des dossiers.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "poste_id")
+    private PosteEntity poste;
+
+    /**
      * Statut général d'avancement du cycle de vie de l'instance.
      */
     @Enumerated(EnumType.STRING)
@@ -132,5 +142,5 @@ public class WorkflowInstanceEntity {
      */
     @Builder.Default
     @OneToMany(mappedBy = "workflowInstance", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<WorkflowTacheEntity> taches = new ArrayList<>();
+    private List<WorkflowTaskEntity> taches = new ArrayList<>();
 }

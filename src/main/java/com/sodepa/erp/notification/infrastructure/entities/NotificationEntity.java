@@ -91,7 +91,7 @@ public class NotificationEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default
-    private StatutNotification statut = StatutNotification.ENVOYEE;
+    private StatutNotification statut = StatutNotification.SEND;
 
     /** Détail technique en cas d'échec d'envoi SMTP ou passerelle SMS. */
     @Column(name = "erreur_technique", length = 500)

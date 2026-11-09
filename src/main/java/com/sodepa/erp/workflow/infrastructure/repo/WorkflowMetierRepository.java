@@ -2,6 +2,8 @@ package com.sodepa.erp.workflow.infrastructure.repo;
 
 import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDomaine;
 import com.sodepa.erp.workflow.infrastructure.entities.WorkflowMetierEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -44,5 +46,5 @@ public interface WorkflowMetierRepository extends JpaRepository<WorkflowMetierEn
      *
      * @return Liste de toutes les opérations métiers actives.
      */
-    List<WorkflowMetierEntity> findAllByIsActiveTrue();
+    Page<WorkflowMetierEntity> findAllByIsActiveTrue(Pageable pageable);
 }

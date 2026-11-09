@@ -74,6 +74,13 @@ public class WorkflowEtapeDefinitionEntity {
     @Column(name = "type_etape", nullable = false, length = 40)
     private TypeEtapeWorkflow typeEtape;
 
+
+    @Column(name = "is_last_task_of_step", nullable = false, columnDefinition = "boolean default false")
+    private boolean isLastTaskOfStep;
+
+    @Column(name = "is_first_task_of_step", nullable = false, columnDefinition = "boolean default false")
+    private boolean isFirstTaskOfStep;
+
     /**
      * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
      * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
@@ -81,7 +88,7 @@ public class WorkflowEtapeDefinitionEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_action_validation", length = 40)
     @Builder.Default
-    private ModeActionValidationEtape modeActionValidation = ModeActionValidationEtape.OPTIONNEL_FICHIER_OU_CHAMPS;
+    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONNEL_FICHIER_OU_CHAMPS;
 
     /**
      * Autorise ou interdit le téléversement d'un document justificatif (GED) lors de la validation.
@@ -117,13 +124,14 @@ public class WorkflowEtapeDefinitionEntity {
     @Column(name = "champs_modifiables_autorises", length = 500)
     private String champsModifiablesAutorises;
 
+
     /**
      * Règle de consensus lorsque plusieurs valideurs sont potentiellement éligibles sur cette étape.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "politique_validation", nullable = false, length = 40)
     @Builder.Default
-    private PolitiqueValidation politiqueValidation = PolitiqueValidation.UN_SEUL_SUFFIT;
+    private PolitiqueValidation politiqueValidation = PolitiqueValidation.ONLY_ONE_CAN_VALIDATE;
 
     /**
      * Stratégie d'assignation par défaut de l'étape (utilisée en fallback ou pour étapes mono-acteur).
@@ -157,7 +165,7 @@ public class WorkflowEtapeDefinitionEntity {
      */
     @Column(nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
-    private Boolean actif = true;
+    private boolean actif = true;
 
     /**
      * Liste des acteurs et validateurs configurés pour intervenir sur cette étape en parallèle.
@@ -165,14 +173,6 @@ public class WorkflowEtapeDefinitionEntity {
     @Builder.Default
     @OneToMany(mappedBy = "etapeDefinition", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<WorkflowEtapeActeurDefinitionEntity> acteurs = new ArrayList<>();
-
-    /**
-     * Ensemble des conditions d'aiguillage sortantes permettant de brancher vers des étapes alternatives.
-     */
-    @Builder.Default
-    @OneToMany(mappedBy = "etapeSource", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("priorite ASC")
-    private List<WorkflowConditionTransitionEntity> transitionsSortantes = new ArrayList<>();
 
     /**
      * Rattache un acteur attendu à cette étape.
@@ -185,5 +185,13 @@ public class WorkflowEtapeDefinitionEntity {
         }
         this.acteurs.add(acteur);
         acteur.setEtapeDefinition(this);
+    }
+
+    public boolean isActif() {
+        return this.actif;
+    }
+
+    public boolean getActif() {
+        return this.actif;
     }
 }

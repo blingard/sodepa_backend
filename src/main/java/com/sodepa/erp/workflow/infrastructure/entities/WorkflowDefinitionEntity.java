@@ -5,9 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Entité JPA représentant un modèle (définition) de circuit de validation dans l'ERP SODEPA.
@@ -122,7 +120,8 @@ public class WorkflowDefinitionEntity {
     private Instant dateCreation;
 
     /**
-     * Ajoute une étape à la définition en maintenant la cohérence bidirectionnelle de la relation JPA.
+     * Ajoute une étape en fin de circuit en maintenant la cohérence bidirectionnelle de la relation JPA,
+     * puis recalcule les drapeaux de première/dernière étape.
      *
      * @param etape L'entité d'étape de workflow à rattacher à ce circuit.
      */
@@ -130,7 +129,44 @@ public class WorkflowDefinitionEntity {
         if (this.etapes == null) {
             this.etapes = new ArrayList<>();
         }
-        this.etapes.add(etape);
+
+        // Max sur TOUTES les étapes (y compris inactives) pour éviter les doublons d'ordre
+        int maxOrdre = this.etapes.stream()
+                .map(WorkflowEtapeDefinitionEntity::getOrdre)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
+
+        etape.setOrdre(maxOrdre + 1);
+        etape.setActif(true);
         etape.setWorkflowDefinition(this);
+        this.etapes.add(etape);
+
+        recalculerBornes();
+    }
+
+    /**
+     * Recalcule les drapeaux firstTaskOfStep / lastTaskOfStep : seules la première et la dernière
+     * étape ACTIVES (selon l'ordre) portent respectivement chaque drapeau. À rappeler après tout
+     * ajout, désactivation, suppression ou réordonnancement d'étape.
+     */
+    public void recalculerBornes() {
+        if (this.etapes == null) {
+            return;
+        }
+        List<WorkflowEtapeDefinitionEntity> actives = this.etapes.stream()
+                .filter(WorkflowEtapeDefinitionEntity::isActif)
+                .sorted(Comparator.comparingInt(WorkflowEtapeDefinitionEntity::getOrdre))
+                .toList();
+
+        this.etapes.forEach(e -> {
+            e.setFirstTaskOfStep(false);
+            e.setLastTaskOfStep(false);
+        });
+
+        if (!actives.isEmpty()) {
+            actives.get(0).setFirstTaskOfStep(true);
+            actives.get(actives.size() - 1).setLastTaskOfStep(true);
+        }
     }
 }

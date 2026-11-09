@@ -20,11 +20,5 @@ public enum TypeEtapeWorkflow {
      * Étape exécutée automatiquement par le système sans intervention humaine
      * (ex: contrôle automatisé de disponibilité des crédits budgétaires, vérification de solde bancaire).
      */
-    CONTROLE_AUTO,
-
-    /**
-     * Étape purement informative déclenchant l'envoi d'alertes ou notifications aux parties prenantes,
-     * sans interrompre la progression du circuit.
-     */
-    NOTIFICATION
+    CONTROLE_AUTO
 }
