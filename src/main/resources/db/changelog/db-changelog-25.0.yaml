@@ -1,0 +1,123 @@
+databaseChangeLog:
+  - changeSet:
+      id: bud-25-01-create-budget-campagne
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_campagne
+      changes:
+        - createTable:
+            tableName: budget_campagne
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: annee, type: INT, constraints: { nullable: false, unique: true } }
+              - column: { name: intitule, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: date_lancement, type: DATE, constraints: { nullable: false } }
+              - column: { name: date_limite_depot_uo, type: DATE }
+              - column: { name: date_cloture_previsionnelle, type: DATE }
+              - column: { name: statut, type: VARCHAR(50), defaultValue: "OUVERTE", constraints: { nullable: false } }
+              - column: { name: lettre_circulaire_ref, type: VARCHAR(100) }
+              - column: { name: lettre_circulaire_ged_id, type: UUID }
+              - column: { name: orientations_strategiques, type: TEXT }
+              - column: { name: cree_le, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: cree_par, type: UUID }
+
+  - changeSet:
+      id: bud-25-02-create-budget-groupe-travail
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_groupe_travail
+      changes:
+        - createTable:
+            tableName: budget_groupe_travail
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: campagne_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: decision_creation_ref, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: date_creation, type: DATE, constraints: { nullable: false } }
+              - column: { name: president_titre, type: VARCHAR(150) }
+              - column: { name: rapporteur_titre, type: VARCHAR(150) }
+              - column: { name: composition_membres, type: TEXT }
+              - column: { name: decision_ged_id, type: UUID }
+              - column: { name: statut, type: VARCHAR(50), defaultValue: "ACTIF", constraints: { nullable: false } }
+              - column: { name: cree_le, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: budget_groupe_travail
+            baseColumnNames: campagne_id
+            referencedTableName: budget_campagne
+            referencedColumnNames: id
+            constraintName: fk_budget_groupe_travail_campagne
+
+  - changeSet:
+      id: bud-25-03-create-budget-reunion
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_reunion
+      changes:
+        - createTable:
+            tableName: budget_reunion
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: groupe_travail_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: date_reunion, type: TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: ordre_du_jour, type: VARCHAR(255), constraints: { nullable: false } }
+              - column: { name: lieu, type: VARCHAR(150) }
+              - column: { name: nombre_presents, type: INT }
+              - column: { name: nombre_absents, type: INT }
+              - column: { name: feuille_presence_ged_id, type: UUID }
+              - column: { name: pv_document_ged_id, type: UUID }
+              - column: { name: synthese_recommandations, type: TEXT }
+              - column: { name: cree_le, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+        - addForeignKeyConstraint:
+            baseTableName: budget_reunion
+            baseColumnNames: groupe_travail_id
+            referencedTableName: budget_groupe_travail
+            referencedColumnNames: id
+            constraintName: fk_budget_reunion_groupe_travail
+
+  - changeSet:
+      id: bud-25-04-alter-budget-engagement
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: budget_engagement
+      changes:
+        - addColumn:
+            tableName: budget_engagement
+            columns:
+              - column: { name: circuit, type: VARCHAR(50) }
+              - column: { name: type_depense_specifique, type: VARCHAR(50), defaultValue: "STANDARD" }
+              - column: { name: visa_budgetaire, type: VARCHAR(50) }
+              - column: { name: date_visa, type: TIMESTAMP }
+              - column: { name: vise_par, type: UUID }
+              - column: { name: pieces_jointes_valides, type: BOOLEAN }
+              - column: { name: bon_commande_id, type: UUID }
+              - column: { name: unite_organisationnelle_id, type: UUID }
+              - column: { name: motif_annulation, type: VARCHAR(500) }
+
+  - changeSet:
+      id: bud-25-05-alter-budget-reallocation
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: budget_reallocation
+      changes:
+        - addColumn:
+            tableName: budget_reallocation
+            columns:
+              - column: { name: type_reallocation, type: VARCHAR(50), defaultValue: "SIMPLE" }
+              - column: { name: taux_reallocation, type: NUMERIC(7, 4) }
+              - column: { name: mesure_conservatoire, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: justification_urgence, type: VARCHAR(500) }
+              - column: { name: numero_resolution_ca, type: VARCHAR(100) }
+              - column: { name: date_validation_ca, type: TIMESTAMP }
