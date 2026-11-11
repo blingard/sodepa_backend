@@ -8,7 +8,8 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Entité représentant un engagement de dépenses (réservation budgétaire avant saisie de l'écriture réelle).
+ * Entité représentant un engagement de dépenses (bon d'engagement / réservation budgétaire)
+ * conforme au cahier des charges officiel SODEPA (EP-BUD-03, F-BUD-010 à F-BUD-016).
  */
 @Entity
 @Table(name = "budget_engagement")
@@ -32,7 +33,6 @@ public class BudgetEngagementEntity {
         this.codePrefix = prefixeCode;
     }
 
-
     /**
      * Identifiant unique de l'engagement.
      */
@@ -50,7 +50,7 @@ public class BudgetEngagementEntity {
     private BudgetItemEntity budgetItem;
 
     /**
-     * Numéro d'engagement unique (ex: numéro de bon de commande).
+     * Numéro d'engagement unique (format normé ex: BE-2026-RNCH-FARO-0001).
      */
     @Column(name = "numero_engagement", nullable = false, unique = true, length = 100)
     private String numeroEngagement;
@@ -62,7 +62,7 @@ public class BudgetEngagementEntity {
     private String description;
 
     /**
-     * Montant de la dépense engagée.
+     * Montant de la dépense engagée en FCFA TTC.
      */
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal montant;
@@ -74,7 +74,52 @@ public class BudgetEngagementEntity {
     private LocalDateTime dateEngagement;
 
     /**
-     * Statut de l'engagement (ex: 'ENGAGED', 'CONVERTED_TO_REAL', 'CANCELLED').
+     * Circuit budgétaire déterminé par le seuil de 500 000 FCFA TTC (F-BUD-012) :
+     * "MENUE_DEPENSE" (< 500 000 FCFA TTC) ou "GROSSE_DEPENSE" (>= 500 000 FCFA TTC).
+     */
+    @Column(length = 50)
+    private String circuit;
+
+    /**
+     * Circuit spécifique le cas échéant (F-BUD-015) :
+     * "STANDARD", "MISSION", "ENTRETIEN_VEHICULE", "ETUDES_CONSULTANT".
+     */
+    @Column(name = "type_depense_specifique", length = 50)
+    @Builder.Default
+    private String typeDepenseSpecifique = "STANDARD";
+
+    /**
+     * Visa budgétaire du Chef Service du Budget (SB) ou CSAFC en unité (F-BUD-013).
+     */
+    @Column(name = "visa_budgetaire", length = 50)
+    private String visaBudgetaire;
+
+    /**
+     * Date et heure d'apposition du visa budgétaire.
+     */
+    @Column(name = "date_visa")
+    private LocalDateTime dateVisa;
+
+    /**
+     * Identifiant de l'agent ayant apposé le visa (CSB / CSAFC).
+     */
+    @Column(name = "vise_par")
+    private UUID visePar;
+
+    /**
+     * Indicateur de conformité de la liasse documentaire lors du contrôle a priori (F-BUD-018).
+     */
+    @Column(name = "pieces_jointes_valides")
+    private Boolean piecesJointesValides;
+
+    /**
+     * Identifiant du Bon de Commande lié (obligatoire pour les grosses dépenses >= 500 000 FCFA TTC, F-BUD-014).
+     */
+    @Column(name = "bon_commande_id")
+    private UUID bonCommandeId;
+
+    /**
+     * Statut de l'engagement (ex: 'ENGAGED', 'CONVERTED_TO_REAL', 'CANCELLED', 'LIQUIDATED', 'PAID').
      */
     @Column(nullable = false, length = 50)
     private String statut;
@@ -90,4 +135,10 @@ public class BudgetEngagementEntity {
      */
     @Column(name = "approbateur_courant_role", length = 100)
     private String approbateurCourantRole;
+
+    /**
+     * Motif d'annulation de l'engagement en cas de renoncement ou restitution de crédit (F-BUD-016).
+     */
+    @Column(name = "motif_annulation", length = 500)
+    private String motifAnnulation;
 }

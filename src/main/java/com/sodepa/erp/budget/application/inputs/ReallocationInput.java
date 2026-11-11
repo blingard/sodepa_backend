@@ -12,5 +12,12 @@ public record ReallocationInput(
     UUID destItemId,
     BigDecimal montant,
     UUID responsableId,
-    String raison
-) {}
+    String raison,
+    Boolean mesureConservatoire,
+    String justificationUrgence,
+    String numeroResolutionCa
+) {
+    public ReallocationInput(UUID sourceItemId, UUID destItemId, BigDecimal montant, UUID responsableId, String raison) {
+        this(sourceItemId, destItemId, montant, responsableId, raison, false, null, null);
+    }
+}

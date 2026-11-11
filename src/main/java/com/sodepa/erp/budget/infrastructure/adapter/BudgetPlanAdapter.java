@@ -351,7 +351,7 @@ public class BudgetPlanAdapter {
         BudgetPlanEntity plan = budgetPlanRepository.findById(input.planId())
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
 
-        if (plan.getStatut() != StatutBudget.DRAFT && plan.getStatut() != StatutBudget.REJECTED) {
+        if (!plan.getStatut().isModifiable()) {
             throw new IllegalStateException("Impossible d'ajouter des lignes budgétaires. Le plan n'est plus modifiable.");
         }
 
@@ -399,7 +399,7 @@ public class BudgetPlanAdapter {
     public void soumettrePlan(UUID planId, UUID userId) {
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
-        if (plan.getStatut() != StatutBudget.DRAFT && plan.getStatut() != StatutBudget.REJECTED) {
+        if (!plan.getStatut().isModifiable()) {
             throw new IllegalStateException("Le plan n'est pas à l'état DRAFT ou REJECTED.");
         }
 
@@ -422,7 +422,7 @@ public class BudgetPlanAdapter {
     public void approuverPlan(UUID planId, UUID userId) {
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
-        if (plan.getStatut() != StatutBudget.SUBMITTED) {
+        if (plan.getStatut() != StatutBudget.SUBMITTED && plan.getStatut() != StatutBudget.SOUMIS) {
             throw new IllegalStateException("Le plan doit être soumis pour être approuvé.");
         }
 
@@ -445,7 +445,7 @@ public class BudgetPlanAdapter {
     public void rejeterPlan(UUID planId, UUID userId) {
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
-        if (plan.getStatut() != StatutBudget.SUBMITTED) {
+        if (plan.getStatut() != StatutBudget.SUBMITTED && plan.getStatut() != StatutBudget.SOUMIS) {
             throw new IllegalStateException("Le plan doit être soumis pour être rejeté.");
         }
 
@@ -512,8 +512,8 @@ public class BudgetPlanAdapter {
             throw new IllegalArgumentException("Les lignes budgétaires doivent appartenir au même plan.");
         }
 
-        if (source.getBudgetPlan().getStatut() != StatutBudget.PUBLISHED) {
-            throw new IllegalStateException("Les réallocations ne sont permises que sur un budget publié.");
+        if (!source.getBudgetPlan().getStatut().isExecutoire()) {
+            throw new IllegalStateException("Les réallocations ne sont permises que sur un budget exécutoire.");
         }
 
         BigDecimal disponible = source.getMontantPlanned()
@@ -543,6 +543,19 @@ public class BudgetPlanAdapter {
         budgetItemRepository.save(source);
         budgetItemRepository.save(dest);
 
+        BigDecimal dotationInitiale = source.getMontantAnnuel() != null && source.getMontantAnnuel().compareTo(BigDecimal.ZERO) > 0
+                ? source.getMontantAnnuel()
+                : source.getMontantPlanned();
+        BigDecimal taux = input.montant().divide(dotationInitiale, 6, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
+
+        boolean memeSection = source.getSectionId() != null && source.getSectionId().equals(dest.getSectionId());
+        boolean seuilRespecte = taux.compareTo(BigDecimal.valueOf(5.00)) <= 0;
+        TypeReallocation typeRealloc = (seuilRespecte && memeSection) ? TypeReallocation.SIMPLE : TypeReallocation.SIGNIFICATIVE;
+
+        boolean isUrgence = Boolean.TRUE.equals(input.mesureConservatoire());
+        StatutReallocation statutRealloc = isUrgence ? StatutReallocation.A_REGULARISER_CA : StatutReallocation.EXECUTEE;
+
         BudgetReallocationEntity reallocation = BudgetReallocationEntity.builder()
                 .id(reallocationId)
                 .sourceItem(source)
@@ -551,6 +564,12 @@ public class BudgetPlanAdapter {
                 .dateTransfert(LocalDateTime.now())
                 .validePar(input.responsableId())
                 .raison(input.raison())
+                .typeReallocation(typeRealloc)
+                .tauxReallocation(taux)
+                .mesureConservatoire(isUrgence)
+                .justificationUrgence(input.justificationUrgence())
+                .numeroResolutionCa(input.numeroResolutionCa())
+                .statut(statutRealloc)
                 .build();
         budgetReallocationRepository.save(reallocation);
 
@@ -656,8 +675,8 @@ public class BudgetPlanAdapter {
         BudgetItemEntity item = budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(input.planId(), input.compteCode(), input.sectionId())
                 .orElseThrow(() -> new IllegalArgumentException("Ligne budgétaire inexistante pour ce plan, compte et section."));
 
-        if (item.getBudgetPlan().getStatut() != StatutBudget.PUBLISHED) {
-            throw new IllegalStateException("Impossible d'effectuer un engagement sur un plan budgétaire non publié.");
+        if (!item.getBudgetPlan().getStatut().isExecutoire()) {
+            throw new IllegalStateException("Impossible d'effectuer un engagement sur un plan budgétaire non exécutoire.");
         }
 
         BigDecimal disponible = item.getMontantPlanned()
@@ -669,6 +688,7 @@ public class BudgetPlanAdapter {
                     + disponible + ", Demandé: " + input.montant() + "). Opération bloquée.");
         }
 
+        String circuit = input.montant().compareTo(BigDecimal.valueOf(500000)) < 0 ? "MENUE_DEPENSE" : "GROSSE_DEPENSE";
         BudgetEngagementEntity engagement = BudgetEngagementEntity.builder()
                 .id(engagementId)
                 .budgetItem(item)
@@ -676,6 +696,7 @@ public class BudgetPlanAdapter {
                 .description(input.description())
                 .montant(input.montant())
                 .dateEngagement(LocalDateTime.now())
+                .circuit(circuit)
                 .statut("ENGAGED")
                 .build();
 

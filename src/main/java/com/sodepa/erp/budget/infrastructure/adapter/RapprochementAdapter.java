@@ -206,8 +206,8 @@ public class RapprochementAdapter {
         BudgetItemEntity item = budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(input.planId(), input.compteCode(), input.sectionId())
                 .orElseThrow(() -> new IllegalArgumentException("Ligne budgétaire introuvable."));
 
-        if (item.getBudgetPlan().getStatut() != StatutBudget.PUBLISHED) {
-            throw new IllegalStateException("Le plan budgétaire de l'exercice doit être publié.");
+        if (!item.getBudgetPlan().getStatut().isExecutoire()) {
+            throw new IllegalStateException("Le plan budgétaire de l'exercice doit être exécutoire.");
         }
 
         BigDecimal disponible = item.getMontantPlanned()
