@@ -140,3 +140,45 @@
 | **RG-BUD-020** | Aucune dépense avant validation réallocation | Contrôle disponibilité stricte en temps réel | **CONFORME** |
 | **RG-BUD-021** | Séparation 4-yeux stricte (anti auto-validation) | `WorkflowService` règle D4 | **CONFORME** |
 | **RG-BUD-022** | BE signé non modifiable (correction par annulation) | `AnnulerEngagementUseCase` + `motifAnnulation` | **CONFORME** |
+
+
+---
+
+## 4. Sécurité ABAC multi-entités et circuits workflow de réallocation (mise à jour)
+
+### 4.1 Cloisonnement ABAC (CT-BUD-05 / CT-BUD-07)
+
+| Contrôle | Implémentation | Test |
+| :--- | :--- | :--- |
+| Périmètre de l'utilisateur (Siège vs UO) | `BudgetSecurityService` : `isGlobalScope()`, `getCurrentUserUnite()`, `validateAccessToUnite()` (descendance par `materializedPath`) | — |
+| Engagement limité à son unité | `BudgetPlanAdapter.creationEngagement()` → `validateAccessToUnite(sectionId)` + horodatage de `uniteOrganisationnelleId` | `testAbacEngagementHorsPerimetreRefuse` |
+| Liste des engagements filtrée | `getEngagementsByPage()` impose l'UO de l'agent hors scope global ; `BudgetEngagementRepository.rechercher(..., uniteId, ...)` | `testAbacFiltrageListeEngagements` |
+| Réallocation limitée à son unité | `effectuerReallocation()` / `creationReallocation()` → `validateAccessToUnite(source.sectionId)` | — |
+
+### 4.2 Routage automatique du circuit de réallocation
+
+| Cas | Circuit | Étapes | Auto-validation |
+| :--- | :--- | :--- | :---: |
+| SIMPLE (≤ 5 % et même section) | `WF-DAF-06` | Contrôle solde CSB → Validation DAF | Oui (si habilité) |
+| SIGNIFICATIVE (> 5 % ou inter-sections) | `WF-BUD-REALLOC-SIGNIFICATIVE` | Comité CSB+SDFBM+DCAI (unanimité) → DAF → DG (signature) → CA (majorité, rôle `PCA`) | Non |
+| Mesure conservatoire d'urgence | `WF-BUD-REALLOC-URGENCE` | Évaluation CSB (4 h) → Décision DG (2 h) → Inscription à l'ordre du jour du CA | Non |
+
+Contrôles associés :
+- Une réallocation significative hors urgence est **refusée sans numéro de résolution CA** (RG-BUD-016) ; les crédits restent inchangés (`testReallocationSignificativeSansResolutionCaRefusee`).
+- La mesure d'urgence exige la permission `BUDGET_REALLOCATE_URGENCE` et une justification non vide (RG-BUD-017).
+
+### 4.3 Permissions et profils budgétaires
+
+Nouvelles permissions : `BUDGET_VISA_SB`, `BUDGET_REALLOCATE_URGENCE`, `BUDGET_CLOTURE_EXERCICE`.
+
+| Profil | Permissions budget | Remarque |
+| :--- | :--- | :--- |
+| `PROFIL_DG_BUDGET` | VIEW, VALIDATE_PLAN, VALIDATE_ENGAGEMENT, VALIDATE_REALLOCATION, REALLOCATE_URGENCE, CLOTURE | Ordonnateur |
+| `PROFIL_DAF_BUDGET` | VIEW, VALIDATE_PLAN, CREATE/VALIDATE_REALLOCATION, CLOTURE | Plafond 50 M FCFA |
+| `PROFIL_CHEF_SERVICE_BUDGET` | VIEW, CREATE/UPDATE_PLAN, CREATE_ENGAGEMENT, CREATE_REALLOCATION, VISA_SB | Établit, ne signe pas |
+| `PROFIL_DUO` | VIEW, VALIDATE_ENGAGEMENT, CREATE_REALLOCATION | Plafond 500 000 FCFA (à confirmer) |
+| `PROFIL_CSAFC` | VIEW, CREATE_ENGAGEMENT, VISA_SB | Établit en unité |
+| `PROFIL_DCAI_BUDGET` | VIEW | Lecture seule (audit) |
+
+> [!NOTE]
+> Les profils sont seedés de manière idempotente par code (`Ref05Ref06Ref07Seeder.seedProfilsBudgetaires`), y compris sur une base déjà initialisée.

@@ -34,15 +34,11 @@ public interface BudgetEngagementRepository extends JpaRepository<BudgetEngageme
     List<BudgetEngagementEntity> findByBudgetItemId(UUID budgetItemId);
 
     /**
-     * Engagements d'un plan, filtrés au besoin sur leur état.
-     *
-     * <p>
-     * L'engagement ne connaît pas le plan directement : il passe par le poste
-     * budgétaire, d'où la double jointure. Les deux critères sont facultatifs.
-     * </p>
+     * Engagements d'un plan, filtrés sur l'état et cloisonnés par unité organisationnelle (ABAC).
      *
      * @param planId le plan visé, ou {@code null} pour tous
      * @param statut ENGAGED, CONVERTED_TO_REAL ou CANCELLED, ou {@code null} pour tous
+     * @param uniteId identifiant de l'unité organisationnelle pour filtrage ABAC, ou {@code null} si vue globale
      */
     @Query("""
             SELECT e FROM BudgetEngagementEntity e
@@ -50,9 +46,11 @@ public interface BudgetEngagementRepository extends JpaRepository<BudgetEngageme
             JOIN i.budgetPlan p
             WHERE (:planId IS NULL OR p.id = :planId)
               AND (:statut IS NULL OR e.statut = :statut)
+              AND (:uniteId IS NULL OR e.uniteOrganisationnelleId = :uniteId)
             """)
     Page<BudgetEngagementEntity> rechercher(
             @Param("planId") UUID planId,
             @Param("statut") String statut,
+            @Param("uniteId") UUID uniteId,
             Pageable pageable);
 }

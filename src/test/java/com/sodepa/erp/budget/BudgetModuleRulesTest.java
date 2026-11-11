@@ -2,7 +2,9 @@ package com.sodepa.erp.budget;
 
 import com.sodepa.erp.budget.application.inputs.EngagementInput;
 import com.sodepa.erp.budget.application.inputs.ReallocationInput;
+import com.sodepa.erp.budget.application.BudgetSecurityService;
 import com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter;
+import com.sodepa.erp.share.erreurs.AccesRefuseException;
 import com.sodepa.erp.budget.infrastructure.entities.*;
 import com.sodepa.erp.budget.infrastructure.repo.*;
 import com.sodepa.erp.share.UtilsService;
@@ -49,6 +51,9 @@ class BudgetModuleRulesTest {
 
     @Mock
     private WorkflowService workflowService;
+
+    @Mock
+    private BudgetSecurityService budgetSecurityService;
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
@@ -116,6 +121,11 @@ class BudgetModuleRulesTest {
                     .montantReal(BigDecimal.ZERO)
                     .build());
         }
+
+        // Stubs ABAC : scope global par défaut pour tous les tests de règles métier
+        lenient().when(budgetSecurityService.isGlobalScope()).thenReturn(true);
+        lenient().doNothing().when(budgetSecurityService).validateAccessToUnite(any());
+        lenient().doNothing().when(budgetSecurityService).checkPermission(any());
     }
 
     @Test
@@ -182,13 +192,16 @@ class BudgetModuleRulesTest {
                 "destItemId", itemDest.getId().toString(),
                 "montant", montant,
                 "responsableId", UUID.randomUUID().toString(),
-                "raison", "Renforcement clôture ranch"
+                "raison", "Renforcement clôture ranch",
+                "numeroResolutionCa", "RES-CA-2026-014"
         );
 
         ReflectionTestUtils.invokeMethod(budgetPlanAdapter, "creationReallocation", payload, reallocId);
 
         verify(budgetReallocationRepository).save(argThat(r -> {
             assertEquals(TypeReallocation.SIGNIFICATIVE, r.getTypeReallocation());
+            assertEquals("RES-CA-2026-014", r.getNumeroResolutionCa());
+            assertNotNull(r.getDateValidationCa());
             return true;
         }));
     }
@@ -285,5 +298,94 @@ class BudgetModuleRulesTest {
                 ReflectionTestUtils.invokeMethod(budgetPlanAdapter, "creationEngagement", payloadExces, UUID.randomUUID()));
 
         assertTrue(ex.getMessage().contains("Crédit budgétaire insuffisant"));
+    }
+
+    @Test
+    @DisplayName("RG-BUD-016 : Réallocation significative refusée sans résolution du CA (crédits inchangés)")
+    void testReallocationSignificativeSansResolutionCaRefusee() {
+        when(budgetItemRepository.findById(itemSource.getId())).thenReturn(Optional.of(itemSource));
+        when(budgetItemRepository.findById(itemDest.getId())).thenReturn(Optional.of(itemDest));
+        BigDecimal plannedAvant = itemSource.getMontantPlanned();
+
+        Map<String, Object> payload = Map.of(
+                "sourceItemId", itemSource.getId().toString(),
+                "destItemId", itemDest.getId().toString(),
+                "montant", new BigDecimal("600000"),
+                "responsableId", UUID.randomUUID().toString(),
+                "raison", "Sans délibération CA"
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                ReflectionTestUtils.invokeMethod(budgetPlanAdapter, "creationReallocation", payload, UUID.randomUUID()));
+        assertTrue(ex.getMessage().contains("RG-BUD-016"), ex.getMessage());
+        assertEquals(0, plannedAvant.compareTo(itemSource.getMontantPlanned()));
+        verify(budgetReallocationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Routage workflow : SIMPLE -> WF-DAF-06, SIGNIFICATIVE -> WF-BUD-REALLOC-SIGNIFICATIVE, urgence -> WF-BUD-REALLOC-URGENCE")
+    void testRoutageCircuitReallocation() {
+        assertEquals("WF-DAF-06", BudgetPlanAdapter.resoudreCircuitReallocation(TypeReallocation.SIMPLE, false));
+        assertEquals("WF-BUD-REALLOC-SIGNIFICATIVE", BudgetPlanAdapter.resoudreCircuitReallocation(TypeReallocation.SIGNIFICATIVE, false));
+        assertEquals("WF-BUD-REALLOC-URGENCE", BudgetPlanAdapter.resoudreCircuitReallocation(TypeReallocation.SIGNIFICATIVE, true));
+        assertEquals("WF-BUD-REALLOC-URGENCE", BudgetPlanAdapter.resoudreCircuitReallocation(TypeReallocation.SIMPLE, true));
+
+        // Inter-sections : significative même sous 5 %
+        BudgetItemEntity autreSection = BudgetItemEntity.builder()
+                .id(UUID.randomUUID()).budgetPlan(planExecutoire).sectionId(UUID.randomUUID())
+                .compteCode("602000").montantAnnuel(new BigDecimal("1000000")).montantPlanned(new BigDecimal("1000000"))
+                .montantEngage(BigDecimal.ZERO).montantReal(BigDecimal.ZERO).periodes(new ArrayList<>()).build();
+        assertEquals(TypeReallocation.SIGNIFICATIVE,
+                BudgetPlanAdapter.classifierReallocation(itemSource, autreSection, new BigDecimal("100000")));
+        assertEquals(TypeReallocation.SIMPLE,
+                BudgetPlanAdapter.classifierReallocation(itemSource, itemDest, new BigDecimal("100000")));
+    }
+
+    @Test
+    @DisplayName("ABAC CT-BUD-05 : un agent d'une UO ne peut pas engager sur la ligne d'une autre UO")
+    void testAbacEngagementHorsPerimetreRefuse() {
+        when(budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(any(), any(), any()))
+                .thenReturn(Optional.of(itemSource));
+        doThrow(new AccesRefuseException("Unité hors périmètre"))
+                .when(budgetSecurityService).validateAccessToUnite(itemSource.getSectionId());
+
+        Map<String, Object> payload = Map.of(
+                "planId", planExecutoire.getId().toString(),
+                "compteCode", itemSource.getCompteCode(),
+                "sectionId", itemSource.getSectionId().toString(),
+                "numeroEngagement", "BE-2026-UO-B-001",
+                "description", "Tentative hors périmètre",
+                "montant", new BigDecimal("100000"),
+                "utilisateurId", UUID.randomUUID().toString()
+        );
+
+        assertThrows(AccesRefuseException.class, () ->
+                ReflectionTestUtils.invokeMethod(budgetPlanAdapter, "creationEngagement", payload, UUID.randomUUID()));
+        verify(budgetEngagementRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ABAC CT-BUD-07 : un agent d'unité ne voit que les engagements de son unité ; le DG voit tout")
+    void testAbacFiltrageListeEngagements() {
+        UUID uniteA = UUID.randomUUID();
+        com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity uo =
+                new com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity();
+        uo.setId(uniteA);
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+        when(budgetEngagementRepository.rechercher(any(), any(), any(), any()))
+                .thenReturn(org.springframework.data.domain.Page.empty(pageable));
+
+        // Agent d'unité : filtré sur son UO, même s'il demande une autre unité
+        when(budgetSecurityService.isGlobalScope()).thenReturn(false);
+        when(budgetSecurityService.getCurrentUserUnite()).thenReturn(Optional.of(uo));
+        budgetPlanAdapter.getEngagementsByPage(new com.sodepa.erp.budget.application.inputs.RechercheEngagementInput(
+                pageable, planExecutoire.getId(), null, UUID.randomUUID()));
+        verify(budgetEngagementRepository).rechercher(eq(planExecutoire.getId()), isNull(), eq(uniteA), any());
+
+        // DG (scope global) : aucun filtre imposé
+        when(budgetSecurityService.isGlobalScope()).thenReturn(true);
+        budgetPlanAdapter.getEngagementsByPage(new com.sodepa.erp.budget.application.inputs.RechercheEngagementInput(
+                pageable, planExecutoire.getId(), null, null));
+        verify(budgetEngagementRepository).rechercher(eq(planExecutoire.getId()), isNull(), isNull(), any());
     }
 }

@@ -34,6 +34,7 @@ public class Ref05Ref06Ref07Seeder implements CommandLineRunner {
     public void run(String... args) {
         seedMatriceSod();
         seedProfilsFonctionnelsSodepa();
+        seedProfilsBudgetaires();
     }
 
     private void seedMatriceSod() {
@@ -146,6 +147,65 @@ public class Ref05Ref06Ref07Seeder implements CommandLineRunner {
                             .actif(true).build()
             ));
             log.info("Profils fonctionnels SODEPA initialisés (CA-REF-025-03 / RG-REF-018).");
+        }
+    }
+
+    /**
+     * Profils fonctionnels du Module 02 — Gestion budgétaire (CdC BUD §4).
+     * Seeding idempotent par code : les profils absents sont ajoutés même sur une base déjà initialisée.
+     * La séparation des tâches est respectée : celui qui établit le bon d'engagement (CSB / CSAFC)
+     * n'est pas celui qui le signe (DUO / DG).
+     */
+    private void seedProfilsBudgetaires() {
+        List<ProfilFonctionnelEntity> profils = List.of(
+                ProfilFonctionnelEntity.builder().code("PROFIL_DG_BUDGET").libelle("DG — Ordonnateur budgétaire")
+                        .description("Signature des bons d'engagement, arbitrage des réallocations, mesures conservatoires d'urgence et clôture")
+                        .plafondEngagementFcfa(null).mfaRequis(true)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET, Permissions.VALIDATE_BUDGET_PLAN,
+                                Permissions.VALIDATE_BUDGET_ENGAGEMENT, Permissions.VALIDATE_BUDGET_REALLOCATION,
+                                Permissions.BUDGET_REALLOCATE_URGENCE, Permissions.BUDGET_CLOTURE_EXERCICE))
+                        .actif(true).build(),
+                ProfilFonctionnelEntity.builder().code("PROFIL_DAF_BUDGET").libelle("DAF — Coordination budgétaire")
+                        .description("Programmation et coordination du budget, proposition et validation des réallocations simples")
+                        .plafondEngagementFcfa(new BigDecimal("50000000")).mfaRequis(true)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET, Permissions.VALIDATE_BUDGET_PLAN,
+                                Permissions.CREATE_BUDGET_REALLOCATION, Permissions.VALIDATE_BUDGET_REALLOCATION,
+                                Permissions.BUDGET_CLOTURE_EXERCICE))
+                        .actif(true).build(),
+                ProfilFonctionnelEntity.builder().code("PROFIL_CHEF_SERVICE_BUDGET").libelle("Chef Service du Budget (CSB)")
+                        .description("Consolidation budgétaire, établissement des bons d'engagement, visa budgétaire, fiche de suivi et rapports")
+                        .plafondEngagementFcfa(BigDecimal.ZERO).mfaRequis(true)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET, Permissions.CREATE_BUDGET_PLAN, Permissions.UPDATE_BUDGET_PLAN,
+                                Permissions.CREATE_BUDGET_ENGAGEMENT, Permissions.CREATE_BUDGET_REALLOCATION,
+                                Permissions.BUDGET_VISA_SB))
+                        .actif(true).build(),
+                ProfilFonctionnelEntity.builder().code("PROFIL_DUO").libelle("Directeur d'Unité Opérationnelle (DUO)")
+                        .description("Validation des besoins et signature des bons d'engagement de son unité (cloisonnement ABAC)")
+                        .plafondEngagementFcfa(new BigDecimal("500000")).mfaRequis(true)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET, Permissions.VALIDATE_BUDGET_ENGAGEMENT,
+                                Permissions.CREATE_BUDGET_REALLOCATION))
+                        .actif(true).build(),
+                ProfilFonctionnelEntity.builder().code("PROFIL_CSAFC").libelle("Chef Service Administratif, Financier et Comptable (unité)")
+                        .description("Établissement des bons d'engagement en unité, imputation et mise à jour de la fiche de suivi")
+                        .plafondEngagementFcfa(BigDecimal.ZERO).mfaRequis(false)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET, Permissions.CREATE_BUDGET_ENGAGEMENT,
+                                Permissions.BUDGET_VISA_SB))
+                        .actif(true).build(),
+                ProfilFonctionnelEntity.builder().code("PROFIL_DCAI_BUDGET").libelle("Contrôle et Audit Interne — Budget (lecture)")
+                        .description("Contrôle a posteriori de l'exécution budgétaire, membre du comité de réallocation (lecture seule)")
+                        .plafondEngagementFcfa(BigDecimal.ZERO).mfaRequis(true)
+                        .permissions(Set.of(Permissions.VIEW_BUDGET))
+                        .actif(true).build()
+        );
+        int ajoutes = 0;
+        for (ProfilFonctionnelEntity profil : profils) {
+            if (profilRepository.findByCodeIgnoreCase(profil.getCode()).isEmpty()) {
+                profilRepository.save(profil);
+                ajoutes++;
+            }
+        }
+        if (ajoutes > 0) {
+            log.info("{} profil(s) budgétaire(s) SODEPA initialisé(s) (Module 02 BUD).", ajoutes);
         }
     }
 }

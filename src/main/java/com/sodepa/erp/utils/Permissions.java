@@ -176,6 +176,14 @@ public enum Permissions {
     CREATE_BUDGET_ENGAGEMENT,
     VALIDATE_BUDGET_ENGAGEMENT,
 
+    // Budget — permissions granulaires métier
+    /** Visa budgétaire technique apposé par le Chef Service Budget (CSB) ou CSAFC en unité */
+    BUDGET_VISA_SB,
+    /** Décision de mesure conservatoire d’urgence — DG uniquement, à régulariser en CA */
+    BUDGET_REALLOCATE_URGENCE,
+    /** Clôture de l’exercice budgétaire — DAF/DG uniquement */
+    BUDGET_CLOTURE_EXERCICE,
+
     // Workflow Universel
     WORKFLOW_READ,
     WORKFLOW_CONFIG,

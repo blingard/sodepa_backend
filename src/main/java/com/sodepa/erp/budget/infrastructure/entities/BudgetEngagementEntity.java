@@ -119,6 +119,12 @@ public class BudgetEngagementEntity {
     private UUID bonCommandeId;
 
     /**
+     * Unité Organisationnelle émettrice de l'engagement (cloisonnement ABAC multi-entités).
+     */
+    @Column(name = "unite_organisationnelle_id")
+    private UUID uniteOrganisationnelleId;
+
+    /**
      * Statut de l'engagement (ex: 'ENGAGED', 'CONVERTED_TO_REAL', 'CANCELLED', 'LIQUIDATED', 'PAID').
      */
     @Column(nullable = false, length = 50)

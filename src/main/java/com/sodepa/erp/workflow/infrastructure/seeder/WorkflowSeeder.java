@@ -485,6 +485,35 @@ public class WorkflowSeeder implements CommandLineRunner {
                 )
         );
 
+        // -----------------------------------------------------------------
+        // Workflows Budget supplementaires (reallocations significatives)
+        // -----------------------------------------------------------------
+
+        seedWorkflowIfNotExists(
+                "WF-BUD-REALLOC-SIGNIFICATIVE",
+                "Réallocation Significative de Crédits Budgétaires (> 5 %)",
+                "Circuit complet avec comité CSB+SDFBM+DCAI, validation DAF, accord DG et résolution CA",
+                WorkflowDomaine.BUDGET,
+                List.of(
+                        new EtapeSeed("BUD_REALLOC_SIG_COMITE", "Analyse et avis du comité budgétaire (CSB+SDFBM+DCAI)", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.EVERY_BODY_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "CHEF_SERVICE_BUDGET", 48, ActionDepassementSla.RELANCE_EMAIL),
+                        new EtapeSeed("BUD_REALLOC_SIG_DAF", "Validation de la réallocation par le DAF", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.ONLY_ONE_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_DAF", 24, ActionDepassementSla.ESCALADE_MANAGER),
+                        new EtapeSeed("BUD_REALLOC_SIG_DG", "Accord préalable du Directeur Général", TypeEtapeWorkflow.SIGNATURE_ELECTRONIQUE, PolitiqueValidation.ONLY_ONE_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_GENERAL", 24, ActionDepassementSla.ESCALADE_MANAGER),
+                        new EtapeSeed("BUD_REALLOC_SIG_CA", "Adoption de la résolution par le Conseil d’Administration", TypeEtapeWorkflow.SIGNATURE_ELECTRONIQUE, PolitiqueValidation.MUST_HAVE_MAJORITY, StrategieAssignation.ROLE_KEYCLOAK, "PCA", 72, ActionDepassementSla.ESCALADE_MANAGER)
+                )
+        );
+
+        seedWorkflowIfNotExists(
+                "WF-BUD-REALLOC-URGENCE",
+                "Mesure Conservatoire Budgétaire d’Urgence (Autorisation DG)",
+                "Réallocation d’urgence par décision DG, à régulariser en résolution CA lors de la prochaine session",
+                WorkflowDomaine.BUDGET,
+                List.of(
+                        new EtapeSeed("BUD_URGENCE_EVAL_CSB", "Evaluation d’urgence et proposition du Chef Service Budget", TypeEtapeWorkflow.VALIDATION_HUMAINE, PolitiqueValidation.ONLY_ONE_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "CHEF_SERVICE_BUDGET", 4, ActionDepassementSla.ESCALADE_MANAGER),
+                        new EtapeSeed("BUD_URGENCE_DG_ACCORD", "Décision d’autorisation spéciale du Directeur Général", TypeEtapeWorkflow.SIGNATURE_ELECTRONIQUE, PolitiqueValidation.ONLY_ONE_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_GENERAL", 2, ActionDepassementSla.ESCALADE_MANAGER),
+                        new EtapeSeed("BUD_URGENCE_NOTIF_CA", "Notification et inscription à l’ordre du jour de la prochaine session CA", TypeEtapeWorkflow.CONTROLE_AUTO, PolitiqueValidation.ONLY_ONE_CAN_VALIDATE, StrategieAssignation.POSTE_SPECIFIQUE, "DIRECTEUR_DAF", 1, ActionDepassementSla.RELANCE_EMAIL)
+                )
+        );
+
         seedWorkflowIfNotExists(
                 "WF-DAF-07",
                 "Recrutement et Intégration d'un Salarié (CDI/CDD)",

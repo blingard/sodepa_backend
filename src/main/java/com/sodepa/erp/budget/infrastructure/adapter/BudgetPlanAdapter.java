@@ -8,7 +8,9 @@ import com.sodepa.erp.budget.application.inputs.CreerBudgetPlanInput;
 import com.sodepa.erp.budget.application.inputs.EngagementInput;
 import com.sodepa.erp.budget.application.inputs.ReallocationInput;
 import com.sodepa.erp.budget.application.inputs.RechercheBudgetPlanInput;
+import com.sodepa.erp.budget.application.BudgetSecurityService;
 import com.sodepa.erp.budget.application.inputs.RechercheEngagementInput;
+import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
 import com.sodepa.erp.budget.application.outputs.BudgetEngagementOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetItemOutput;
 import com.sodepa.erp.budget.application.outputs.BudgetPlanOutput;
@@ -56,6 +58,49 @@ public class BudgetPlanAdapter {
 
     private final static int MAX_PAGE_SIZE = 100;
 
+    /** Circuit workflow d'une réallocation simple (≤ 5 % et même section) — RG-BUD-015. */
+    public static final String WF_REALLOC_SIMPLE = "WF-DAF-06";
+    /** Circuit workflow d'une réallocation significative (> 5 % ou inter-sections) — RG-BUD-016 / RG-BUD-018. */
+    public static final String WF_REALLOC_SIGNIFICATIVE = "WF-BUD-REALLOC-SIGNIFICATIVE";
+    /** Circuit workflow d'une mesure conservatoire d'extrême urgence — RG-BUD-017. */
+    public static final String WF_REALLOC_URGENCE = "WF-BUD-REALLOC-URGENCE";
+    /** Seuil pivot (en %) entre réallocation simple et significative. */
+    public static final BigDecimal SEUIL_REALLOCATION_SIGNIFICATIVE = BigDecimal.valueOf(5.00);
+
+    /**
+     * Classe une réallocation en SIMPLE ou SIGNIFICATIVE selon le taux par rapport à la dotation
+     * initiale de la ligne source et l'appartenance à la même section (RG-BUD-018).
+     */
+    public static TypeReallocation classifierReallocation(BudgetItemEntity source, BudgetItemEntity dest, BigDecimal montant) {
+        BigDecimal taux = calculerTauxReallocation(source, montant);
+        boolean memeSection = source.getSectionId() != null && source.getSectionId().equals(dest.getSectionId());
+        boolean seuilRespecte = taux.compareTo(SEUIL_REALLOCATION_SIGNIFICATIVE) <= 0;
+        return (seuilRespecte && memeSection) ? TypeReallocation.SIMPLE : TypeReallocation.SIGNIFICATIVE;
+    }
+
+    /** Taux de réallocation (en %) rapporté à la dotation initiale de la ligne source. */
+    public static BigDecimal calculerTauxReallocation(BudgetItemEntity source, BigDecimal montant) {
+        BigDecimal dotationInitiale = source.getMontantAnnuel() != null && source.getMontantAnnuel().compareTo(BigDecimal.ZERO) > 0
+                ? source.getMontantAnnuel()
+                : source.getMontantPlanned();
+        if (dotationInitiale == null || dotationInitiale.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.valueOf(100);
+        }
+        return montant.divide(dotationInitiale, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+    }
+
+    /**
+     * Résout le code du circuit workflow applicable à une réallocation :
+     * urgence → {@link #WF_REALLOC_URGENCE}, significative → {@link #WF_REALLOC_SIGNIFICATIVE},
+     * sinon {@link #WF_REALLOC_SIMPLE}.
+     */
+    public static String resoudreCircuitReallocation(TypeReallocation type, boolean urgence) {
+        if (urgence) {
+            return WF_REALLOC_URGENCE;
+        }
+        return type == TypeReallocation.SIGNIFICATIVE ? WF_REALLOC_SIGNIFICATIVE : WF_REALLOC_SIMPLE;
+    }
+
     private final BudgetPlanRepository budgetPlanRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
@@ -65,6 +110,7 @@ public class BudgetPlanAdapter {
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
+    private final BudgetSecurityService budgetSecurityService;
 
     public boolean canValidate(Permissions permission) {
         try {
@@ -173,13 +219,21 @@ public class BudgetPlanAdapter {
      */
     @Transactional(readOnly = true)
     public PageRecord<BudgetEngagementOutput> getEngagementsByPage(RechercheEngagementInput input) {
+        budgetSecurityService.checkPermission(Permissions.VIEW_BUDGET);
         Pageable pageable = input.pageable();
         if (pageable.getPageSize() > MAX_PAGE_SIZE) {
             pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
         }
 
+        UUID filterUniteId = input.uniteId();
+        if (!budgetSecurityService.isGlobalScope()) {
+            filterUniteId = budgetSecurityService.getCurrentUserUnite()
+                    .map(UniteOrganisationnelleEntity::getId)
+                    .orElse(null);
+        }
+
         String statut = (input.statut() == null || input.statut().isBlank()) ? null : input.statut();
-        Page<BudgetEngagementEntity> page = budgetEngagementRepository.rechercher(input.planId(), statut, pageable);
+        Page<BudgetEngagementEntity> page = budgetEngagementRepository.rechercher(input.planId(), statut, filterUniteId, pageable);
         boolean paged = page.getPageable().isPaged();
 
         return new PageRecord<>(
@@ -467,9 +521,32 @@ public class BudgetPlanAdapter {
     @Transactional
     public void effectuerReallocation(ReallocationInput input) {
         utilsService.hasPermission(Permissions.CREATE_BUDGET_REALLOCATION);
+
+        boolean urgence = Boolean.TRUE.equals(input.mesureConservatoire());
+        if (urgence) {
+            // RG-BUD-017 : seule la DG peut décider d'une mesure conservatoire d'urgence
+            utilsService.hasPermission(Permissions.BUDGET_REALLOCATE_URGENCE);
+            if (input.justificationUrgence() == null || input.justificationUrgence().isBlank()) {
+                throw new IllegalArgumentException("Une mesure conservatoire d'urgence exige une justification explicite.");
+            }
+        }
+
+        TypeReallocation typePrevu = null;
+        BudgetItemEntity sourcePrevue = budgetItemRepository.findById(input.sourceItemId()).orElse(null);
+        BudgetItemEntity destPrevue = budgetItemRepository.findById(input.destItemId()).orElse(null);
+        if (sourcePrevue != null && destPrevue != null) {
+            budgetSecurityService.validateAccessToUnite(sourcePrevue.getSectionId());
+            typePrevu = classifierReallocation(sourcePrevue, destPrevue, input.montant());
+        }
+        String circuit = resoudreCircuitReallocation(typePrevu, urgence);
+
         UUID id = UUID.randomUUID();
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
+        payload.put("circuitWorkflow", circuit);
+        if (typePrevu != null) {
+            payload.put("typeReallocation", typePrevu.name());
+        }
 
         UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BUDGET_REALLOCATION,
@@ -477,17 +554,21 @@ public class BudgetPlanAdapter {
                 payload,
                 MakerCheckerOperationType.CREATE
         );
-        log.info("Réallocation budgétaire soumise au Maker-Checker (Ticket: {})", uuid);
+        log.info("Réallocation budgétaire soumise au Maker-Checker (Ticket: {}, circuit: {}, type: {})", uuid, circuit, typePrevu);
 
         trackClickHouse(MakerCheckerEntityName.BUDGET_REALLOCATION.name(), id.toString(), Map.of(
                 "action", "SOUMISSION_EFFECTUER_REALLOCATION",
                 "sourceItem", input.sourceItemId().toString(),
                 "destItem", input.destItemId().toString(),
                 "montant", input.montant(),
-                "ticket", uuid.toString()
+                "ticket", uuid.toString(),
+                "circuit", circuit
         ));
 
-        if (canValidate(Permissions.VALIDATE_BUDGET_REALLOCATION)) {
+        // Seules les réallocations SIMPLES (circuit WF-DAF-06) peuvent être auto-validées.
+        // Les significatives et les mesures d'urgence doivent parcourir leur circuit complet (comité, DG, CA).
+        boolean autoValidable = WF_REALLOC_SIMPLE.equals(circuit);
+        if (autoValidable && canValidate(Permissions.VALIDATE_BUDGET_REALLOCATION)) {
             try {
                 validateOrRejectReallocation(new ValidateOrRejectSubmissionInput(
                         uuid,
@@ -512,6 +593,8 @@ public class BudgetPlanAdapter {
             throw new IllegalArgumentException("Les lignes budgétaires doivent appartenir au même plan.");
         }
 
+        budgetSecurityService.validateAccessToUnite(source.getSectionId());
+
         if (!source.getBudgetPlan().getStatut().isExecutoire()) {
             throw new IllegalStateException("Les réallocations ne sont permises que sur un budget exécutoire.");
         }
@@ -522,6 +605,14 @@ public class BudgetPlanAdapter {
 
         if (disponible.compareTo(input.montant()) < 0) {
             throw new IllegalArgumentException("Crédits insuffisants sur le poste source. Disponible: " + disponible);
+        }
+
+        // RG-BUD-016 : une réallocation significative hors urgence ne s'exécute qu'après résolution du CA
+        if (classifierReallocation(source, dest, input.montant()) == TypeReallocation.SIGNIFICATIVE
+                && !Boolean.TRUE.equals(input.mesureConservatoire())
+                && (input.numeroResolutionCa() == null || input.numeroResolutionCa().isBlank())) {
+            throw new IllegalStateException("Réallocation significative (> 5 % ou inter-sections) : "
+                    + "le numéro de résolution du Conseil d'Administration est obligatoire (RG-BUD-016).");
         }
 
         source.setMontantPlanned(source.getMontantPlanned().subtract(input.montant()));
@@ -543,17 +634,11 @@ public class BudgetPlanAdapter {
         budgetItemRepository.save(source);
         budgetItemRepository.save(dest);
 
-        BigDecimal dotationInitiale = source.getMontantAnnuel() != null && source.getMontantAnnuel().compareTo(BigDecimal.ZERO) > 0
-                ? source.getMontantAnnuel()
-                : source.getMontantPlanned();
-        BigDecimal taux = input.montant().divide(dotationInitiale, 6, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100));
-
-        boolean memeSection = source.getSectionId() != null && source.getSectionId().equals(dest.getSectionId());
-        boolean seuilRespecte = taux.compareTo(BigDecimal.valueOf(5.00)) <= 0;
-        TypeReallocation typeRealloc = (seuilRespecte && memeSection) ? TypeReallocation.SIMPLE : TypeReallocation.SIGNIFICATIVE;
+        BigDecimal taux = calculerTauxReallocation(source, input.montant());
+        TypeReallocation typeRealloc = classifierReallocation(source, dest, input.montant());
 
         boolean isUrgence = Boolean.TRUE.equals(input.mesureConservatoire());
+        boolean resolutionCaFournie = input.numeroResolutionCa() != null && !input.numeroResolutionCa().isBlank();
         StatutReallocation statutRealloc = isUrgence ? StatutReallocation.A_REGULARISER_CA : StatutReallocation.EXECUTEE;
 
         BudgetReallocationEntity reallocation = BudgetReallocationEntity.builder()
@@ -569,6 +654,7 @@ public class BudgetPlanAdapter {
                 .mesureConservatoire(isUrgence)
                 .justificationUrgence(input.justificationUrgence())
                 .numeroResolutionCa(input.numeroResolutionCa())
+                .dateValidationCa(resolutionCaFournie ? LocalDateTime.now() : null)
                 .statut(statutRealloc)
                 .build();
         budgetReallocationRepository.save(reallocation);
@@ -688,6 +774,11 @@ public class BudgetPlanAdapter {
                     + disponible + ", Demandé: " + input.montant() + "). Opération bloquée.");
         }
 
+        budgetSecurityService.validateAccessToUnite(item.getSectionId());
+        UUID userUniteId = budgetSecurityService.getCurrentUserUnite()
+                .map(UniteOrganisationnelleEntity::getId)
+                .orElse(item.getSectionId());
+
         String circuit = input.montant().compareTo(BigDecimal.valueOf(500000)) < 0 ? "MENUE_DEPENSE" : "GROSSE_DEPENSE";
         BudgetEngagementEntity engagement = BudgetEngagementEntity.builder()
                 .id(engagementId)
@@ -697,6 +788,7 @@ public class BudgetPlanAdapter {
                 .montant(input.montant())
                 .dateEngagement(LocalDateTime.now())
                 .circuit(circuit)
+                .uniteOrganisationnelleId(userUniteId)
                 .statut("ENGAGED")
                 .build();
 
