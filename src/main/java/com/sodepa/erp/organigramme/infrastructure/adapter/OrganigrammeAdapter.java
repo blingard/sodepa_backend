@@ -120,20 +120,19 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         trackClickHouse(MakerCheckerEntityName.UNITE_ORGANISATIONNELLE.name(), id.toString(), Map.of(
                 "action", "SOUMISSION_CREER_UNITE",
                 "code", input.code(),
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_UNITE)) {
+            UniteOrganisationnelleEntity uniteEntity = creationUnite(payload, id);
             try {
-                validateOrRejectUnite(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
+                if (uuid != null) {
+                    workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Validation automatique par l'utilisateur créateur", "SYSTEM");
+                }
             } catch (Exception e) {
                 log.warn("Erreur validation auto unité {}: {}", input.code(), e.getMessage());
             }
+            return mapToUniteOutput(uniteEntity);
         }
 
         return uniteRepository.findById(id)
@@ -150,7 +149,9 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     }
 
     private UniteOrganisationnelleEntity creationUnite(Map<String, Object> payload, UUID uniteId) {
-        CreerUniteInput input = objectMapper.convertValue(payload, CreerUniteInput.class);
+        Map<String, Object> cleanPayload = new HashMap<>(payload);
+        cleanPayload.remove("id");
+        CreerUniteInput input = objectMapper.convertValue(cleanPayload, CreerUniteInput.class);
         UniteOrganisationnelleEntity parent = null;
         String materializedPath;
 
@@ -192,6 +193,17 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         UniteOrganisationnelleEntity unite = uniteRepository.findById(input.uniteId())
                 .orElseThrow(() -> new OrganigrammeNotFoundException("Unité introuvable : " + input.uniteId()));
 
+        if (input.nouveauParentId() != null) {
+            UniteOrganisationnelleEntity nouveauParent = uniteRepository.findById(input.nouveauParentId())
+                    .orElseThrow(() -> new OrganigrammeNotFoundException("Nouveau parent introuvable : " + input.nouveauParentId()));
+
+            if (nouveauParent.getMaterializedPath() != null && unite.getMaterializedPath() != null
+                    && nouveauParent.getMaterializedPath().startsWith(unite.getMaterializedPath())) {
+                throw new CyclicDependencyException("Dépendance cyclique détectée : le nouveau parent " +
+                        nouveauParent.getCode() + " est un descendant de " + unite.getCode());
+            }
+        }
+
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.UNITE_ORGANISATIONNELLE,
@@ -204,20 +216,19 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         trackClickHouse(MakerCheckerEntityName.UNITE_ORGANISATIONNELLE.name(), input.uniteId().toString(), Map.of(
                 "action", "SOUMISSION_DEPLACER_UNITE",
                 "code", unite.getCode(),
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_UNITE)) {
+            UniteOrganisationnelleEntity deplacerEntity = applyDeplacerUnite(payload, input.uniteId());
             try {
-                validateOrRejectUnite(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.UPDATE
-                ));
+                if (uuid != null) {
+                    workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Validation automatique par l'utilisateur", "SYSTEM");
+                }
             } catch (Exception e) {
                 log.warn("Erreur validation auto déplacement unité {}: {}", input.uniteId(), e.getMessage());
             }
+            return mapToUniteOutput(deplacerEntity);
         }
 
         return mapToUniteOutput(uniteRepository.findById(input.uniteId()).orElse(unite));
@@ -353,7 +364,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         trackClickHouse(MakerCheckerEntityName.POSTE.name(), id.toString(), Map.of(
                 "action", "SOUMISSION_CREER_POSTE",
                 "codePoste", input.codePoste(),
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_POSTE)) {
@@ -509,7 +520,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "action", "SOUMISSION_AFFECTER_COLLABORATEUR",
                 "username", utilisateur.getUsername(),
                 "poste", poste.getCodePoste(),
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_AFFECTATION)) {
@@ -593,7 +604,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
 
         trackClickHouse(MakerCheckerEntityName.AFFECTATION_POSTE.name(), input.affectationId().toString(), Map.of(
                 "action", "SOUMISSION_CLOTURER_AFFECTATION",
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_AFFECTATION)) {
@@ -701,7 +712,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "action", "SOUMISSION_CREER_DELEGATION",
                 "delegant", delegant.getUsername(),
                 "delegataire", delegataire.getUsername(),
-                "ticket", uuid.toString()
+                "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
         if (canValidate(Permissions.VALIDATE_DELEGATION)) {

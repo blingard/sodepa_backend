@@ -10,6 +10,7 @@ import java.util.UUID;
  * Objet de transfert de données (DTO / Requête) pour l'opération `CreerUniteInput` dans l'ERP SODEPA.
  * Encapsule les paramètres requis avec leurs règles de validation.
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @Builder
 public record CreerUniteInput(
         String code,

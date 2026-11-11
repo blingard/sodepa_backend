@@ -1,5 +1,7 @@
 package com.sodepa.erp.organigramme;
 
+import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
+
 import com.sodepa.erp.organigramme.application.exceptions.BudgetedHeadcountExceededException;
 import com.sodepa.erp.organigramme.application.exceptions.ConflictAffectationException;
 import com.sodepa.erp.organigramme.application.exceptions.CyclicDependencyException;
@@ -49,7 +51,28 @@ class OrganigrammeAdapterTest {
     @Mock
     private UserRepository userRepository;
 
-    @InjectMocks
+        @Mock
+    private TypeStructureRepository typeStructureRepository;
+
+    @Mock
+    private ObjectifUniteRepository objectifRepository;
+
+    @Mock
+    private EmployeRepository employeRepository;
+
+    @Mock
+    private com.sodepa.erp.workflow.application.WorkflowService workflowService;
+
+    @Mock
+    private com.sodepa.erp.share.UtilsService utilsService;
+
+    @org.mockito.Spy
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    @Mock
+    private com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager clickHouseManager;
+
+@InjectMocks
     private OrganigrammeAdapter adapter;
 
     private UniteOrganisationnelleEntity directionGenerale;
