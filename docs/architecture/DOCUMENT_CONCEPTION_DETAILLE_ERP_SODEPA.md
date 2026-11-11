@@ -30,7 +30,7 @@ flowchart LR
 
     subgraph Application["2. Couche Application (Domaine & Use Cases)"]
         UC["@UseCase / *Service\n(Logique métier pure & @Transactional)"]
-        PORT["Ports (Interfaces)\nOrganigrammePort, MakerCheckerEnginePort..."]
+        PORT["Ports (Interfaces)\nOrganigrammePort, WorkflowService (Moteur Universel)..."]
         ORCH["WorkflowCompletionOrchestrator\n(Écouteur d'événements Spring)"]
     end
 
@@ -138,11 +138,11 @@ Le moteur remplace le couplage statique par une gouvernance **100% pilotée par 
 4. **Règle d'Or Coupe-Circuit (`active = false`)** : Dès qu'un métier (`isActive = false`), un workflow (`actif = false`), une étape (`actif = false`) ou un acteur (`actif = false`) est désactivé, toute transition ou action est immédiatement bloquée par [`WorkflowService.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/workflow/application/WorkflowService.java).
 5. **Orchestration Automatique de Complétion ([`WorkflowCompletionOrchestrator.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/workflow/application/WorkflowCompletionOrchestrator.java))** :
    - Écoute les événements `WorkflowInstanceCompletedEvent` et `WorkflowInstanceRejectedEvent`.
-   - Applique automatiquement la décision finale (`ACCEPTED` ou `REJECTED`) sur les **33 entités `MakerCheckerEntityName`** (via [`MakerCheckerEngineAdapter.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/share/MakerCheckerEngineAdapter.java)) ainsi que sur les processus directs (`FORMATION_PLAN`, `STAGE_RALLONGE`, `FORMATION_RECLASSEMENT`, `ECRITURE`, `PRE_ENGAGEMENT_BUDGET`), tout en garantissant la règle des 4 yeux (`checkerId != makerId`).
+   - Applique automatiquement la décision finale (`ACCEPTED` ou `REJECTED`) sur les **33 entités `MakerCheckerEntityName`** (via [`WorkflowService.java`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/share/WorkflowService.java)) ainsi que sur les processus directs (`FORMATION_PLAN`, `STAGE_RALLONGE`, `FORMATION_RECLASSEMENT`, `ECRITURE`, `PRE_ENGAGEMENT_BUDGET`), tout en garantissant la règle des 4 yeux (`checkerId != makerId`).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> EN_COURS : demarrerWorkflowMetier() / MakerCheckerEngineAdapter.submit()
+    [*] --> EN_COURS : demarrerWorkflowMetier() / WorkflowService.submitChange()
     EN_COURS --> ETAPE_N : Génération des WorkflowTache (Acteurs actifs)
     ETAPE_N --> CONTROLE_AUTO : Si TypeEtape = CONTROLE_AUTOMATIQUE (Validateur SYSTEME)
     CONTROLE_AUTO --> ETAPE_SUIVANTE : Exécution immédiate dans la même transaction

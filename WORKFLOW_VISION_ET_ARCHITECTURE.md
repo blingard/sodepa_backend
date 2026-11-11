@@ -319,3 +319,95 @@ Exposées sur le contrôleur [`WorkflowRestController.java`](file:///c:/Users/GL
 2. **Audit Analytique Asynchrone (ClickHouse)** :
    - Ingestion dans `clickhouse_workflow_events` via [`ClickHouseManager`](file:///c:/Users/GLC/Documents/sodepa/erp/src/main/java/com/sodepa/erp/audit/infrastructure/repo/ClickHouseManager.java).
    - Permet d'alimenter les tableaux de bord décisionnels de la Direction Générale : temps moyen de traitement par étape, goulots d'étranglement par unité organisationnelle, respect des SLA, et volumétrie des flux.
+
+
+---
+
+## 7. Convergence Universelle & Remplacement Direct de `MakerCheckerEnginePort`
+
+### A. Contexte et Décision d'Architecture
+Historiquement, l'ERP SODEPA disposait d'un pattern double :
+1. Une interface rigide et binaire `MakerCheckerEnginePort` / `MakerCheckerEngineAdapter` (soumission, acceptation/rejet sans notion d'étapes multiples ni d'acteurs hiérarchiques).
+2. Le **Moteur de Workflow Universel** (`WorkflowService`), capable de gérer des graphes de validation complexes, des SLA, des politiques d'approbation et des verrous anti-fraude.
+
+Afin de simplifier la maintenance, d'éviter la duplication de logique et d'offrir la puissance du moteur de workflow à l'ensemble de l'ERP, **`MakerCheckerEnginePort` et `MakerCheckerEngineAdapter` ont été définitivement supprimés**.
+
+```mermaid
+graph TD
+    subgraph Modules["15 Domaines Métiers SODEPA"]
+        A1[Achats]
+        A2[Budget]
+        A3[Comptabilité Générale]
+        A4[Immobilisations]
+        A5[Organigramme]
+        A6[Paie]
+        A7[Pastoral & Cheptel]
+        A8[Ressources Humaines]
+        A9[Trésorerie & Régies]
+        A10[Gestion des Utilisateurs]
+    end
+
+    subgraph MoteurWorkflow["Moteur de Workflow Universel (WorkflowService)"]
+        WS["WorkflowService.submitChange(...)"]
+        AUTO["Résolution Dynamique du Circuit<br/>(MetierCode ou Circuit Standard)"]
+        EXEC["Génération Instance & Tâches Parallèles"]
+        AUDIT["Double Traçabilité (Audit JPA + ClickHouse)"]
+    end
+
+    subgraph Handlers["Orchestration Multi-Modules"]
+        H1["AchatsWorkflowEntityHandler"]
+        H2["EmployeWorkflowEntityHandler"]
+        H3["BudgetWorkflowEventListener"]
+        H4["WorkflowEntityHandlerRegistry (@Order)"]
+    end
+
+    Modules -->|Injection Directe| WS
+    WS --> AUTO
+    AUTO --> EXEC
+    EXEC --> AUDIT
+    EXEC -->|Événements Spring| Handlers
+```
+
+### B. Modules Migrés en Injection Directe vers `WorkflowService`
+Les 15 classes appelantes injectent désormais directement `WorkflowService` :
+1. `AchatsSecurityService.java` (`com.sodepa.erp.achats.application`)
+2. `AchatsService.java` (`com.sodepa.erp.achats.application`)
+3. `BudgetPlanAdapter.java` (`com.sodepa.erp.budget.infrastructure.adapter`)
+4. `BankAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+5. `CompteAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+6. `FiscalYearClosingAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+7. `ImmobilisationAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+8. `JournalAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+9. `TiersAdapter.java` (`com.sodepa.erp.comptabilite.generale.infrastructure.adapter`)
+10. `OrganigrammeAdapter.java` (`com.sodepa.erp.organigramme.infrastructure.adapter`)
+11. `PaieService.java` (`com.sodepa.erp.paie.application`)
+12. `CheptelService.java` (`com.sodepa.erp.pastoral.application`)
+13. `RhService.java` (`com.sodepa.erp.rh.application`)
+14. `RegiesTresorerieService.java` (`com.sodepa.erp.tresorerie.regies.application`)
+15. `UserAdapter.java` (`com.sodepa.erp.user.infrastructure.adapter`)
+
+### C. Maintien de l'API de Soumission et Orchestration Automatique
+Les méthodes de soumission (`submitChange`, `directSubmitChange`, `findById`, `update`, `validate`, `findAllToValideByOther`) sont intégrées dans `WorkflowService` :
+- Lors de l'appel à `submitChange(entityName, entityPk, payload, opType)`, une entrée de suivi `MakerCheckerRequestEntity` est persistée, et une instance réelle de workflow `WorkflowInstanceEntity` est déclenchée immédiatement via `demarrerWorkflowPourEntite`.
+- L'audit analytique ClickHouse est émis de manière asynchrone non-bloquante via RabbitMQ (`AuditEventPublisher`).
+
+---
+
+## 8. Matrice de Résolution des 12 Défaillances (D1 à D12)
+
+Le tableau ci-dessous synthétise la résolution formelle des 12 écarts relevés dans le rapport d'audit et de revue du moteur de workflow :
+
+| Réf | Défaillance Identifiée | Risque Initial | Solution Implémentée | Statut |
+| :--- | :--- | :--- | :--- | :---: |
+| **D1** | Identité de l'appelant non garantie | Usurpation d'identité en passant un `userId` arbitraire | Extraction stricte de l'utilisateur connecté via le token JWT Bearer (`utilsService.getCurrentUser()`) | **RÉSOLU** |
+| **D2** | Absence de permissions RBAC dédiées | N'importe quel utilisateur connecté pouvait modifier des circuits | Création et contrôle strict des permissions `WORKFLOW_READ`, `WORKFLOW_CONFIG`, `WORKFLOW_SUPERVISION`, `WORKFLOW_DECISION` | **RÉSOLU** |
+| **D3** | Contrôle superviseur par comparaison de chaîne (`contains("DG")`) | Faux positifs et élévation de privilèges | Remplacement par un contrôle exact sur les rôles et permissions officielles de gouvernance | **RÉSOLU** |
+| **D4** | Risque d'auto-approbation (Violation 4-Eyes) | Un initiateur pouvait valider son propre dossier | Blocage systématique : exception `AccesRefuseException` levée si `initiateurId.equals(valideurId)` | **RÉSOLU** |
+| **D5** | Blocage du cycle lors de la révision (`ASK_REVISION`) | Dossiers suspendus indéfiniment après demande de correction | Remise en statut `EN_ATTENTE_REVISION`, notification initiateur, et réévaluation cyclique dès resoumission | **RÉSOLU** |
+| **D6** | Blocage par les tâches expirées | Circuits arrêtés à 100% car les tâches `EXPIRED` n'étaient pas filtrées | Évaluation dynamique de progression ignorant les tâches de statut `EXPIRED` | **RÉSOLU** |
+| **D7** | Absence de verrouillage optimiste | Race conditions en cas de validation simultanée par 2 acteurs | Ajout du champ `@Version private Long version;` sur `WorkflowInstanceEntity` et `WorkflowTaskEntity` | **RÉSOLU** |
+| **D8** | Traçabilité insuffisante et perte d'historique | Non-conformité aux exigences d'audit réglementaire | Double piste d'audit : `WorkflowHistoriqueAuditEntity` (relationnel SQL) + ClickHouse asynchrone | **RÉSOLU** |
+| **D9** | Rôles et affectations en dur dans le code | Rigidité interdisant l'évolution de l'organigramme | Stratégies dynamiques `POSTE_SPECIFIQUE`, `RESPONSABLE_HIERARCHIQUE`, `ROLE`, et prise en compte des délégations actives | **RÉSOLU** |
+| **D10** | Absence d'exigence sur les pièces jointes | Validation sans justificatifs obligatoires | Implémentation du mode `ValidationStepActionMode` avec validation MinIO et attributs requis | **RÉSOLU** |
+| **D11** | Pollution *rollback-only* lors de soumissions Maker-Checker | Transaction globale avortée par une sous-opération | Utilisation de `saveAndFlush()` et isolation stricte des contextes transactionnels | **RÉSOLU** |
+| **D12** | Conflit *rollback-only* dans le module Achats | Blocage de l'auto-validation sur expressions de besoin | Alignement transactionnel et découplage par événements de domaine | **RÉSOLU** |

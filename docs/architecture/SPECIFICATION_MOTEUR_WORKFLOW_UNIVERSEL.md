@@ -229,3 +229,39 @@ flowchart TD
     CheckMaker -->|Non - Conforme 4-yeux| CreateTask[Création WorkflowTaskEntity PENDING]
     EscalateSegregation --> CreateTask
 ```
+
+
+---
+
+### 6. Remplacement Définitif de `MakerCheckerEnginePort` et Convergence
+
+L'ancienne interface `MakerCheckerEnginePort` et son implémentation `MakerCheckerEngineAdapter` ont été complètement supprimées au profit du **Moteur de Workflow Universel** (`WorkflowService`).
+
+#### A. Principes de la Convergence
+1. **Point d'Entrée Unique** : Tous les domaines métiers de l'ERP (Achats, Budget, Comptabilité, Organigramme, Paie, Pastoral, RH, Trésorerie, Utilisateurs) injectent directement `WorkflowService`.
+2. **Double Bénéfice** :
+   - Préservation de la signature d'appel `submitChange(entityName, entityPk, payload, operationType)` pour la rétrocompatibilité des 15 adaptateurs métiers.
+   - Instanciation automatique et transparente d'un graphe de workflow (`WorkflowInstanceEntity`) rattaché à l'entité, avec assignation d'acteurs réels et évaluation d'étapes.
+3. **Observabilité Immédiate** : Publication automatique des événements de soumission et de décision vers RabbitMQ pour ingestion dans la base analytique ClickHouse.
+
+---
+
+### 7. Orchestration Multi-Domaines et Événements Découplés
+
+Le moteur de workflow universel permet à un circuit de validation de faire collaborer plusieurs modules métiers sans couplage fort :
+- **Chaîne ordonnée de Handlers (`WorkflowEntityHandlerRegistry`)** : Exécute tous les `WorkflowEntityHandler` enregistrés pour une entité donnée en respectant leur priorité `@Order`.
+- **Événements de Domaine Spring** :
+  - `WorkflowStepApprovedEvent` : Notifie les modules à chaque franchissement d'étape avec les modifications apportées.
+  - `WorkflowInstanceCompletedEvent` : Notifie de l'approbation définitive pour clôture ou activation métier.
+  - `WorkflowInstanceRejectedEvent` : Notifie du rejet pour libération des réservations (ex: déblocage de crédits budgétaires).
+  - `WorkflowRevisionRequestedEvent` : Notifie de la demande de révision (`ASK_REVISION`) pour correction par l'initiateur.
+
+---
+
+### 8. Sécurité, Verrouillage Optimiste et Traitement des Exceptions
+
+1. **Sécurité RBAC Granulaire** : Contrôle systématique des permissions `WORKFLOW_READ`, `WORKFLOW_CONFIG`, `WORKFLOW_SUPERVISION` et `WORKFLOW_DECISION`.
+2. **Identification JWT** : L'identité de l'agent est extraite du contexte de sécurité JWT officiel, empêchant toute usurpation par injection d'identifiant arbitraire.
+3. **Anti Auto-Approbation (Règle des 4 Yeux)** : Rejet strict (`AccesRefuseException`) si un utilisateur tente de valider une tâche d'une instance qu'il a lui-même initiée.
+4. **Verrouillage Optimiste** : Les entités `WorkflowInstanceEntity` et `WorkflowTaskEntity` portent l'annotation JPA `@Version`, prévenant les écritures concurrentes et les accès concurrents non autorisés.
+5. **Gestion d'Erreurs Typées** : Rejet normalisé via les exceptions `RequeteInvalideException` (HTTP 400), `AccesRefuseException` (HTTP 403), `RessourceIntrouvableException` (HTTP 404), et `ConflitMetierException` (HTTP 409).
