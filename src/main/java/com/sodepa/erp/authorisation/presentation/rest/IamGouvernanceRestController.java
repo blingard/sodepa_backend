@@ -19,58 +19,74 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Contrôleur REST de Gouvernance IAM, Profils Fonctionnels, Permissions Multidimensionnelles
- * et Matrice de Séparation des Tâches (SoD) (REF-06 / F-REF-024 à F-REF-028).
+ * Service de Gouvernance des Identites, Profils Fonctionnels et Separation des Taches (REF-06 / IAM).
+ * <p>
+ * Ce service garantit le respect des principes fondamentaux de securite et de controle interne a la SODEPA :
+ * <ul>
+ *   <li><b>Administration des Profils Fonctionnels</b> : Profils metiers standardises (DG, DAF, Chef Service Budget, Magasinier, Controleur, etc.)
+ *       regroupant des paquets de permissions et des plafonds d'engagement financiers.</li>
+ *   <li><b>Affectations Multidimensionnelles</b> : Association d'un collaborateur a un profil sur un perimetre geographique
+ *       et temporel strict (unite organisationnelle, magasin ou site precis, exercice budgetaire limite).</li>
+ *   <li><b>Matrice de Separation des Taches (Segregation of Duties - SoD)</b> : Controle bloquant empechant l'attribution simultanee
+ *       de profils ou droits incompatibles (ex: un gestionnaire de stock ne peut pas etre validateur de ses propres ecarts d'inventaire ;
+ *       celui qui saisit une facture ne peut pas emettre le bon a payer).</li>
+ *   <li><b>Revue d'acces et Synchronisation RH</b> : Suspension ou desactivation automatique immediate des comptes utilisateurs
+ *       des que la fin de contrat ou le depart de l'agent est constate dans le module RH.</li>
+ * </ul>
  */
 @RestController
 @RequestMapping({"/api/iam", "/api/v1/iam"})
 @RequiredArgsConstructor
 @Tag(name = "Gouvernance IAM, Profils Fonctionnels & Matrice SoD (REF-06)",
-     description = "Administration des 13 profils fonctionnels SODEPA, affectations par périmètre (unité/site/exercice), contrôle SoD et désactivation automatique sur sortie RH")
-/**
- * Contrôleur REST exposant les points de terminaison pour `IamGouvernanceRestController`.
- * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
- */
+     description = "Administration des profils métiers SODEPA, affectations par périmètre, contrôle SoD bloquant et désactivation automatique sur sortie RH")
 public class IamGouvernanceRestController {
 
     private final IamGouvernanceService iamService;
 
     /**
-     * Liste tous les profils fonctionnels réutilisables configurés dans l'ERP SODEPA.
+     * Liste l'ensemble des profils fonctionnels reutilisables definis dans l'ERP SODEPA.
+     * <p>
+     * Presente le libelle du profil, son niveau d'engagement financier maximal et les permissions associees.
      *
-     * @return Réponse HTTP 200 contenant la liste des profils fonctionnels.
+     * @return la liste des profils fonctionnels enregistres
      */
     @GetMapping("/profils")
-    @Operation(summary = "Lister les profils fonctionnels réutilisables SODEPA (CA-REF-025-03 / RG-REF-018)")
+    @Operation(summary = "Lister les profils fonctionnels réutilisables SODEPA")
     public ResponseEntity<List<ProfilFonctionnelEntity>> listerProfils() {
         return ResponseEntity.ok(iamService.listerProfilsFonctionnels());
     }
 
     /**
-     * Crée ou met à jour un profil fonctionnel et propage automatiquement ses droits à tous ses porteurs.
+     * Cree un nouveau profil metier ou met a jour les droits d'un profil existant.
+     * <p>
+     * Toute modification des privileges d'un profil fonctionnel est automatiquement propagee
+     * a tous les utilisateurs detenant ce profil sans necessiter de re-affectation manuelle.
      *
-     * @param request Données du profil fonctionnel.
-     * @return Réponse HTTP 201 contenant le profil sauvegardé.
+     * @param request definition du profil (code unique, intitule, permissions affectees, plafond d'engagement, exigence MFA)
+     * @return le profil fonctionnel sauvegarde
      */
     @PostMapping("/profils")
-    @Operation(summary = "Créer ou mettre à jour un profil fonctionnel avec propagation automatique à ses porteurs (CA-REF-025-03)")
+    @Operation(summary = "Créer ou mettre à jour un profil fonctionnel (avec propagation automatique)")
     public ResponseEntity<ProfilFonctionnelEntity> creerOuModifierProfil(@Valid @RequestBody ProfilFonctionnelEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(iamService.creerOuMettreAJourProfil(request));
     }
 
     /**
-     * Attribue un profil fonctionnel à un utilisateur sur un périmètre donné après contrôle bloquant de la matrice SoD.
+     * Attribue un profil metier a un collaborateur sur un perimetre organisationnel delimite.
+     * <p>
+     * Realise une verification prealable bloquante aupres de la matrice de Separation des Taches (SoD) :
+     * si l'attribution cree un cumul de fonctions interdit, l'operation est immediatement rejetee.
      *
-     * @param utilisateurId            Identifiant UUID de l'utilisateur.
-     * @param codeProfil               Code du profil fonctionnel à attribuer.
-     * @param uniteOrganisationnelleId Périmètre d'unité organisationnelle (optionnel).
-     * @param codeMagasinOuSite        Périmètre de site ou magasin (optionnel).
-     * @param exerciceAutorise         Exercice budgétaire/comptable autorisé (optionnel).
-     * @param dateFin                  Date de fin de validité de l'affectation (optionnelle).
-     * @return Réponse HTTP 201 contenant l'affectation crée.
+     * @param utilisateurId identifiant unique du collaborateur
+     * @param codeProfil reference du profil fonctionnel a assigner (ex: 'PROFIL_GESTIONNAIRE_ACHATS')
+     * @param uniteOrganisationnelleId perimetre optionnel limitant les droits a une direction, ranch ou abattoir
+     * @param codeMagasinOuSite perimetre optionnel limitant les droits a un entrepot ou magasin physique
+     * @param exerciceAutorise annee budgetaire d'autorisation optionnelle (ex: 2026)
+     * @param dateFin date d'expiration optionnelle de l'habilitation
+     * @return l'affectation formalisee
      */
     @PostMapping("/utilisateurs/{utilisateurId}/affecter-profil")
-    @Operation(summary = "Attribuer un profil fonctionnel avec périmètre (unité, magasin/site, exercice) et vérification SoD bloquante (CA-REF-025-01 & CA-REF-027-01)")
+    @Operation(summary = "Attribuer un profil fonctionnel avec périmètre et vérification SoD bloquante")
     public ResponseEntity<AffectationProfilUtilisateurEntity> affecterProfil(
             @PathVariable UUID utilisateurId,
             @RequestParam String codeProfil,
@@ -84,10 +100,10 @@ public class IamGouvernanceRestController {
     }
 
     /**
-     * Liste les profils fonctionnels et périmètres actifs d'un utilisateur.
+     * Consulte l'ensemble des profils fonctionnels et des perimetres actifs attribues a un agent donne.
      *
-     * @param utilisateurId Identifiant UUID de l'utilisateur.
-     * @return Réponse HTTP 200 contenant la liste des affectations actives.
+     * @param utilisateurId identifiant du collaborateur audite
+     * @return la liste de ses affectations de droits actives
      */
     @GetMapping("/utilisateurs/{utilisateurId}/profils")
     @Operation(summary = "Consulter les profils fonctionnels et périmètres actifs d'un utilisateur")
@@ -95,12 +111,12 @@ public class IamGouvernanceRestController {
         return ResponseEntity.ok(iamService.listerAffectationsUtilisateur(utilisateurId));
     }
 
-    // --- MATRICE SOD (CA-REF-027-01 & 02) ---
+    // --- MATRICE DE SÉPARATION DES TÂCHES (SoD) ---
 
     /**
-     * Liste toutes les règles actives d'incompatibilité de la matrice de Séparation des Tâches (SoD).
+     * Liste l'ensemble des regles formelles d'incompatibilite et d'antagonisme de la matrice SoD.
      *
-     * @return Réponse HTTP 200 contenant les règles SoD.
+     * @return la liste des regles d'incompatibilite actives
      */
     @GetMapping("/sod/regles")
     @Operation(summary = "Consulter la matrice des règles d'incompatibilité de Séparation des Tâches (SoD)")
@@ -109,10 +125,12 @@ public class IamGouvernanceRestController {
     }
 
     /**
-     * Crée une nouvelle règle d'incompatibilité dans la matrice SoD.
+     * Enregistre une nouvelle regle d'incompatibilite stricte au sein de la matrice de separation des taches.
+     * <p>
+     * Definit deux profils ou actions incompatibles (ex: 'Saisie Facture' et 'Paiement Facture') ainsi que le niveau bloquant.
      *
-     * @param request Données de la règle SoD.
-     * @return Réponse HTTP 201 contenant la règle crée.
+     * @param request caracteristiques de la regle d'interdiction
+     * @return la regle SoD enregistree
      */
     @PostMapping("/sod/regles")
     @Operation(summary = "Ajouter une règle d'incompatibilité dans la matrice SoD")
@@ -121,25 +139,31 @@ public class IamGouvernanceRestController {
     }
 
     /**
-     * Génère l'état d'audit des conflits SoD potentiels sur l'ensemble des comptes utilisateurs actifs.
+     * Execute un audit de controle global sur l'ensemble des comptes utilisateurs actifs.
+     * <p>
+     * Detecte tout conflit potentiel ou derogation de separation des taches existant dans la base
+     * et produit un rapport de conformite a destination des auditeurs internes.
      *
-     * @return Réponse HTTP 200 contenant la liste des conflits détectés.
+     * @return la liste des anomalies et cumuls de droits suspects detectes
      */
     @GetMapping("/sod/audit-conflits")
-    @Operation(summary = "Générer le rapport d'audit des conflits SoD potentiels sur les comptes actifs (CA-REF-027-02)")
+    @Operation(summary = "Générer le rapport d'audit des conflits SoD sur les comptes actifs")
     public ResponseEntity<List<Map<String, Object>>> auditerConflitsSod() {
         return ResponseEntity.ok(iamService.auditerConflitsSodUtilisateurs());
     }
 
-    // --- DÉSACTIVATION AUTOMATIQUE RH & EXPIRATION (CA-REF-024-02 & 03) ---
+    // --- DÉSACTIVATION AUTOMATIQUE RH & EXPIRATION ---
 
     /**
-     * Décleéenche la revue et la désactivation automatique des comptes d'agents sortis (fin de contrat RH) ou expirés.
+     * Declenche la revue systematique et la desactivation automatique des comptes d'agents dont le contrat est arrive a echeance.
+     * <p>
+     * Interroge les donnees du module RH pour identifier les departs ou fins de mission et verrouille
+     * immediatement les identifiants Keycloak et sessions actives correspondantes.
      *
-     * @return Réponse HTTP 200 contenant le rapport d'exécution.
+     * @return le bilan de la revue automatique (nombre de comptes controles, desactives ou suspendus)
      */
     @PostMapping("/comptes/executer-desactivation-rh")
-    @Operation(summary = "Exécuter la désactivation automatique des comptes d'agents sortis (fin de contrat RH) ou expirés (CA-REF-024-02 & 03 / RG-REF-024)")
+    @Operation(summary = "Exécuter la désactivation automatique des comptes d'agents sortis du personnel RH")
     public ResponseEntity<Map<String, Object>> executerDesactivationRh() {
         return ResponseEntity.ok(iamService.executerRevueAutomatiqueComptesEtSortiesRh());
     }
