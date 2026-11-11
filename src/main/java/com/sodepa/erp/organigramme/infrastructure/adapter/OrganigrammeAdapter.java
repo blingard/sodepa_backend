@@ -15,7 +15,7 @@ import com.sodepa.erp.organigramme.application.ports.HierarchieResolutionPort;
 import com.sodepa.erp.organigramme.application.ports.OrganigrammePort;
 import com.sodepa.erp.organigramme.infrastructure.entities.*;
 import com.sodepa.erp.organigramme.infrastructure.repo.*;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
@@ -57,7 +57,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     private final TypeStructureRepository typeStructureRepository;
     private final ObjectifUniteRepository objectifRepository;
     private final EmployeRepository employeRepository;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
@@ -109,7 +109,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.UNITE_ORGANISATIONNELLE,
                 id.toString(),
                 payload,
@@ -193,7 +193,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 .orElseThrow(() -> new OrganigrammeNotFoundException("Unité introuvable : " + input.uniteId()));
 
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.UNITE_ORGANISATIONNELLE,
                 input.uniteId().toString(),
                 payload,
@@ -266,7 +266,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     @Transactional
     public void validateOrRejectUnite(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_UNITE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -287,10 +287,10 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Unité rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID uniteId = UUID.fromString(checkerOutput.entityPk());
@@ -299,7 +299,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 applyDeplacerUnite(checkerOutput.payload(), uniteId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Unité approuvée par Checker {}. Ticket: {}, Unité PK: {}", checkerId, checkerOutput.id(), uniteId);
         }
     }
@@ -342,7 +342,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.POSTE,
                 id.toString(),
                 payload,
@@ -417,7 +417,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     @Transactional
     public void validateOrRejectPoste(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_POSTE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -438,17 +438,17 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Poste rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID posteId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationPoste(checkerOutput.payload(), posteId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Poste approuvée par Checker {}. Ticket: {}, Poste PK: {}", checkerId, checkerOutput.id(), posteId);
         }
     }
@@ -497,7 +497,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.AFFECTATION_POSTE,
                 id.toString(),
                 payload,
@@ -583,7 +583,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 .orElseThrow(() -> new OrganigrammeNotFoundException("Affectation introuvable : " + input.affectationId()));
 
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.AFFECTATION_POSTE,
                 input.affectationId().toString(),
                 payload,
@@ -632,7 +632,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     @Transactional
     public void validateOrRejectAffectation(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_AFFECTATION);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -653,10 +653,10 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Affectation rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID affectationId = UUID.fromString(checkerOutput.entityPk());
@@ -665,7 +665,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 applyCloturerAffectation(checkerOutput.payload(), affectationId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Affectation approuvée par Checker {}. Ticket: {}, Affectation PK: {}", checkerId, checkerOutput.id(), affectationId);
         }
     }
@@ -688,7 +688,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.DELEGATION_SIGNATURE,
                 id.toString(),
                 payload,
@@ -758,7 +758,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
     @Transactional
     public void validateOrRejectDelegation(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_DELEGATION);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -779,17 +779,17 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Délégation rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID delegationId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationDelegation(checkerOutput.payload(), delegationId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Délégation approuvée par Checker {}. Ticket: {}, Délégation PK: {}", checkerId, checkerOutput.id(), delegationId);
         }
     }

@@ -18,7 +18,7 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.EcritureRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.ImmobilisationRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
@@ -72,7 +72,7 @@ public class ImmobilisationAdapter {
      */
     private final static String PREFIXE_CAMPAGNE = "SYSTEM-";
 
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final ImmobilisationRepository immobilisationRepository;
     private final EcritureRepository ecritureRepository;
     private final JournalRepository journalRepository;
@@ -98,7 +98,7 @@ public class ImmobilisationAdapter {
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk);
 
-        UUID requestId = makerCheckerEngine.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.IMMOBILISATION,
                 entityPk.toString(),
                 payload,
@@ -138,7 +138,7 @@ public class ImmobilisationAdapter {
 
         Map<String, Object> payload = toPayload(request);
 
-        UUID requestId = makerCheckerEngine.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.IMMOBILISATION,
                 request.id().toString(),
                 payload,
@@ -238,7 +238,7 @@ public class ImmobilisationAdapter {
 
         Map<String, Object> payload = toPayload(request);
 
-        UUID requestId = makerCheckerEngine.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.IMMOBILISATION,
                 PREFIXE_CAMPAGNE + UUID.randomUUID(),
                 payload,
@@ -262,7 +262,7 @@ public class ImmobilisationAdapter {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_IMMOBILISATION);
 
         String moi = utilsService.getCurrentUser().getUserData().get().userId();
-        return makerCheckerEngine.findAllToValideByOther(
+        return workflowService.findAllToValideByOther(
                 pageable, MakerCheckerEntityName.IMMOBILISATION, MakerCheckerStatus.PENDING, moi);
     }
 
@@ -274,7 +274,7 @@ public class ImmobilisationAdapter {
     public void validateOrReject(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_IMMOBILISATION);
 
-        MakerCheckerOutput makerCheckerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput makerCheckerOutput = workflowService.findById(input.id());
         
         if (makerCheckerOutput.status() != MakerCheckerStatus.PENDING) {
             throw new IllegalArgumentException("La requête n'est pas en attente.");
@@ -287,7 +287,7 @@ public class ImmobilisationAdapter {
             throw new IllegalArgumentException("Le validateur doit être différent de l'initiateur.");
         }
 
-        makerCheckerEngine.validate(input.id(), makerCheckerOutput.createdAt(), makerCheckerOutput.expiredAt());
+        workflowService.validate(input.id(), makerCheckerOutput.createdAt(), makerCheckerOutput.expiredAt());
 
         if (input.decision() == MakerCheckerStatus.ACCEPTED) {
             if (makerCheckerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
@@ -308,7 +308,7 @@ public class ImmobilisationAdapter {
             }
         }
 
-        makerCheckerEngine.update(input.id(), input.decision(), input.notes(), currentUserId);
+        workflowService.update(input.id(), input.decision(), input.notes(), currentUserId);
     }
 
     private void creation(ImmoEventInput request, UUID id) {

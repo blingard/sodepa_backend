@@ -20,6 +20,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class ReleveBancaireEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "RB";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique du relevé bancaire (UUID).

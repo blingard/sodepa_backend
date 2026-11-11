@@ -1,5 +1,7 @@
 package com.sodepa.erp.workflow.presentation.rest;
 
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache;
 import com.sodepa.erp.workflow.presentation.requests.*;
@@ -34,6 +36,9 @@ public class WorkflowRestController {
 
     /** Injection du service applicatif de workflow. */
     private final WorkflowService workflowService;
+
+    /** Injection du service d'habilitation et sécurité. */
+    private final UtilsService utilsService;
 
     /**
      * Récupère la liste de toutes les opérations métiers paramétrées (ex: RECRUITMENT, SERVICE_MEMO).
@@ -111,45 +116,24 @@ public class WorkflowRestController {
     /**
      * Récupère les tâches de validation assignées à l'utilisateur courant.
      */
-    @GetMapping("/taches/mes-taches")
+    @GetMapping("/taches/my-tasks")
     @Operation(summary = "Lister les tâches de validation assignées à l'utilisateur courant")
     public ResponseEntity<Page<WorkflowTacheResponse>> getMesTaches(
-            @RequestParam UUID utilisateurId,
             @RequestParam(required = false) StatutWorkflowTache statut,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(workflowService.getMesTaches(utilisateurId, statut, pageable));
+        return ResponseEntity.ok(workflowService.getMesTaches(statut, pageable));
     }
 
     /**
      * Enregistre la décision d'un approbateur avec verrou anti-usurpation d'assignation.
      */
-    @PostMapping("/tack/decision")
+    @PostMapping({"/task/decision", "/task/decision"})
     @Operation(summary = "Approuver, rejeter ou demander des modifications sur une tâche")
-    public ResponseEntity<WorkflowTacheResponse> traiterTache(@Valid @RequestBody TraitTaskWorkflowRequest request) {
-        return ResponseEntity.ok(workflowService.traiterTache(request));
-    }
-
-    /**
-     * Crée un nouveau processus métier dans le registre transversal.
-     * Soumis à workflow d'approbation si l'utilisateur n'est pas Admin/DG/DAF.
-     */
-    @PostMapping("/metiers")
-    @Operation(summary = "Déclarer un nouveau processus métier (RH, Finance, etc.)")
-    public ResponseEntity<WorkflowMetierResponse> creerMetier(
-            @Valid @RequestBody CreerWorkflowMetierRequest request,
-            @RequestParam(required = false) UUID connectedUserId) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.creerMetier(request, connectedUserId));
-    }
-
-    /**
-     * Modifie un processus métier existant.
-     */
-    @PutMapping("/metiers/{id}")
-    @Operation(summary = "Modifier une opération métier")
-    public ResponseEntity<WorkflowMetierResponse> modifierMetier(
-            @PathVariable UUID id,
-            @Valid @RequestBody ModifierWorkflowMetierRequest request) {
-        return ResponseEntity.ok(workflowService.modifierMetier(id, request));
+    public ResponseEntity<Void> traiterTache(@Valid @RequestBody TraitTaskWorkflowRequest request) {
+        utilsService.hasPermission(Permissions.WORKFLOW_DECISION);
+        //TODO: metre en place un algorithme d'idempotence pour eviter qu'une tache soit valider deux fois
+        workflowService.traiterTache(request);
+        return ResponseEntity.ok().build();
     }
 
     /**
@@ -159,7 +143,8 @@ public class WorkflowRestController {
     @Operation(summary = "Activer ou désactiver une opération métier")
     public ResponseEntity<WorkflowMetierResponse> changerStatutMetier(
             @PathVariable UUID id,
-            @RequestParam boolean isActive) {
+            @RequestParam(name = "active") boolean isActive) {
+        utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         return ResponseEntity.ok(workflowService.changerStatutMetier(id, isActive));
     }
 
@@ -170,6 +155,7 @@ public class WorkflowRestController {
     @Operation(summary = "Créer un nouveau circuit de workflow avec ses étapes et validateurs")
     public ResponseEntity<WorkflowDefinitionResponse> creerDefinition(
             @Valid @RequestBody CreerWorkflowDefinitionRequest request) {
+        utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.creerDefinition(request));
     }
 
@@ -181,6 +167,7 @@ public class WorkflowRestController {
     public ResponseEntity<WorkflowDefinitionResponse> modifierDefinition(
             @PathVariable UUID id,
             @Valid @RequestBody ModifierWorkflowDefinitionRequest request) {
+        utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         return ResponseEntity.ok(workflowService.modifierDefinition(id, request));
     }
 
@@ -193,6 +180,7 @@ public class WorkflowRestController {
             @PathVariable UUID definitionId,
             @PathVariable UUID etapeId,
             @RequestParam boolean actif) {
+        utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         return ResponseEntity.ok(workflowService.changerStatutEtape(definitionId, etapeId, actif));
     }
 
@@ -206,6 +194,7 @@ public class WorkflowRestController {
             @PathVariable UUID etapeId,
             @PathVariable UUID acteurId,
             @RequestParam boolean actif) {
+        utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         return ResponseEntity.ok(workflowService.changerStatutActeur(definitionId, etapeId, acteurId, actif));
     }
 }

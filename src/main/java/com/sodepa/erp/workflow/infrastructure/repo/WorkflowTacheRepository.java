@@ -74,6 +74,6 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTaskEntit
      * @param maintenant Horodatage de référence pour vérifier le dépassement d'échéance.
      * @return Liste des tâches en souffrance / hors délai.
      */
-    @Query("SELECT t FROM WorkflowTaskEntity t WHERE t.statut = 'EN_ATTENTE' AND t.dateEcheance IS NOT NULL AND t.dateEcheance < :maintenant")
+    @Query("SELECT t FROM WorkflowTaskEntity t WHERE t.statut = com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache.PENDING AND t.dateEcheance IS NOT NULL AND t.dateEcheance < :maintenant")
     List<WorkflowTaskEntity> findTachesEnDepassementSla(@Param("maintenant") Instant maintenant);
 }

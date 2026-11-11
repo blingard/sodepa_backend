@@ -19,6 +19,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class FormationParticipationEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "FP";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique technique dans le cadre des opérations SODEPA.

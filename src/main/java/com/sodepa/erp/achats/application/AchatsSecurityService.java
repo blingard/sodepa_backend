@@ -10,7 +10,7 @@ import com.sodepa.erp.organigramme.infrastructure.entities.StatutAffectation;
 import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
 import com.sodepa.erp.organigramme.infrastructure.repo.AffectationPosteRepository;
 import com.sodepa.erp.organigramme.infrastructure.repo.UniteOrganisationnelleRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UserData;
 import com.sodepa.erp.share.UtilsService;
@@ -45,7 +45,7 @@ public class AchatsSecurityService {
     private final ExpressionBesoinRepository expressionBesoinRepository;
     private final UniteOrganisationnelleRepository uniteOrganisationnelleRepository;
     @org.springframework.context.annotation.Lazy
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
 
     public UtilsService getUtilsService() {
         return utilsService;
@@ -159,7 +159,7 @@ public class AchatsSecurityService {
         }
 
         try {
-            MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(requestId);
+            MakerCheckerOutput checkerOutput = workflowService.findById(requestId);
             if (checkerOutput == null) {
                 return;
             }

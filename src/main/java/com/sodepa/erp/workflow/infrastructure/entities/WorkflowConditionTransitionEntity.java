@@ -28,6 +28,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class WorkflowConditionTransitionEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "WCT";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique universel (UUID) de la règle de transition conditionnelle.

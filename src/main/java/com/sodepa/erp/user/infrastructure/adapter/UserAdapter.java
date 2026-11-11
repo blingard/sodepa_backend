@@ -1,4 +1,6 @@
 package com.sodepa.erp.user.infrastructure.adapter;
+import com.sodepa.erp.workflow.application.WorkflowService;
+
 import com.sodepa.erp.user.application.BootstrapInitializationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,7 +39,7 @@ import java.util.stream.Collectors;
 public class UserAdapter implements UserAdapterInterface {
 
     private final UserRepository userRepository;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
@@ -167,7 +169,7 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        UUID requestId = makerCheckerEngine.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.USER,
                 newUserId.toString(),
                 payload,
@@ -198,7 +200,7 @@ public class UserAdapter implements UserAdapterInterface {
         // par un 400. Les afficher ici revenait à proposer une action qui ne
         // pouvait qu'échouer.
         String moi = utilsService.getCurrentUser().getUserData().get().userId();
-        return makerCheckerEngine.findAllToValideByOther(
+        return workflowService.findAllToValideByOther(
                 pageable, MakerCheckerEntityName.USER, MakerCheckerStatus.PENDING, moi);
     }
 
@@ -225,7 +227,7 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.USER,
                 user.getId().toString(),
                 payload,
@@ -261,7 +263,7 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.USER,
                 user.getId().toString(),
                 payload,
@@ -297,7 +299,7 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        UUID requestId = makerCheckerEngine.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.USER,
                 user.getId().toString(),
                 payload,
@@ -309,7 +311,7 @@ public class UserAdapter implements UserAdapterInterface {
         userRepository.save(user);
 
         // Validation automatique par le système
-        makerCheckerEngine.update(requestId, MakerCheckerStatus.ACCEPTED, "Validation automatique par le système", "SYSTEM");
+        workflowService.update(requestId, MakerCheckerStatus.ACCEPTED, "Validation automatique par le système", "SYSTEM");
 
         log.info("Photo de profil mise à jour pour l'utilisateur {} ({})", user.getUsername(), user.getId());
     }
@@ -337,7 +339,7 @@ public class UserAdapter implements UserAdapterInterface {
         );
 
         Map<String, Object> payload = objectMapper.convertValue(event, Map.class);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.USER,
                 user.getId().toString(),
                 payload,
@@ -347,7 +349,7 @@ public class UserAdapter implements UserAdapterInterface {
 
     @Transactional
     public void validateOrReject(ValidateOrRejectSubmissionInput input) {
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new IllegalArgumentException(String.format(
@@ -369,7 +371,7 @@ public class UserAdapter implements UserAdapterInterface {
         validation(checkerOutput);
 
         if (MakerCheckerStatus.REJECTED.equals(input.decision())) {
-            makerCheckerEngine.update(checkerOutput.id(), MakerCheckerStatus.REJECTED, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), MakerCheckerStatus.REJECTED, input.notes(), checkerId.toString());
         } else if (MakerCheckerStatus.ACCEPTED.equals(input.decision())) {
             UUID entityId = UUID.fromString(checkerOutput.entityPk());
             UserEventInput event = objectMapper.convertValue(checkerOutput.payload(), UserEventInput.class);
@@ -378,12 +380,12 @@ public class UserAdapter implements UserAdapterInterface {
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 update(event);
             }
-            makerCheckerEngine.update(checkerOutput.id(), MakerCheckerStatus.ACCEPTED, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), MakerCheckerStatus.ACCEPTED, input.notes(), checkerId.toString());
         }
     }
 
     private void validation(MakerCheckerOutput request) {
-        makerCheckerEngine.validate(request.id(), request.createdAt(), request.expiredAt());
+        workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
         UtilisateurEntity entity = userRepository.findById(UUID.fromString(request.entityPk())).orElse(null);
         if (request.checkerOperationType() == MakerCheckerOperationType.CREATE && Objects.nonNull(entity)) {
             throw new IllegalArgumentException("L'utilisateur existe déjà.");

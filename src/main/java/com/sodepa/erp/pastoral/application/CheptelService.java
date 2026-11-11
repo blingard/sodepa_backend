@@ -9,7 +9,7 @@ import com.sodepa.erp.pastoral.infrastructure.entities.*;
 import com.sodepa.erp.pastoral.infrastructure.repo.*;
 import com.sodepa.erp.pastoral.presentation.requests.*;
 import com.sodepa.erp.pastoral.presentation.responses.*;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -46,7 +46,7 @@ public class CheptelService {
     private final PastoralMouvementCheptelRepository mouvementRepository;
     private final PastoralHerdCompositionRepository herdCompositionRepository;
     private final ParametreConfigurationService configService;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
@@ -149,7 +149,7 @@ public class CheptelService {
         payload.put("id", id.toString());
         payload.put("matriculeBoucle", matricule);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BOVIN_NAISSANCE,
                 id.toString(),
                 payload,
@@ -263,7 +263,7 @@ public class CheptelService {
     @Transactional
     public void validateOrRejectBovin(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_BOVIN);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -284,17 +284,17 @@ public class CheptelService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Bovin rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID bovinId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationNaissance(checkerOutput.payload(), bovinId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Bovin approuvée par Checker {}. Ticket: {}, Bovin PK: {}", checkerId, checkerOutput.id(), bovinId);
         }
     }
@@ -509,7 +509,7 @@ public class CheptelService {
                 "annee", an
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.HERD_COMPOSITION,
                 id.toString(),
                 payload,
@@ -598,7 +598,7 @@ public class CheptelService {
     @Transactional
     public void validateOrRejectHerdComposition(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_HERD_COMPOSITION);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -619,15 +619,15 @@ public class CheptelService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Herd Composition rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID herdId = UUID.fromString(checkerOutput.entityPk());
             applyGenererHerdComposition(checkerOutput.payload(), herdId);
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Herd Composition approuvé par Checker {}. Ticket: {}, Herd PK: {}", checkerId, checkerOutput.id(), herdId);
         }
     }

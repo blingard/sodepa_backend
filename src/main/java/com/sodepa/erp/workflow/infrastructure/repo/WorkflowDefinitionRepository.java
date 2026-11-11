@@ -117,4 +117,8 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
      * @return Liste des définitions de workflow en état actif.
      */
     List<WorkflowDefinitionEntity> findAllByActifTrue();
+
+    List<WorkflowDefinitionEntity> findByMetierId(UUID metierId);
+
+    Optional<WorkflowDefinitionEntity> findFirstByMetierCodeAndActifTrue(String metierCode);
 }

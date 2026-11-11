@@ -20,6 +20,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class ImmobilisationEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "IMM";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique de l'immobilisation (UUID).

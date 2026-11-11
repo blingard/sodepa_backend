@@ -16,7 +16,7 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.EcritureRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneEcritureRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
@@ -47,7 +47,7 @@ public class FiscalYearClosingAdapter {
     private final JournalRepository journalRepository;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final static String YEAR="year";
 
 
@@ -67,7 +67,7 @@ public class FiscalYearClosingAdapter {
         validation(annee);
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(Map.of(YEAR, annee));
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.FISCALYEARCLOSING,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
@@ -87,7 +87,7 @@ public class FiscalYearClosingAdapter {
      */
     @Transactional
     public void generateFiscalYearClosingSimulation(ValidateOrRejectSubmissionInput input) {
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING)
             throw new RuntimeException(String.format(
@@ -110,12 +110,12 @@ public class FiscalYearClosingAdapter {
         }
         validation(checkerOutput);
         if(MakerCheckerStatus.REJECTED.equals(newStatus)){
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             Map<String, Integer> map = objectMapper.convertValue(checkerOutput.payload(), Map.class);
             if(checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creation(map.get(YEAR));
-                makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+                workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             }
 
         }
@@ -366,7 +366,7 @@ public class FiscalYearClosingAdapter {
     }
 
     private void validation(MakerCheckerOutput request) {
-        makerCheckerEngine.validate(request.id(), request.createdAt(), request.expiredAt());
+        workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
         Map<String, Integer> map = objectMapper.convertValue(request.payload(), Map.class);
         validation(map.get(YEAR));
 

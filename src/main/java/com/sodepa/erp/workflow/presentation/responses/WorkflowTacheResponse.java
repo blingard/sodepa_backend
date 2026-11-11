@@ -81,30 +81,6 @@ public class WorkflowTacheResponse {
     /** Horodatage effectif de soumission de la décision. */
     private Instant dateDecision;
 
-    /** Identifiant du document GED joint lors de la décision. */
-    private UUID documentGedId;
-
-    /** URI ou nom de la pièce jointe téléversée. */
-    private String pieceJointeUri;
-
-    /** Champs enrichis au format JSON lors de la validation. */
-    private String champsModifiesJson;
-
-    /** Mode d'action de validation configuré sur l'étape. */
-    private String modeActionValidation;
-
-    /** Autorisation d'ajouter un document justificatif. */
-    private Boolean autoriserAjoutFichier;
-
-    /** Obligation de joindre un fichier pour valider. */
-    private Boolean fichierValidationObligatoire;
-
-    /** Autorisation de modifier des champs. */
-    private Boolean autoriserModificationChamps;
-
-    /** Obligation de modifier des champs. */
-    private Boolean modificationChampsObligatoire;
-
     /** Liste des champs autorisés à la modification. */
     private String champsModifiablesAutorises;
 }

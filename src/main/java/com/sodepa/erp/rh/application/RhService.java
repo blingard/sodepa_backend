@@ -25,7 +25,6 @@ import com.sodepa.erp.rh.presentation.requests.ApprobationContratDgRequest;
 import com.sodepa.erp.rh.presentation.responses.ContratTravailResponse;
 import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.workflow.presentation.requests.DemarrerWorkflowRequest;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
@@ -64,8 +63,7 @@ public class RhService {
     private final ClickHouseManager clickHouseManager;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
-    private final MakerCheckerEnginePort makerCheckerEngine;
-    private final ContratTravailRepository contratTravailRepository;
+        private final ContratTravailRepository contratTravailRepository;
     private final WorkflowService workflowService;
 
     public boolean canValidate(Permissions permission) {
@@ -271,7 +269,7 @@ public class RhService {
         payload.put("numeroContrat", numeroContrat);
         payload.put("utilisateurId", utilisateur.getId().toString());
 
-        UUID ticketUuid = makerCheckerEngine.submitChange(
+        UUID ticketUuid = workflowService.submitChange(
                 MakerCheckerEntityName.EMPLOYE,
                 employeId.toString(),
                 payload,
@@ -334,7 +332,7 @@ public class RhService {
         Map<String, Object> payload = new java.util.HashMap<>(objectMapper.convertValue(req, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.EMPLOYE,
                 id.toString(),
                 payload,
@@ -375,7 +373,7 @@ public class RhService {
                 "matricule", entity.getMatricule()
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.EMPLOYE,
                 id.toString(),
                 payload,
@@ -406,7 +404,7 @@ public class RhService {
     @Transactional
     public void validateOrRejectEmploye(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_EMPLOYE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -427,10 +425,10 @@ public class RhService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Employé rejetée par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID employeId = UUID.fromString(checkerOutput.entityPk());
@@ -441,7 +439,7 @@ public class RhService {
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.DELETE) {
                 deleteEmploye(employeId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Employé approuvée par le Checker {}. Ticket: {}, Employé PK: {}", checkerId, checkerOutput.id(), employeId);
         }
     }
@@ -606,7 +604,7 @@ public class RhService {
         payload.put("id", id.toString());
         payload.put("accordeParId", accordeParId);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.DEROGATION_PERMISSION,
                 id.toString(),
                 payload,
@@ -663,7 +661,7 @@ public class RhService {
                 "action", "REVOQUER"
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.DEROGATION_PERMISSION,
                 derogationId.toString(),
                 payload,
@@ -696,7 +694,7 @@ public class RhService {
     @Transactional
     public void validateOrRejectDerogation(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_DEROGATION);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -717,10 +715,10 @@ public class RhService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Opération Dérogation rejetée par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID derogationId = UUID.fromString(checkerOutput.entityPk());
@@ -729,7 +727,7 @@ public class RhService {
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 updateDerogation(checkerOutput.payload(), derogationId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Opération Dérogation approuvée par le Checker {}. Ticket: {}, Dérogation PK: {}", checkerId, checkerOutput.id(), derogationId);
         }
     }
@@ -929,9 +927,9 @@ public class RhService {
 
         if (contrat.getMakerCheckerTicketId() != null) {
             try {
-                MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(contrat.getMakerCheckerTicketId());
+                MakerCheckerOutput checkerOutput = workflowService.findById(contrat.getMakerCheckerTicketId());
                 if (checkerOutput.status() == MakerCheckerStatus.PENDING) {
-                    makerCheckerEngine.update(
+                    workflowService.update(
                             contrat.getMakerCheckerTicketId(),
                             MakerCheckerStatus.ACCEPTED,
                             "Approbation définitive par le Directeur Général (Note de Service: " + refNoteService + ")",
@@ -975,7 +973,7 @@ public class RhService {
 
         if (contrat.getMakerCheckerTicketId() != null) {
             try {
-                makerCheckerEngine.update(
+                workflowService.update(
                         contrat.getMakerCheckerTicketId(),
                         MakerCheckerStatus.ACCEPTED,
                         "Approbation formelle DG : " + req.getReferenceNoteServiceDg(),

@@ -31,6 +31,16 @@ import java.util.*;
 @AllArgsConstructor
 @Builder
 public class WorkflowDefinitionEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    private static final String codePrefix = "WFD";
+
+    public static String getPrefixeCode() {
+        return codePrefix;
+    }
+
 
     /**
      * Identifiant unique universel (UUID) de la définition de workflow.

@@ -24,26 +24,27 @@ public class UtilsService {
     }
 
     public boolean isSuperviseurOuAdmin(EmployeEntity employe, UserData userDate) {
-
-        if (userDate.permissions().size() == Permissions.values().length) {
+        if (userDate == null) {
+            return false;
+        }
+        if (userDate.permissions().contains(Permissions.WORKFLOW_SUPERVISION)
+                || userDate.permissions().size() == Permissions.values().length) {
             return true;
         }
-        // 1. Contrôle sur le compte utilisateur technique (Rôles ADMIN / SUPER_ADMIN)
+        // 1. Contrôle sur le compte utilisateur technique (Rôles ADMIN / SUPER_ADMIN / DAF / DG)
         if (userDate.isAdmin() || userDate.isDaf() || userDate.isDg()) {
             return true;
         }
 
-        // 2. Contrôle sur la fiche de poste et l'organigramme de l'employé
+        // 2. Contrôle sur la fiche de poste de l'organigramme (stricte validation des postes de direction)
         if (employe != null && employe.getPoste() != null) {
-            String codePoste = (employe.getPoste().getCodePoste() != null ? employe.getPoste().getCodePoste() : "").toUpperCase();
-            String intitulePoste = (employe.getPoste().getIntitule() != null ? employe.getPoste().getIntitule() : "").toUpperCase();
-            String signaturePoste = codePoste + " " + intitulePoste;
+            String codePoste = (employe.getPoste().getCodePoste() != null ? employe.getPoste().getCodePoste() : "").trim().toUpperCase();
+            String intitulePoste = (employe.getPoste().getIntitule() != null ? employe.getPoste().getIntitule() : "").trim().toUpperCase();
 
-            if (signaturePoste.contains("DIRECTEUR_GENERAL") || signaturePoste.contains("DIRECTEUR GENERAL") || signaturePoste.contains("DG")
-                    || signaturePoste.contains("DIRECTEUR_DAF") || signaturePoste.contains("DAF") || signaturePoste.contains("FINANCIER")
-                    || signaturePoste.contains("PCA") || signaturePoste.contains("CONSEIL")
-                    || signaturePoste.contains("AUDIT_INTERNE") || signaturePoste.contains("AUDITEUR")
-                    || signaturePoste.contains("CONTROLEUR_GESTION") || signaturePoste.contains("CONTROLE DE GESTION")) {
+            if (codePoste.equals("POSTE_DG") || codePoste.equals("DG")
+                    || codePoste.equals("POSTE_DIRECTEUR_DAF") || codePoste.equals("DAF")
+                    || intitulePoste.equals("DIRECTEUR GENERAL") || intitulePoste.equals("DIRECTEUR GÉNÉRAL")
+                    || intitulePoste.equals("DIRECTEUR ADMINISTRATIF ET FINANCIER")) {
                 return true;
             }
         }
@@ -94,10 +95,13 @@ public class UtilsService {
      */
     public void hasPermission(Permissions permissions) {
         CurrentUserAuthenticationToken currentUserAuthenticationToken = getCurrentUser();
-        if (!currentUserAuthenticationToken.getUserData().get().permissions().contains(permissions)) {
-            throw new AccesRefuseException(
-                    "Habilitation requise pour cette opération : " + permissions.name());
+        UserData ud = currentUserAuthenticationToken.getUserData().orElseThrow(
+                () -> new NonAuthentifieException("Profil utilisateur introuvable."));
+        if (ud.isAdmin() || ud.permissions().size() == Permissions.values().length || ud.permissions().contains(permissions)) {
+            return;
         }
+        throw new AccesRefuseException(
+                "Habilitation requise pour cette opération : " + permissions.name());
     }
 
     /** Absence ou invalidité du contexte d'authentification. */

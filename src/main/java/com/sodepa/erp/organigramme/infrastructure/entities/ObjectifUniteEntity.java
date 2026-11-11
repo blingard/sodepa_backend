@@ -28,6 +28,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class ObjectifUniteEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "OU";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique technique dans le cadre des opérations SODEPA.

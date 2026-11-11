@@ -37,12 +37,34 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class WorkflowTaskEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "WFT";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique universel (UUID) de la tâche de workflow.
      */
     @Id
     private UUID id;
+
+    /**
+     * Numéro de version pour le verrouillage optimiste anti-concurrence (D7).
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     /**
      * Instance de workflow globale dont relève cette tâche spécifique.

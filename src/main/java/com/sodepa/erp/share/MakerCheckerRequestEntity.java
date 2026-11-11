@@ -24,6 +24,21 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MakerCheckerRequestEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "MCR";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     @Id
     @Column(name = "id", nullable = false)

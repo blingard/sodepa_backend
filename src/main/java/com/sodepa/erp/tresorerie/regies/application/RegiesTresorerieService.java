@@ -5,7 +5,7 @@ import com.sodepa.erp.audit.application.inputs.MakerCheckerMessageInput;
 import com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.configuration.parametres.application.ParametreConfigurationService;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.tresorerie.regies.infrastructure.entities.*;
@@ -46,7 +46,7 @@ public class RegiesTresorerieService {
     private final TresorerieRegieApprovisionnementRepository approvRepository;
     private final TresorerieRegieDepenseRepository depenseRepository;
     private final ParametreConfigurationService configService;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
@@ -115,7 +115,7 @@ public class RegiesTresorerieService {
         payload.put("id", id.toString());
         payload.put("numeroDemande", numero);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.REGIE_APPROVISIONNEMENT,
                 id.toString(),
                 payload,
@@ -197,7 +197,7 @@ public class RegiesTresorerieService {
     @Transactional
     public void validateOrRejectApprovisionnement(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_APPROVISIONNEMENT);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -218,17 +218,17 @@ public class RegiesTresorerieService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Demande d'approvisionnement régie rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID approvId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationApprovisionnement(checkerOutput.payload(), approvId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Demande d'approvisionnement régie approuvée par Checker {}. Ticket: {}, Approv PK: {}", checkerId, checkerOutput.id(), approvId);
         }
     }
@@ -298,7 +298,7 @@ public class RegiesTresorerieService {
         payload.put("id", id.toString());
         payload.put("numeroPiece", numeroPiece);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.REGIE_DEPENSE,
                 id.toString(),
                 payload,
@@ -378,7 +378,7 @@ public class RegiesTresorerieService {
     @Transactional
     public void validateOrRejectDepense(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_DEPENSE_REGIE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -399,17 +399,17 @@ public class RegiesTresorerieService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Dépense régie rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID depenseId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationDepense(checkerOutput.payload(), depenseId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Dépense régie approuvée par Checker {}. Ticket: {}, Dépense PK: {}", checkerId, checkerOutput.id(), depenseId);
         }
     }

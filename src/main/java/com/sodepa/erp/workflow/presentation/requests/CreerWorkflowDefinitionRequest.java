@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -22,12 +23,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class CreerWorkflowDefinitionRequest {
-
-    /**
-     * Code de référence unique normalisé dans le cadre des opérations SODEPA.
-     */
-    @NotBlank
-    private String code;
 
     /**
      * Intitulé officiel ou désignation dans le cadre des opérations SODEPA.
@@ -73,7 +68,7 @@ public class CreerWorkflowDefinitionRequest {
      * Indicateur d'activation opérationnelle (true si actif, false si archivé/désactivé) dans le cadre des opérations SODEPA.
      */
     @Builder.Default
-    private Boolean actif = true;
+    private boolean actif = true;
 
     /**
      * Champ etapes : etapes utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -91,12 +86,6 @@ public class CreerWorkflowDefinitionRequest {
      */
         @NotNull
         private Integer ordre;
-
-    /**
-     * Champ codeEtape : code etape utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
-     */
-        @NotBlank
-        private String codeEtape;
 
     /**
      * Intitulé officiel ou désignation dans le cadre des opérations SODEPA.
@@ -134,46 +123,12 @@ public class CreerWorkflowDefinitionRequest {
         @Builder.Default
         private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
 
-        /**
-         * Autorisation d'ajouter un document justificatif (GED).
-         */
-        @Builder.Default
-        private Boolean autoriserAjoutFichier = true;
-
-        /**
-         * Obligation de joindre un fichier pour valider.
-         */
-        @Builder.Default
-        private Boolean fichierValidationObligatoire = false;
-
-        /**
-         * Autorisation de modifier des champs du dossier.
-         */
-        @Builder.Default
-        private Boolean autoriserModificationChamps = true;
-
-        /**
-         * Obligation de modifier des champs du dossier pour valider.
-         */
-        @Builder.Default
-        private Boolean modificationChampsObligatoire = false;
-
-        /**
-         * Liste des champs modifiables autorisés séparés par des virgules.
-         */
-        private String champsModifiablesAutorises;
-
     /**
      * Champ actionDepassementSla : action depassement sla utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
      */
         @Builder.Default
         private ActionDepassementSla actionDepassementSla = ActionDepassementSla.RELANCE_EMAIL;
 
-    /**
-     * Indicateur d'activation opérationnelle (true si actif, false si archivé/désactivé) dans le cadre des opérations SODEPA.
-     */
-        @Builder.Default
-        private Boolean actif = true;
 
     /**
      * Champ acteurs : acteurs utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -205,6 +160,7 @@ public class CreerWorkflowDefinitionRequest {
      * Identifiant unique technique (UUID) de l'élément uniteorganisationnelle associé.
      */
         private UUID uniteOrganisationnelleId;
+        private UUID posteId;
 
     /**
      * Champ strategieAssignation : strategie assignation utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -212,10 +168,6 @@ public class CreerWorkflowDefinitionRequest {
         @NotNull
         private StrategieAssignation strategieAssignation;
 
-    /**
-     * Champ valeurAssignation : valeur assignation utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
-     */
-        private String valeurAssignation;
 
     /**
      * Champ obligatoire : obligatoire utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -233,34 +185,7 @@ public class CreerWorkflowDefinitionRequest {
         @Builder.Default
         private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
 
-        /**
-         * Autorisation d'ajouter un document justificatif (GED).
-         */
-        @Builder.Default
-        private Boolean autoriserAjoutFichier = true;
-
-        /**
-         * Obligation de joindre un fichier pour valider.
-         */
-        @Builder.Default
-        private Boolean fichierValidationObligatoire = false;
-
-        /**
-         * Autorisation de modifier des champs du dossier.
-         */
-        @Builder.Default
-        private Boolean autoriserModificationChamps = true;
-
-        /**
-         * Obligation de modifier des champs du dossier pour valider.
-         */
-        @Builder.Default
-        private Boolean modificationChampsObligatoire = false;
-
-        /**
-         * Liste des champs modifiables autorisés séparés par des virgules.
-         */
-        private String champsModifiablesAutorises;
+       private Map<String, Object> fields;
 
     /**
      * Champ actionDepassementSla : action depassement sla utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.

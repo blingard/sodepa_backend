@@ -17,6 +17,21 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class ParametreSystemeEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "PS";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Champ cle : cle utilisé pour le pilotage et le suivi dans ParametreSystemeEntity.

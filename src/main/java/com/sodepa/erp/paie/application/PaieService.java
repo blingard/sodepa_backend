@@ -12,7 +12,7 @@ import com.sodepa.erp.paie.presentation.responses.*;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.rh.infrastructure.entities.StatutActivite;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -49,7 +49,7 @@ public class PaieService {
     private final BulletinLigneRepository bulletinLigneRepository;
     private final EmployeRepository employeRepository;
     private final PaieCalculateurService calculateur;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
@@ -117,7 +117,7 @@ public class PaieService {
         payload.put("id", id.toString());
         payload.put("code", code);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.PAIE_PERIODE,
                 id.toString(),
                 payload,
@@ -192,7 +192,7 @@ public class PaieService {
     @Transactional
     public void validateOrRejectPeriodePaie(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_PERIODE_PAIE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -213,17 +213,17 @@ public class PaieService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Période de paie rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID periodeId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationPeriodePaie(checkerOutput.payload(), periodeId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Période de paie approuvée par Checker {}. Ticket: {}, Période PK: {}", checkerId, checkerOutput.id(), periodeId);
         }
     }
@@ -242,7 +242,7 @@ public class PaieService {
         payload.put("id", id.toString());
         payload.put("periodeId", periodeId.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.PAIE_VARIABLE,
                 id.toString(),
                 payload,
@@ -298,7 +298,7 @@ public class PaieService {
     @Transactional
     public void validateOrRejectVariablePaie(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_VARIABLE_PAIE);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -319,17 +319,17 @@ public class PaieService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Variable de paie rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID variableId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationVariablePaie(checkerOutput.payload(), variableId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Variable de paie approuvée par Checker {}. Ticket: {}, Variable PK: {}", checkerId, checkerOutput.id(), variableId);
         }
     }

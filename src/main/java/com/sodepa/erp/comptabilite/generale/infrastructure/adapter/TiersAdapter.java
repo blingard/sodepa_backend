@@ -11,7 +11,7 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.entities.TiersEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.event.TiersEventInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.TiersRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class TiersAdapter {
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final TiersRepository tiersRepository;
     private final CompteRepository compteRepository;
     private final ObjectMapper objectMapper;
@@ -61,7 +61,7 @@ public class TiersAdapter {
         }
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk, true);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.TIERS,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
@@ -130,7 +130,7 @@ public class TiersAdapter {
         }
 
         Map<String, Object> payload = toPayload(request, id);
-        makerCheckerEngine.submitChange(MakerCheckerEntityName.TIERS, id.toString(), payload, MakerCheckerOperationType.UPDATE);
+        workflowService.submitChange(MakerCheckerEntityName.TIERS, id.toString(), payload, MakerCheckerOperationType.UPDATE);
     }
 
     /**
@@ -187,7 +187,7 @@ public class TiersAdapter {
      */
     @Transactional
     public void validateOrReject(ValidateOrRejectSubmissionInput input) {
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING)
             throw new RuntimeException(String.format(
@@ -210,7 +210,7 @@ public class TiersAdapter {
         }
         validation(checkerOutput);
         if(MakerCheckerStatus.REJECTED.equals(newStatus)){
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID entityId = UUID.fromString(checkerOutput.entityPk());
             TiersEventInput eventInput = objectMapper.convertValue(checkerOutput.payload(), TiersEventInput.class);
@@ -219,12 +219,12 @@ public class TiersAdapter {
             }else if(checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 update(eventInput);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
         }
     }
 
     private void validation(MakerCheckerOutput request) {
-        makerCheckerEngine.validate(request.id(), request.createdAt(), request.expiredAt());
+        workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
         TiersEntity entity = getNullableTiers(UUID.fromString(request.entityPk()));
         if ((request.checkerOperationType() == MakerCheckerOperationType.CREATE) && (Objects.nonNull(entity))) {
             throw new RuntimeException("You cannot create a Tiers who already exist");

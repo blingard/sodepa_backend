@@ -153,7 +153,6 @@ public class WorkflowSeeder implements CommandLineRunner {
                     .typeEtape(e.typeEtape())
                     .politiqueValidation(e.politiqueValidation() != null ? e.politiqueValidation() : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
                     .strategieAssignation(e.strategieAssignation())
-                    .valeurAssignation(e.valeurAssignation())
                     .delaiSlaHeures(e.delaiSlaHeures())
                     .actionDepassementSla(e.actionDepassementSla() != null ? e.actionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
                     .actif(true)

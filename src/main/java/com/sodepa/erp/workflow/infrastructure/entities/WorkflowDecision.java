@@ -22,5 +22,6 @@ public enum WorkflowDecision {
      * Demande d'ajustements : le dossier n'est ni validé ni rejeté de façon définitive,
      * mais renvoyé à l'initiateur pour apporter des pièces jointes ou corrections requises.
      */
-    ASK_REVISION
+    ASK_REVISION,
+    PENDING
 }

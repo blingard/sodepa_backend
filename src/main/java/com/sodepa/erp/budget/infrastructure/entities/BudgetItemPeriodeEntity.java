@@ -16,6 +16,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class BudgetItemPeriodeEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "BIP";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique de la période budgétaire.

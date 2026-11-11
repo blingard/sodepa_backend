@@ -12,7 +12,7 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.event.BankEventInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.BanqueRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
 import com.sodepa.erp.share.FileStorageService;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class BankAdapter {
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final FileStorageService fileStorageService;
     private final BanqueRepository banqueRepository;
     private final CompteRepository compteRepository;
@@ -67,7 +67,7 @@ public class BankAdapter {
         UUID entityPk = UUID.randomUUID();
         String logoPath = fileStorageService.storeFileImage(request.logo(), FILE_PATH);
         Map<String, Object> payload = toPayload(request, entityPk, logoPath, false);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.BANQUE,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
@@ -135,7 +135,7 @@ public class BankAdapter {
         }
 
         Map<String, Object> payload = toPayload(request, id);
-        makerCheckerEngine.submitChange(MakerCheckerEntityName.BANQUE, id.toString(), payload, MakerCheckerOperationType.UPDATE
+        workflowService.submitChange(MakerCheckerEntityName.BANQUE, id.toString(), payload, MakerCheckerOperationType.UPDATE
         );
     }
 
@@ -156,7 +156,7 @@ public class BankAdapter {
                 logoPath, banque.isStatus());
 
         Map<String, Object> payload = toPayload(updateBankInput, id);
-        makerCheckerEngine.submitChange(MakerCheckerEntityName.BANQUE, id.toString(), payload, MakerCheckerOperationType.UPDATE_IMAGE
+        workflowService.submitChange(MakerCheckerEntityName.BANQUE, id.toString(), payload, MakerCheckerOperationType.UPDATE_IMAGE
         );
     }
 
@@ -215,7 +215,7 @@ public class BankAdapter {
      */
     @Transactional
     public void validateOrReject(ValidateOrRejectSubmissionInput input) {
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING)
             throw new RuntimeException(String.format(
@@ -238,7 +238,7 @@ public class BankAdapter {
         }
         validation(checkerOutput);
         if(MakerCheckerStatus.REJECTED.equals(newStatus)){
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID bankId = UUID.fromString(checkerOutput.entityPk());
             BankEventInput bankEventInput = objectMapper.convertValue(checkerOutput.payload(), BankEventInput.class);
@@ -249,14 +249,14 @@ public class BankAdapter {
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE_IMAGE) {
                 updateLogo(bankEventInput);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
         }
 
     }
 
 
     private void validation(MakerCheckerOutput request) {
-        makerCheckerEngine.validate(request.id(), request.createdAt(), request.expiredAt());
+        workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
         BanqueEntity banqueEntity = getNullableBank(request.id());
         if ((request.checkerOperationType() == MakerCheckerOperationType.CREATE) && (Objects.nonNull(banqueEntity))) {
             throw new RuntimeException("You cannot create a Bank who already exist");

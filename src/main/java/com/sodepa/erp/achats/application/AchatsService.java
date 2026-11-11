@@ -16,7 +16,6 @@ import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnell
 import com.sodepa.erp.organigramme.infrastructure.repo.UniteOrganisationnelleRepository;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
 import com.sodepa.erp.share.GlobalConstants;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.MinioService;
 import com.sodepa.erp.share.UserData;
@@ -68,8 +67,7 @@ public class AchatsService {
     private final ParametreConfigurationService configService;
     private final MinioService minioService;
     private final DocumentGedRepository documentGedRepository;
-    private final MakerCheckerEnginePort makerCheckerEngine;
-    private final Optional<WorkflowService> workflowService;
+    private final WorkflowService workflowService;
     private final ObjectMapper objectMapper;
 
     // ==========================================
@@ -96,7 +94,7 @@ public class AchatsService {
         payload.put("id", id.toString());
         payload.put("code", code);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.FOURNISSEUR,
                 id.toString(),
                 payload,
@@ -123,7 +121,7 @@ public class AchatsService {
     @Transactional
     public void validateOrRejectFournisseur(ValidateOrRejectSubmissionInput input) {
         securityService.checkPermission(Permissions.VALIDATE_PROVIDER);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -144,10 +142,10 @@ public class AchatsService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Fournisseur rejeté par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID frnId = UUID.fromString(checkerOutput.entityPk());
@@ -155,7 +153,7 @@ public class AchatsService {
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationFournisseur(payload, frnId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Fournisseur approuvé par le Checker {}. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), frnId);
         }
     }
@@ -251,7 +249,7 @@ public class AchatsService {
             payload.put("uniteOrganisationnelleId", unite.getId().toString());
         }
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.EXPRESSION_BESOIN,
                 id.toString(),
                 payload,
@@ -294,7 +292,7 @@ public class AchatsService {
         securityService.checkPermission(Permissions.VALIDATE_EXPRESSION);
         securityService.validateAccessToUnite(input.id(), MakerCheckerEntityName.EXPRESSION_BESOIN,
                 "Accès refusé pour validation/rejet de l'EB : hors de votre périmètre hiérarchique.");
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -315,10 +313,10 @@ public class AchatsService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Expression de besoin rejetée par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID ebId = UUID.fromString(checkerOutput.entityPk());
@@ -326,7 +324,7 @@ public class AchatsService {
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationExpressionBesoin(payload, ebId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Expression de besoin approuvée par le Checker {}. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), ebId);
         }
     }
@@ -389,26 +387,6 @@ public class AchatsService {
         ExpressionBesoinEntity saved = expressionBesoinRepository.save(eb);
         log.info("Expression de besoin matérialisée en base: {} pour un montant estimé de {}", saved.getNumero(), saved.getMontantEstimeTotal());
 
-        // Démarrage du circuit d'approbation N+1
-        try {
-            workflowService.ifPresent(wf -> {
-                try {
-                    DemarrerWorkflowRequest wfReq = DemarrerWorkflowRequest.builder()
-                            .workflowDefinitionCode("CIRCUIT_VALIDATION_EB")
-                            .entityName("EXPRESSION_BESOIN")
-                            .entityId(saved.getId().toString())
-                            .initiateurId(securityService.getCurrentUserId())
-                            .contexte(Map.of("numero", saved.getNumero(), "montantEstime", saved.getMontantEstimeTotal()))
-                            .build();
-                    wf.demarrerWorkflow(wfReq);
-                    log.info("Workflow d'approbation hiérarchique initié pour EB: {}", saved.getNumero());
-                } catch (Exception ex) {
-                    log.warn("Circuit de workflow EB non initialisé: {}", ex.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            log.warn("Impossible de déclencher le workflow pour l'EB {}: {}", saved.getNumero(), e.getMessage());
-        }
 
         return saved;
     }
@@ -521,7 +499,7 @@ public class AchatsService {
             payload.put("ligneBudgetaireCode", request.getLigneBudgetaireCode());
         }
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.MARCHE_DOSSIER,
                 id.toString(),
                 payload,
@@ -566,7 +544,7 @@ public class AchatsService {
         securityService.checkPermission(Permissions.VALIDATE_FOLDER);
         securityService.validateAccessToUnite(input.id(), MakerCheckerEntityName.MARCHE_DOSSIER,
                 "Accès refusé pour validation/rejet du dossier : hors de votre périmètre hiérarchique.");
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -587,10 +565,10 @@ public class AchatsService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Dossier de marché rejeté par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID dossierId = UUID.fromString(checkerOutput.entityPk());
@@ -598,7 +576,7 @@ public class AchatsService {
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationMarcheDossier(payload, dossierId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Dossier de marché approuvé par le Checker {}. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), dossierId);
         }
     }
@@ -720,7 +698,7 @@ public class AchatsService {
                 "s3Cle", cle
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.MARCHE_DOSSIER,
                 dossierId.toString(),
                 payload,
@@ -732,7 +710,7 @@ public class AchatsService {
             dossier.setProformasObtenuesCount(count);
             dossier.setStatut(StatutMarcheDossier.SELECTION_PRESTATAIRE);
             dossier = marcheDossierRepository.save(dossier);
-            makerCheckerEngine.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation proformas", securityService.getUtilsService().getCurrentUserData().userId());
+            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation proformas", securityService.getUtilsService().getCurrentUserData().userId());
         }
 
         return MarcheDossierResponse.fromEntity(dossier);
@@ -753,7 +731,7 @@ public class AchatsService {
                 "ligneBudgetaireCode", ligneBudgetaire != null ? ligneBudgetaire : ""
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.MARCHE_DOSSIER,
                 dossierId.toString(),
                 payload,
@@ -767,7 +745,7 @@ public class AchatsService {
             }
             dossier.setStatut(StatutMarcheDossier.ENGAGE_BUDGET);
             dossier = marcheDossierRepository.save(dossier);
-            makerCheckerEngine.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation engagement budget", securityService.getUtilsService().getCurrentUserData().userId());
+            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation engagement budget", securityService.getUtilsService().getCurrentUserData().userId());
         }
         return MarcheDossierResponse.fromEntity(dossier);
     }
@@ -798,7 +776,7 @@ public class AchatsService {
                 "delaiJours", delai
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.MARCHE_DOSSIER,
                 dossierId.toString(),
                 payload,
@@ -812,7 +790,7 @@ public class AchatsService {
             dossier.setDateLimiteLivraison(dateNotif.plusDays(delai));
             dossier.setStatut(StatutMarcheDossier.NOTIFIE);
             dossier = marcheDossierRepository.save(dossier);
-            makerCheckerEngine.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation notification fournisseur", securityService.getUtilsService().getCurrentUserData().userId());
+            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation notification fournisseur", securityService.getUtilsService().getCurrentUserData().userId());
         }
         return MarcheDossierResponse.fromEntity(dossier);
     }
@@ -901,7 +879,7 @@ public class AchatsService {
                 .fichierUrl(fichierUrl)
                 .build();
         Map<String, Object> payload = objectMapper.convertValue(pvEventInput, Map.class);
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.MARCHE_RECEPTION_PV,
                 id.toString(),
                 payload,
@@ -929,7 +907,7 @@ public class AchatsService {
         securityService.checkPermission(Permissions.VALIDATE_RECEPTION);
         securityService.validateAccessToUnite(input.id(), MakerCheckerEntityName.MARCHE_RECEPTION_PV,
                 "Accès refusé pour validation/rejet du PV : hors de votre périmètre hiérarchique.");
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -951,10 +929,10 @@ public class AchatsService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Procès-verbal de réception rejeté par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID pvId = UUID.fromString(checkerOutput.entityPk());
@@ -962,7 +940,7 @@ public class AchatsService {
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationPvReception(pvEventInput, pvId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Procès-verbal de réception approuvé par le Checker {}. Ticket: {}, PV PK: {}", checkerId, checkerOutput.id(), pvId);
         }
     }
@@ -1008,7 +986,7 @@ public class AchatsService {
                 "montantLiquide", montantLiquide != null ? montantLiquide.toString() : (pv.getMontantFactureLiquide() != null ? pv.getMontantFactureLiquide().toString() : "0")
         );
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.LIQUIDATION_FACTURE,
                 receptionPvId.toString(),
                 payload,
@@ -1040,7 +1018,7 @@ public class AchatsService {
         securityService.checkPermission(Permissions.VALIDATE_LIQUIDATION);
         securityService.validateAccessToUnite(input.id(), MakerCheckerEntityName.LIQUIDATION_FACTURE,
                 "Accès refusé pour validation/rejet de liquidation : hors de votre périmètre hiérarchique.");
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -1061,15 +1039,15 @@ public class AchatsService {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Liquidation de facture rejetée par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID pvId = UUID.fromString(checkerOutput.entityPk());
             applyLiquidationFacture(checkerOutput.payload(), pvId);
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Liquidation de facture approuvée par le Checker {}. Ticket: {}, PV PK: {}", checkerId, checkerOutput.id(), pvId);
         }
     }

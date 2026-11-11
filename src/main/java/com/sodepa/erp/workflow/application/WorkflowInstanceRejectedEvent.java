@@ -10,7 +10,7 @@ import java.util.UUID;
  * @param entityName        Nom fonctionnel de l'entité métier ciblée.
  * @param entityId          Identifiant technique de l'entité métier.
  * @param etapeRejetCode    Code de l'étape où le rejet a eu lieu.
- * @param acteurRejetId     Identifiant de l'approbateur ayant rejeté la demandée.
+ * @param acteurRejetId     Identifiant de l'approbateur ayant rejeté la demande.
  * @param motifRejet        Motif du rejet.
  */
 public record WorkflowInstanceRejectedEvent(

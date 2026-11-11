@@ -35,6 +35,21 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class WorkflowEtapeDefinitionEntity {
+    /**
+     * Préfixe du code d'identification métier, non persisté en base de données.
+     */
+    @Transient
+    @Builder.Default
+    private String codePrefix = "WED";
+
+    public String getPrefixeCode() {
+        return this.codePrefix;
+    }
+
+    public void setPrefixeCode(String prefixeCode) {
+        this.codePrefix = prefixeCode;
+    }
+
 
     /**
      * Identifiant unique universel (UUID) de l'étape.
@@ -60,6 +75,11 @@ public class WorkflowEtapeDefinitionEntity {
      */
     @Column(name = "code_etape", nullable = false, length = 60)
     private String codeEtape;
+
+
+
+    @Column(name = "entity_package_reference", length = 150)
+    private String entityPackageReference;
 
     /**
      * Libellé explicite de l'étape présenté à l'utilisateur dans l'interface de validation.
@@ -106,27 +126,6 @@ public class WorkflowEtapeDefinitionEntity {
     private Boolean fichierValidationObligatoire = false;
 
     /**
-     * Autorise la mise à jour des valeurs de champs du dossier lors de la validation.
-     */
-    @Column(name = "autoriser_modification_champs")
-    @Builder.Default
-    private Boolean autoriserModificationChamps = true;
-
-    /**
-     * Rend obligatoire la mise à jour d'au moins un champ du dossier pour valider l'étape.
-     */
-    @Column(name = "modification_champs_obligatoire")
-    @Builder.Default
-    private Boolean modificationChampsObligatoire = false;
-
-    /**
-     * Liste des clés ou libellés de champs autorisés à la modification (séparés par des virgules).
-     */
-    @Column(name = "champs_modifiables_autorises", length = 500)
-    private String champsModifiablesAutorises;
-
-
-    /**
      * Règle de consensus lorsque plusieurs valideurs sont potentiellement éligibles sur cette étape.
      */
     @Enumerated(EnumType.STRING)
@@ -140,12 +139,6 @@ public class WorkflowEtapeDefinitionEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "strategie_assignation", length = 40)
     private StrategieAssignation strategieAssignation;
-
-    /**
-     * Paramètre ou valeur de consigne associée à la stratégie d'assignation par défaut.
-     */
-    @Column(name = "valeur_assignation", length = 100)
-    private String valeurAssignation;
 
     /**
      * Délai maximal de traitement alloué pour cette étape en heures (SLA).

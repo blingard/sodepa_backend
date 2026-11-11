@@ -10,7 +10,7 @@ import com.sodepa.erp.comptabilite.generale.application.outputs.CompteSmartOutpu
 import com.sodepa.erp.comptabilite.generale.infrastructure.entities.CompteEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.event.CompteEventInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class CompteAdapter {
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final CompteRepository compteRepository;
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
@@ -52,7 +52,7 @@ public class CompteAdapter {
         }
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk, Boolean.TRUE.equals(request.isAuxiliaire()));
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.COMPTE,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
@@ -114,7 +114,7 @@ public class CompteAdapter {
         }
 
         Map<String, Object> payload = toPayload(request, id);
-        makerCheckerEngine.submitChange(
+        workflowService.submitChange(
                 MakerCheckerEntityName.COMPTE,
                 id.toString(),
                 payload,
@@ -194,7 +194,7 @@ public class CompteAdapter {
      */
     @Transactional
     public void validateOrReject(ValidateOrRejectSubmissionInput input) {
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format("Invalid transition: Cannot transition from %s to %s.", currentStatus, input.decision()));
@@ -219,7 +219,7 @@ public class CompteAdapter {
         validation(checkerOutput);
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID compteId = UUID.fromString(checkerOutput.entityPk());
             CompteEventInput eventInput = objectMapper.convertValue(checkerOutput.payload(), CompteEventInput.class);
@@ -228,12 +228,12 @@ public class CompteAdapter {
             } else if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.UPDATE) {
                 update(eventInput);
             }
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
         }
     }
 
     private void validation(MakerCheckerOutput request) {
-        makerCheckerEngine.validate(request.id(), request.createdAt(), request.expiredAt());
+        workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
         Optional<CompteEntity> entityOpt = compteRepository.findById(UUID.fromString(request.entityPk()));
         if (request.checkerOperationType() == MakerCheckerOperationType.CREATE && entityOpt.isPresent()) {
             throw new RuntimeException("You cannot create a Compte that already exists");

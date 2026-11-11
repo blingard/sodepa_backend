@@ -16,7 +16,7 @@ import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.infrastructure.entities.*;
 import com.sodepa.erp.budget.infrastructure.repo.*;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
-import com.sodepa.erp.share.MakerCheckerEnginePort;
+import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -61,7 +61,7 @@ public class BudgetPlanAdapter {
     private final BudgetReallocationRepository budgetReallocationRepository;
     private final BudgetEngagementRepository budgetEngagementRepository;
     private final AuditTrailRepository auditTrailRepository;
-    private final MakerCheckerEnginePort makerCheckerEngine;
+    private final WorkflowService workflowService;
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
@@ -230,7 +230,7 @@ public class BudgetPlanAdapter {
         payload.put("id", id.toString());
         payload.put("version", nouvelleVersion);
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BUDGET_PLAN,
                 id.toString(),
                 payload,
@@ -310,7 +310,7 @@ public class BudgetPlanAdapter {
     @Transactional
     public void validateOrRejectBudgetPlan(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_BUDGET_PLAN);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -331,17 +331,17 @@ public class BudgetPlanAdapter {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Plan budgétaire rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID planId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationBudgetPlan(checkerOutput.payload(), planId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Plan budgétaire approuvé par Checker {}. Ticket: {}, Plan PK: {}", checkerId, checkerOutput.id(), planId);
         }
     }
@@ -471,7 +471,7 @@ public class BudgetPlanAdapter {
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BUDGET_REALLOCATION,
                 id.toString(),
                 payload,
@@ -567,7 +567,7 @@ public class BudgetPlanAdapter {
     @Transactional
     public void validateOrRejectReallocation(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_BUDGET_REALLOCATION);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -588,17 +588,17 @@ public class BudgetPlanAdapter {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Réallocation budgétaire rejetée par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID reallocationId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationReallocation(checkerOutput.payload(), reallocationId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Réallocation budgétaire approuvée par Checker {}. Ticket: {}, Reallocation PK: {}", checkerId, checkerOutput.id(), reallocationId);
         }
     }
@@ -610,7 +610,7 @@ public class BudgetPlanAdapter {
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
 
-        UUID uuid = makerCheckerEngine.submitChange(
+        UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BUDGET_ENGAGEMENT,
                 id.toString(),
                 payload,
@@ -699,7 +699,7 @@ public class BudgetPlanAdapter {
     @Transactional
     public void validateOrRejectEngagement(ValidateOrRejectSubmissionInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_BUDGET_ENGAGEMENT);
-        MakerCheckerOutput checkerOutput = makerCheckerEngine.findById(input.id());
+        MakerCheckerOutput checkerOutput = workflowService.findById(input.id());
         MakerCheckerStatus currentStatus = checkerOutput.status();
         if (currentStatus != MakerCheckerStatus.PENDING) {
             throw new RuntimeException(String.format(
@@ -720,17 +720,17 @@ public class BudgetPlanAdapter {
             throw new RuntimeException("Invalid decision: " + input.decision());
         }
 
-        makerCheckerEngine.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
+        workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
-            makerCheckerEngine.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
             log.info("Engagement budgétaire rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID engagementId = UUID.fromString(checkerOutput.entityPk());
             if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
                 creationEngagement(checkerOutput.payload(), engagementId);
             }
-            makerCheckerEngine.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
+            workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Engagement budgétaire approuvé par Checker {}. Ticket: {}, Engagement PK: {}", checkerId, checkerOutput.id(), engagementId);
         }
     }
