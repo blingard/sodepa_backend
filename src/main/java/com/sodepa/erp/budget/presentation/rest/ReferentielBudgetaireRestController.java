@@ -19,18 +19,21 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Contrôleur REST de la Nomencleéature Budgétaire SODEPA (REF-04 / F-REF-018 / CA-REF-018-01 & 02) :
- * Programmes, Activités, Sources de financement et Natures de dépenses.
+ * Service de gestion de la Nomenclature et du Plan de Codification Budgetaire de la SODEPA (REF-04 / Module 02 - BUD).
+ * <p>
+ * Ce service administre les référentiels structurants de la politique de budget-programme :
+ * <ul>
+ *   <li><b>Programmes budgétaires</b> : Grands axes stratégiques pluriannuels de la SODEPA (ex: Développement de l'élevage bovin, Modernisation des abattoirs).</li>
+ *   <li><b>Activités budgétaires</b> : Actions concrètes concourant à la réalisation des objectifs d'un programme.</li>
+ *   <li><b>Sources de financement</b> : Origine des crédits (Fonds propres d'exploitation SODEPA, Subvention État MINEPIA/BIP, Partenaires au développement).</li>
+ *   <li><b>Natures économiques</b> : Typologie économique des opérations (Personnel, Fonctionnement, Investissement lourd, Prestations).</li>
+ * </ul>
  */
 @RestController
 @RequestMapping({"/api/budget/referentiels", "/api/v1/budget/referentiels"})
 @RequiredArgsConstructor
-@Tag(name = "Nomencleéature Budgétaire (Programmes, Activités, Financements, Natures)",
-     description = "Gouvernance des référentiels budgétaires SODEPA (F-REF-018)")
-/**
- * Contrôleur REST exposant les points de terminaison pour `ReferentielBudgetaireRestController`.
- * Permet la gestion sécurisée des opérations de l'ERP SODEPA.
- */
+@Tag(name = "Nomenclature Budgétaire (Programmes, Activités, Financements, Natures)",
+     description = "Gouvernance des référentiels structurants de la nomenclature budgétaire SODEPA (F-REF-018)")
 public class ReferentielBudgetaireRestController {
 
     private final BudgetProgrammeRepository programmeRepository;
@@ -39,26 +42,34 @@ public class ReferentielBudgetaireRestController {
     private final BudgetNatureDepenseRepository natureRepository;
 
     /**
-     * Exécute l'opération de lister programmes.
-     * @return Résultat du traitement (ResponseEntity<List<BudgetProgrammeEntity>>).
+     * Liste l'ensemble des programmes budgétaires officiels actuellement actifs.
+     *
+     * @return la liste ordonnée des programmes stratégiques de la SODEPA
      */
     @GetMapping("/programmes")
-    @Operation(summary = "Lister les programmes budgétaires actifs (CA-REF-018-01)")
+    @Operation(summary = "Lister les programmes budgétaires actifs")
     public ResponseEntity<List<BudgetProgrammeEntity>> listerProgrammes() {
         return ResponseEntity.ok(programmeRepository.findByActifTrueOrderByCodeAsc());
     }
 
     /**
-     * Exécute l'opération de creer programme.
-     * @param request Request dans le contexte du traitement creerProgramme.
-     * @return Résultat du traitement (ResponseEntity<BudgetProgrammeEntity>).
+     * Crée et enregistre un nouveau programme au sein de la nomenclature budgétaire.
+     *
+     * @param request informations du programme (code normalisé, libellé, objectifs de performance)
+     * @return le programme créé avec statut HTTP 201 (CREATED)
      */
     @PostMapping("/programmes")
-    @Operation(summary = "Créer un programme budgétaire")
+    @Operation(summary = "Créer un nouveau programme budgétaire")
     public ResponseEntity<BudgetProgrammeEntity> creerProgramme(@Valid @RequestBody BudgetProgrammeEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(programmeRepository.save(request));
     }
 
+    /**
+     * Liste les activités budgétaires opérationnelles, avec filtrage optionnel par programme.
+     *
+     * @param programmeCode code optionnel du programme pour n'afficher que ses activités rattachées
+     * @return la liste des activités budgétaires correspondantes
+     */
     @GetMapping("/activites")
     @Operation(summary = "Lister les activités budgétaires actives (filtrables par programme)")
     public ResponseEntity<List<BudgetActiviteEntity>> listerActivites(
@@ -70,9 +81,11 @@ public class ReferentielBudgetaireRestController {
     }
 
     /**
-     * Exécute l'opération de creer activite.
-     * @param request Request dans le contexte du traitement creerActivite.
-     * @return Résultat du traitement (ResponseEntity<BudgetActiviteEntity>).
+     * Crée une nouvelle activité budgétaire en s'assurant de son rattachement obligatoire à un programme existant.
+     *
+     * @param request définition de l'activité (code, libellé, code du programme parent)
+     * @return l'activité budgétaire créée
+     * @throws IllegalArgumentException si le code de programme spécifié n'existe pas dans le référentiel
      */
     @PostMapping("/activites")
     @Operation(summary = "Créer une activité budgétaire rattachée à un programme")
@@ -84,15 +97,22 @@ public class ReferentielBudgetaireRestController {
     }
 
     /**
-     * Exécute l'opération de lister sources financement.
-     * @return Résultat du traitement (ResponseEntity<List<BudgetSourceFinancementEntity>>).
+     * Liste l'ensemble des sources de financement reconnues (fonds propres, subventions ministérielles, bailleurs).
+     *
+     * @return la liste des sources de financement actives
      */
     @GetMapping("/sources-financement")
-    @Operation(summary = "Lister les sources de financement (Fonds propres, Subvention MINEPIA/BIP, Bailleurs)")
+    @Operation(summary = "Lister les sources de financement autorisées")
     public ResponseEntity<List<BudgetSourceFinancementEntity>> listerSourcesFinancement() {
         return ResponseEntity.ok(sourceRepository.findByActifTrueOrderByCodeAsc());
     }
 
+    /**
+     * Enregistre une nouvelle source de financement au plan de codification.
+     *
+     * @param request caractéristiques de la source (code, libellé, type de bailleur)
+     * @return la source de financement créée
+     */
     @PostMapping("/sources-financement")
     @Operation(summary = "Créer une source de financement budgétaire")
     public ResponseEntity<BudgetSourceFinancementEntity> creerSourceFinancement(
@@ -101,15 +121,22 @@ public class ReferentielBudgetaireRestController {
     }
 
     /**
-     * Exécute l'opération de lister natures depenses.
-     * @return Résultat du traitement (ResponseEntity<List<BudgetNatureDepenseEntity>>).
+     * Liste les natures économiques de dépenses et catégories de recettes budgétaires.
+     *
+     * @return la liste ordonnée des natures économiques
      */
     @GetMapping("/natures-depenses")
-    @Operation(summary = "Lister les natures économiques de dépenses et catégories de recettes (CA-REF-018-02)")
+    @Operation(summary = "Lister les natures économiques de dépenses et recettes")
     public ResponseEntity<List<BudgetNatureDepenseEntity>> listerNaturesDepenses() {
         return ResponseEntity.ok(natureRepository.findByActifTrueOrderByCodeAsc());
     }
 
+    /**
+     * Crée une nouvelle nature économique de dépense.
+     *
+     * @param request caractéristiques de la nature de dépense
+     * @return la nature de dépense créée
+     */
     @PostMapping("/natures-depenses")
     @Operation(summary = "Créer une nature de dépense budgétaire")
     public ResponseEntity<BudgetNatureDepenseEntity> creerNatureDepense(

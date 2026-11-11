@@ -49,7 +49,17 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Composant applicatif `BudgetPlanAdapter` du système ERP SODEPA.
+ * Adaptateur d'infrastructure et moteur d'execution budgétaire de la SODEPA (Module 02 - BUD).
+ * <p>
+ * Ce composant central orchestre l'ensemble des règles de gestion financière :
+ * <ul>
+ *   <li>Contrôle de l'exécutabilité des budgets (interdiction d'engager sur un budget non exécutoire).</li>
+ *   <li>Vérification bloquante de la disponibilité des crédits en temps réel (anti-dépassement).</li>
+ *   <li>Détermination automatique du circuit de dépense selon le seuil de 500 000 FCFA (Menue vs Grosse dépense).</li>
+ *   <li>Classification et routage des réallocations de crédits (Simple DAF vs Significative Conseil d'Administration vs Urgence DG).</li>
+ *   <li>Cloisonnement ABAC entre le siège de Yaoundé et les unités opérationnelles (Ranches, Abattoirs).</li>
+ *   <li>Traçabilité inaltérable et synchronisation vers la base analytique ClickHouse.</li>
+ * </ul>
  */
 @Slf4j
 @Component
