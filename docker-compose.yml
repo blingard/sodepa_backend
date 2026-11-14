@@ -159,7 +159,7 @@ services:
           cpus: '0.5'
           memory: 256M
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:redispassword}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispassword}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -239,7 +239,7 @@ services:
           cpus: '0.5'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:toto} -d sodepa"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-toto} -d sodepa"]
       interval: 10s
       timeout: 5s
       retries: 3

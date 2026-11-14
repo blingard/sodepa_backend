@@ -4,8 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
@@ -22,9 +23,18 @@ import java.util.Map;
  * S'exécute très tôt dans le cycle de vie de Spring Boot (avant le démarrage du contexte).
  * Évite les conflits de classpath ou de dépendance avec Spring Cloud Vault / Spring Vault Core.
  */
-public class VaultEnvironmentPostProcessor implements EnvironmentPostProcessor {
+public class VaultEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(VaultEnvironmentPostProcessor.class);
+
+    /**
+     * Doit passer avant ConfigDataEnvironmentPostProcessor (HIGHEST_PRECEDENCE + 10),
+     * qui lit application.yml et résout ${PROFILE} et les autres secrets.
+     */
+    @Override
+    public int getOrder() {
+        return Ordered.HIGHEST_PRECEDENCE + 5;
+    }
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
