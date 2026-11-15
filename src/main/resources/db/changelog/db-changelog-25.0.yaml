@@ -116,7 +116,7 @@ databaseChangeLog:
             tableName: budget_reallocation
             columns:
               - column: { name: type_reallocation, type: VARCHAR(50), defaultValue: "SIMPLE" }
-              - column: { name: taux_reallocation, type: NUMERIC(7, 4) }
+              - column: { name: taux_reallocation, type: "NUMERIC(7, 4)" }
               - column: { name: mesure_conservatoire, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
               - column: { name: justification_urgence, type: VARCHAR(500) }
               - column: { name: numero_resolution_ca, type: VARCHAR(100) }
