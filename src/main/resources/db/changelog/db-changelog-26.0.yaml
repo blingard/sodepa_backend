@@ -1,0 +1,96 @@
+# Changelog 26.0 — remise en état du schéma pour le démarrage.
+#
+# Trois écarts entre les entités et le schéma empêchaient d'utiliser une base
+# neuve ou conservée. Chaque changeSet est idempotent : il passe aussi sur une
+# base déjà corrigée à la main.
+databaseChangeLog:
+  # maker_checker_requests n'avait aucun changelog : la table n'existait que par
+  # ddl-auto, qui l'a créée avec des contraintes CHECK figeant les valeurs des
+  # énumérations du moment. ddl-auto ne les met jamais à jour : sur une base créée
+  # avant l'ajout d'un type (budget, RH, achats, paie, régies, cheptel), toute
+  # soumission de ce type était refusée par la base.
+  - changeSet:
+      id: 26.0-01-maker-checker-requests-table
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: maker_checker_requests
+      changes:
+        - createTable:
+            tableName: maker_checker_requests
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: entity_name, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: entity_pk, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: maker_id, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: checker_id, type: varchar(100) }
+              - column: { name: status, type: varchar(50), constraints: { nullable: false } }
+              - column: { name: applied_patch, type: jsonb, constraints: { nullable: false } }
+              - column: { name: notes, type: varchar(1000) }
+              - column: { name: created_at, type: "timestamp(6) with time zone", constraints: { nullable: false } }
+              - column: { name: expiration_date, type: "timestamp(6) with time zone", constraints: { nullable: false } }
+              - column: { name: decided_at, type: "timestamp(6) with time zone" }
+              - column: { name: checker_operation_type, type: varchar(50), constraints: { nullable: false } }
+              - column: { name: workflow_instance_id, type: uuid }
+
+  - changeSet:
+      id: 26.0-02-maker-checker-requests-colonne-workflow
+      author: sodepa-erp
+      changes:
+        - sql:
+            sql: ALTER TABLE IF EXISTS public.maker_checker_requests ADD COLUMN IF NOT EXISTS workflow_instance_id UUID;
+
+  # Les valeurs autorisées sont celles des énumérations Java : la base n'a pas à
+  # les recopier. Supprime toutes les contraintes CHECK de la table.
+  - changeSet:
+      id: 26.0-03-maker-checker-requests-sans-check
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE c record;
+              BEGIN
+                FOR c IN
+                  SELECT conname FROM pg_constraint
+                  WHERE conrelid = to_regclass('public.maker_checker_requests') AND contype = 'c'
+                LOOP
+                  EXECUTE format('ALTER TABLE public.maker_checker_requests DROP CONSTRAINT %I', c.conname);
+                END LOOP;
+              END $$;
+
+  # WorkflowEtapeActeurDefinitionEntity.canBeDelegate (commit 0648f59) n'a jamais
+  # reçu de colonne : le démarrage échouait avec DB_DDL=validate.
+  - changeSet:
+      id: 26.0-04-workflow-acteur-can-be-delegate
+      author: sodepa-erp
+      changes:
+        - sql:
+            sql: ALTER TABLE IF EXISTS public.workflows_etapes_acteurs_definitions ADD COLUMN IF NOT EXISTS can_be_delegate BOOLEAN NOT NULL DEFAULT TRUE;
+
+  # Le changelog 21.0 crée iam_matrice_sod.code (NOT NULL), alors que l'entité
+  # RegleSodEntity écrit codeRegle, donc code_regle. Sur une base neuve, on renomme
+  # la colonne ; si ddl-auto a déjà ajouté code_regle à côté, on rend code facultatif
+  # pour que le semeur puisse insérer.
+  - changeSet:
+      id: 26.0-05-iam-matrice-sod-code-regle
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_schema = 'public' AND table_name = 'iam_matrice_sod' AND column_name = 'code') THEN
+                  IF EXISTS (SELECT 1 FROM information_schema.columns
+                             WHERE table_schema = 'public' AND table_name = 'iam_matrice_sod' AND column_name = 'code_regle') THEN
+                    ALTER TABLE public.iam_matrice_sod ALTER COLUMN code DROP NOT NULL;
+                  ELSE
+                    ALTER TABLE public.iam_matrice_sod RENAME COLUMN code TO code_regle;
+                  END IF;
+                END IF;
+              END $$;

@@ -70,12 +70,7 @@ public class UserSeeder implements CommandLineRunner {
                 log.error("Erreur lors de la création de admin_maker : {}", ex.getMessage());
             }
         } else {
-            UtilisateurEntity maker = optMaker.get();
-            if (!maker.isActif()) {
-                maker.setActif(true);
-                userRepository.save(maker);
-                log.info("Compte 'admin_maker' réactivé.");
-            }
+            completerCompteExistant(optMaker.get(), allPermissions);
         }
 
         // 2. Initialiser ou réactiver admin_checker
@@ -103,12 +98,41 @@ public class UserSeeder implements CommandLineRunner {
                 log.error("Erreur lors de la création de admin_checker : {}", ex.getMessage());
             }
         } else {
-            UtilisateurEntity checker = optChecker.get();
-            if (!checker.isActif()) {
-                checker.setActif(true);
-                userRepository.save(checker);
-                log.info("Compte 'admin_checker' réactivé.");
-            }
+            completerCompteExistant(optChecker.get(), allPermissions);
+        }
+    }
+
+    /**
+     * Réactive un compte d'administration existant et lui ajoute les habilitations
+     * apparues depuis sa création.
+     *
+     * <p>
+     * Sans ce complément, un compte créé avant l'ajout d'une permission ne la
+     * reçoit jamais : sur une base conservée ({@code SODEPA_PURGE_ON_STARTUP=false}),
+     * {@code admin_maker} et {@code admin_checker} reçoivent alors un 403 sur
+     * toute route protégée par une permission récente (budget, workflow).
+     * Les permissions sont seulement ajoutées, jamais retirées.
+     * </p>
+     */
+    private void completerCompteExistant(UtilisateurEntity compte, Set<Permissions> toutesPermissions) {
+        boolean modifie = false;
+        if (!compte.isActif()) {
+            compte.setActif(true);
+            modifie = true;
+            log.info("Compte '{}' réactivé.", compte.getUsername());
+        }
+
+        Set<Permissions> actuelles = compte.getPermissions() == null ? new HashSet<>() : new HashSet<>(compte.getPermissions());
+        int avant = actuelles.size();
+        actuelles.addAll(toutesPermissions);
+        if (actuelles.size() > avant) {
+            compte.setPermissions(actuelles);
+            modifie = true;
+            log.info("Compte '{}' : {} habilitation(s) ajoutée(s).", compte.getUsername(), actuelles.size() - avant);
+        }
+
+        if (modifie) {
+            userRepository.save(compte);
         }
     }
 
