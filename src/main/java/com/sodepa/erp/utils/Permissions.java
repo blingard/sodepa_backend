@@ -191,6 +191,14 @@ public enum Permissions {
     INIT_CREATE_BUDGET_EXERCICE,
     /** Valider ou rejeter une demande portant sur un exercice budgétaire. */
     VALIDATE_OR_REJECT_BUDGET_EXERCICE,
+    /** Lire la nomenclature budgétaire (programmes, actions) et ses fiches. */
+    GET_BUDGET_NOMENCLATURE_INFO,
+    /** Demander la création d'un programme ou d'une action (chef du Service du Budget). */
+    INIT_CREATE_BUDGET_NOMENCLATURE,
+    /** Demander la modification, la désactivation ou la réactivation d'un élément de la nomenclature. */
+    INIT_UPDATE_BUDGET_NOMENCLATURE,
+    /** Valider ou rejeter une demande portant sur la nomenclature budgétaire. */
+    VALIDATE_OR_REJECT_BUDGET_NOMENCLATURE,
 
     // Workflow Universel
     WORKFLOW_READ,

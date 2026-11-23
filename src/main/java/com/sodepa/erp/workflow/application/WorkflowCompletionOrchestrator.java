@@ -4,6 +4,8 @@ import com.sodepa.erp.achats.application.AchatsService;
 import com.sodepa.erp.budget.application.inputs.RejeterInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
+import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
+import com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter.NomenclatureAdapter;
 import com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter;
 import com.sodepa.erp.budget.infrastructure.adapter.RapprochementAdapter;
 import com.sodepa.erp.budget.infrastructure.repo.BudgetEngagementRepository;
@@ -53,6 +55,7 @@ public class WorkflowCompletionOrchestrator {
     @Autowired @Lazy private AchatsService achatsService;
     @Autowired @Lazy private BudgetPlanAdapter budgetPlanAdapter;
     @Autowired @Lazy private ExerciceBudgetaireAdapter exerciceBudgetaireAdapter;
+    @Autowired @Lazy private NomenclatureAdapter nomenclatureAdapter;
     @Autowired @Lazy private RapprochementAdapter budgetRapprochementAdapter;
     @Autowired @Lazy private BudgetEngagementRepository budgetEngagementRepository;
     @Autowired @Lazy private BankAdapter bankAdapter;
@@ -210,6 +213,8 @@ public class WorkflowCompletionOrchestrator {
                     // marquait la demande acceptée sans créer l'exercice.
                     case BUDGET_EXERCICE -> exerciceBudgetaireAdapter.decider(
                             new DeciderDemandeExerciceInput(req.getId(), decision, notes));
+                    case BUDGET_NOMENCLATURE -> nomenclatureAdapter.decider(
+                            new DeciderDemandeNomenclatureInput(req.getId(), decision, notes));
                     case UNITE_ORGANISATIONNELLE -> organigrammeAdapter.validateOrRejectUnite(input);
                     case POSTE -> organigrammeAdapter.validateOrRejectPoste(input);
                     case AFFECTATION_POSTE -> organigrammeAdapter.validateOrRejectAffectation(input);
