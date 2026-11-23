@@ -2,14 +2,18 @@ package com.sodepa.erp.share.erreurs;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -95,7 +99,16 @@ public class GestionnaireErreursApi {
                 "Certains champs sont invalides.", champs, requete);
     }
 
-    /** Paramètre de requête absent ou d'un type inattendu. */
+    /** Corps JSON illisible ou mal formé (message neutralisé sans fuite Jackson). */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> traiterJsonIllisible(
+            HttpMessageNotReadableException ex, HttpServletRequest requete) {
+        log.warn("Corps JSON invalide sur {} : {}", requete.getRequestURI(), ex.getMessage());
+        return reponse(HttpStatus.BAD_REQUEST, "REQUETE_INVALIDE",
+                "Le format du corps JSON ou des paramètres fournis est invalide.", null, requete);
+    }
+
+    /** Paramètre de requête absent ou argument d'un type inattendu. */
     @ExceptionHandler({
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class,
@@ -105,6 +118,35 @@ public class GestionnaireErreursApi {
             Exception ex, HttpServletRequest requete) {
         log.warn("Requête invalide sur {} : {}", requete.getRequestURI(), ex.getMessage());
         return reponse(HttpStatus.BAD_REQUEST, "REQUETE_INVALIDE", ex.getMessage(), null, requete);
+    }
+
+    /** Conflits de concurrence optimiste (@Version), contraintes DB ou états métier incompatibles. */
+    @ExceptionHandler({
+            OptimisticLockingFailureException.class,
+            DataIntegrityViolationException.class
+    })
+    public ResponseEntity<Map<String, Object>> traiterConflitDonnees(
+            Exception ex, HttpServletRequest requete) {
+        log.warn("Conflit de persistance/concurrence sur {} : {}", requete.getRequestURI(), ex.getMessage());
+        String msg = ex instanceof OptimisticLockingFailureException
+                ? "Conflit de modification concurrente : la ressource a été modifiée par un autre utilisateur. Veuillez rafraîchir."
+                : "Conflit d'intégrité des données (doublon ou référence invalide).";
+        return reponse(HttpStatus.CONFLICT, "CONFLIT_DONNEES", msg, null, requete);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> traiterEtatInvalide(
+            IllegalStateException ex, HttpServletRequest requete) {
+        log.warn("État métier incompatible sur {} : {}", requete.getRequestURI(), ex.getMessage());
+        return reponse(HttpStatus.CONFLICT, "ETAT_INVALIDE", ex.getMessage(), null, requete);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> traiterFichierTropVolumineux(
+            MaxUploadSizeExceededException ex, HttpServletRequest requete) {
+        log.warn("Fichier trop volumineux sur {} : {}", requete.getRequestURI(), ex.getMessage());
+        return reponse(HttpStatus.PAYLOAD_TOO_LARGE, "FICHIER_TROP_VOLUMINEUX",
+                "La taille du fichier dépasse la limite maximale autorisée.", null, requete);
     }
 
     /** Exceptions déjà porteuses d'un statut, levées par le code d'infrastructure. */

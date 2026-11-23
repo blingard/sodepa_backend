@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,12 +78,16 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
     private final TiersRepository tiersRepository;
     private final ClickHouseManager clickHouseManager;
     private final ObjectMapper objectMapper;
+    private final Environment environment;
 
-    @Value("${sodepa.seed.enabled:true}")
+    @Value("${sodepa.seed.enabled:false}")
     private boolean seedEnabled;
 
-    @Value("${sodepa.seed.purge-on-startup:true}")
+    @Value("${sodepa.seed.purge-on-startup:false}")
     private boolean purgeOnStartup;
+
+    @Value("${sodepa.seed.keep-bootstrap-roots:false}")
+    private boolean keepBootstrapRoots;
 
     private static final UUID ORIGIN_SYSTEM_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
     private static final UUID ADMIN_MAKER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -100,7 +105,12 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         log.info("     DÉMARRAGE DU PEUPLEMENT DES DONNÉES OFFICIELLES SODEPA            ");
         log.info("═══════════════════════════════════════════════════════════════════════");
 
+        boolean isProdProfile = Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(pr -> pr.equalsIgnoreCase("prod") || pr.equalsIgnoreCase("production"));
         if (purgeOnStartup) {
+            if (isProdProfile) {
+                throw new IllegalStateException("SECURITE: sodepa.seed.purge-on-startup=true est interdit lorsque le profil production est actif !");
+            }
             purgeDatabaseAndKeycloak();
         } else if (employeRepository.count() > 0) {
             log.info("La base de données contient déjà des employés. Le peuplement SODEPA est ignoré pour éviter les doublons.");
@@ -132,7 +142,11 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         seedBanquesEtTiers();
 
         // Étape 0.2 : Désactivation stricte des comptes bootstrap 'admin_maker' et 'admin_checker'
-        //deactivateBootstrapRoots();
+        if (!keepBootstrapRoots || isProdProfile) {
+            deactivateBootstrapRoots();
+        } else {
+            log.warn("Comptes bootstrap 'admin_maker' et 'admin_checker' maintenus actifs (keep-bootstrap-roots=true).");
+        }
 
         log.info("═══════════════════════════════════════════════════════════════════════");
         log.info("     INITIALISATION ET PEUPLEMENT SODEPA ACHEVÉS AVEC SUCCÈS          ");
@@ -189,7 +203,13 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                     INTO stmt
                     FROM pg_tables
                     WHERE schemaname = 'public'
-                      AND tablename NOT IN ('databasechangelog', 'databasechangeloglock');
+                      AND tablename NOT IN (
+                          'databasechangelog',
+                          'databasechangeloglock',
+                          'shedlock',
+                          'sys_notification_rules',
+                          'sys_notification_templates'
+                      );
 
                     IF stmt IS NOT NULL THEN
                         EXECUTE stmt;
@@ -700,7 +720,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 CategorieConvention.CADRE_DIRIGEANT, Set.of(
                         Permissions.GET_ORGANIGRAMME_INFO, Permissions.GET_FULL_USER_INFO,
                         Permissions.VIEW_BUDGET, Permissions.VIEW_FOLDER,
-                        Permissions.VALIDATE_OR_REJECT_ORGANIGRAMME, Permissions.VALIDATE_BUDGET
+                        Permissions.VALIDATE_OR_REJECT_ORGANIGRAMME, Permissions.VALIDATE_BUDGET,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_PCA", postePca);
 
@@ -715,14 +736,16 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
 
         PosteEntity posteAttache = createPoste("POSTE_ATTACHE_DIR", "Attaché de Direction", unites.get("DG"), posteDg,
                 CategorieConvention.CADRE_SUPERIEUR, Set.of(
-                        Permissions.GET_ORGANIGRAMME_INFO, Permissions.CREATE_EXPRESSION, Permissions.VIEW_EXPRESSION
+                        Permissions.GET_ORGANIGRAMME_INFO, Permissions.CREATE_EXPRESSION, Permissions.VIEW_EXPRESSION,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_ATTACHE_DIR", posteAttache);
 
         PosteEntity posteCscg = createPoste("POSTE_CSCG", "Chargé du Suivi et Contrôle de Gestion", unites.get("DG"), posteDg,
                 CategorieConvention.CADRE_SUPERIEUR, Set.of(
                         Permissions.GET_ORGANIGRAMME_INFO, Permissions.VIEW_BUDGET, Permissions.VIEW_FOLDER,
-                        Permissions.VIEW_ECRITURE, Permissions.VIEW_IMMOBILISATION, Permissions.LIST_ALL_COMPTE
+                        Permissions.VIEW_ECRITURE, Permissions.VIEW_IMMOBILISATION, Permissions.LIST_ALL_COMPTE,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_CSCG", posteCscg);
 
@@ -756,7 +779,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 Permissions.VALIDATE_OR_REJECT_BANK_INFO, Permissions.VALIDATE_OR_REJECT_COMPTE,
                 Permissions.VALIDATE_OR_REJECT_TIERS, Permissions.VALIDATE_OR_REJECT_IMMOBILISATION,
                 Permissions.VALIDATE_OR_REJECT_RELEVE_BANCAIRE, Permissions.VALIDATE_FOLDER,
-                Permissions.VALIDATE_RECEPTION, Permissions.VALIDATE_LIQUIDATION
+                Permissions.VALIDATE_RECEPTION, Permissions.VALIDATE_LIQUIDATION,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity posteChefDcai = createPoste("POSTE_CHEF_DCAI", "Chef de Division DCAI", unites.get("DCAI"), posteDg,
@@ -778,7 +802,9 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         // 3. Division Prospective et Développement (DPD)
         Set<Permissions> dpdPermissions = Set.of(
                 Permissions.GET_ORGANIGRAMME_INFO, Permissions.VIEW_BUDGET, Permissions.CREATE_BUDGET,
-                Permissions.UPDATE_BUDGET, Permissions.VIEW_EXPRESSION, Permissions.VIEW_FOLDER
+                Permissions.UPDATE_BUDGET, Permissions.CREATE_BUDGET_PLAN, Permissions.UPDATE_BUDGET_PLAN,
+                Permissions.VIEW_EXPRESSION, Permissions.VIEW_FOLDER,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity posteChefDpd = createPoste("POSTE_CHEF_DPD", "Chef de Division DPD", unites.get("DPD"), posteDg,
@@ -820,7 +846,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 Permissions.LIST_FOLDERS, Permissions.CREATE_FOLDER, Permissions.VIEW_FOLDER, Permissions.VIEW_ORDER,
                 Permissions.VALIDATE_FOLDER, Permissions.UPDATE_FOLDER, Permissions.LIST_RECEPTIONS,
                 Permissions.CREATE_RECEPTION, Permissions.VALIDATE_RECEPTION, Permissions.VIEW_BUDGET,
-                Permissions.ENGAGE_BUDGET, Permissions.VIEW_IMMOBILISATION, Permissions.LIST_PROVIDERS
+                Permissions.ENGAGE_BUDGET, Permissions.VIEW_IMMOBILISATION, Permissions.LIST_PROVIDERS,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity posteDirecteurDpc = createPoste("POSTE_DIRECTEUR_DPC", "Directeur DPC", unites.get("DPC"), posteDg,
@@ -867,6 +894,7 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 Permissions.GET_ORGANIGRAMME_INFO, Permissions.GET_FULL_USER_INFO, Permissions.INIT_CREATE_USER,
                 Permissions.INIT_UPDATE_USER, Permissions.VALIDATE_OR_REJECT_USER,
                 Permissions.CREATE_BUDGET, Permissions.VALIDATE_BUDGET, Permissions.UPDATE_BUDGET,
+                Permissions.CREATE_BUDGET_PLAN, Permissions.VALIDATE_BUDGET_PLAN, Permissions.UPDATE_BUDGET_PLAN,
                 Permissions.VIEW_BUDGET, Permissions.ENGAGE_BUDGET,
                 Permissions.INIT_CREATE_COMPTE, Permissions.INIT_UPDATE_COMPTE, Permissions.GET_FULL_COMPTE_INFO,
                 Permissions.VALIDATE_OR_REJECT_COMPTE, Permissions.LIST_ALL_COMPTE,
@@ -893,7 +921,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 Permissions.NOTIFY_PROVIDER, Permissions.NOTIFY_SUPPLIER, Permissions.VALIDATE_NOTIFICATION,
                 Permissions.LIST_RECEPTIONS, Permissions.CREATE_RECEPTION, Permissions.VALIDATE_RECEPTION,
                 Permissions.LIQUIDATE_INVOICE, Permissions.VALIDATE_LIQUIDATION,
-                Permissions.INIT_CREATE_FISCAL_YEAR_CLOSING
+                Permissions.INIT_CREATE_FISCAL_YEAR_CLOSING,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity posteDirecteurDaf = createPoste("POSTE_DIRECTEUR_DAF", "Directeur DAF", unites.get("DAF"), posteDg,
@@ -904,7 +933,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
         Set<Permissions> rhPerms = Set.of(
                 Permissions.GET_ORGANIGRAMME_INFO, Permissions.GET_FULL_USER_INFO,
                 Permissions.INIT_CREATE_USER, Permissions.INIT_UPDATE_USER, Permissions.VALIDATE_OR_REJECT_USER,
-                Permissions.CREATE_EXPRESSION, Permissions.VIEW_EXPRESSION
+                Permissions.CREATE_EXPRESSION, Permissions.VIEW_EXPRESSION,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity posteSdRh = createPoste("POSTE_SD_RH", "Sous-Directeur des Ressources Humaines", unites.get("SDRH"), posteDirecteurDaf,
@@ -933,7 +963,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                         Permissions.GET_ORGANIGRAMME_INFO, Permissions.INIT_CREATE_BANK, Permissions.INIT_UPDATE_BANK_INFO,
                         Permissions.GET_FULL_BANK_INFO, Permissions.LIST_ALL_BANKS, Permissions.CREATE_BANK,
                         Permissions.UPDATE_BANK, Permissions.LIST_RELEVE_BANCAIRE, Permissions.INIT_CREATE_RELEVE_BANCAIRE,
-                        Permissions.INIT_UPDATE_RELEVE_BANCAIRE, Permissions.LIQUIDATE_INVOICE, Permissions.VIEW_BUDGET
+                        Permissions.INIT_UPDATE_RELEVE_BANCAIRE, Permissions.LIQUIDATE_INVOICE, Permissions.VIEW_BUDGET,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_CHEF_FIN", posteChefFin);
 
@@ -945,14 +976,17 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                         Permissions.INIT_CREATE_ECRITURE, Permissions.INIT_UPDATE_ECRITURE, Permissions.GET_FULL_ECRITURE_INFO,
                         Permissions.VIEW_ECRITURE, Permissions.INIT_CREATE_IMMOBILISATION, Permissions.INIT_UPDATE_IMMOBILISATION,
                         Permissions.GET_FULL_IMMOBILISATION_INFO, Permissions.VIEW_IMMOBILISATION,
-                        Permissions.INIT_CREATE_FISCAL_YEAR_CLOSING
+                        Permissions.INIT_CREATE_FISCAL_YEAR_CLOSING,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_CHEF_COMPTA", posteChefCompta);
 
         PosteEntity posteChefBudget = createPoste("POSTE_CHEF_BUDGET", "Chef Service du Budget", unites.get("SERV_BUDGET"), posteSdFbm,
                 CategorieConvention.AGENT_DE_MAITRISE, Set.of(
                         Permissions.GET_ORGANIGRAMME_INFO, Permissions.CREATE_BUDGET, Permissions.UPDATE_BUDGET,
-                        Permissions.VIEW_BUDGET, Permissions.ENGAGE_BUDGET, Permissions.LIST_EXPRESSIONS, Permissions.VIEW_EXPRESSION
+                        Permissions.CREATE_BUDGET_PLAN, Permissions.UPDATE_BUDGET_PLAN,
+                        Permissions.VIEW_BUDGET, Permissions.ENGAGE_BUDGET, Permissions.LIST_EXPRESSIONS, Permissions.VIEW_EXPRESSION,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_CHEF_BUDGET", posteChefBudget);
 
@@ -961,7 +995,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                         Permissions.GET_ORGANIGRAMME_INFO, Permissions.LIST_PROVIDERS, Permissions.CREATE_PROVIDER,
                         Permissions.LIST_FOLDERS, Permissions.CREATE_FOLDER, Permissions.VIEW_FOLDER,
                         Permissions.VIEW_ORDER, Permissions.UPDATE_FOLDER, Permissions.NOTIFY_PROVIDER,
-                        Permissions.NOTIFY_SUPPLIER, Permissions.LIST_RECEPTIONS, Permissions.CREATE_RECEPTION
+                        Permissions.NOTIFY_SUPPLIER, Permissions.LIST_RECEPTIONS, Permissions.CREATE_RECEPTION,
+                        Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
                 ));
         map.put("POSTE_CHEF_MARCHES", posteChefMarches);
 
@@ -970,7 +1005,8 @@ public class SodepaScrapedDataSeeder implements CommandLineRunner {
                 Permissions.GET_ORGANIGRAMME_INFO, Permissions.LIST_EXPRESSIONS, Permissions.CREATE_EXPRESSION,
                 Permissions.VIEW_EXPRESSION, Permissions.LIST_FOLDERS, Permissions.VIEW_FOLDER,
                 Permissions.LIST_RECEPTIONS, Permissions.CREATE_RECEPTION, Permissions.VIEW_BUDGET,
-                Permissions.ENGAGE_BUDGET
+                Permissions.ENGAGE_BUDGET,
+                Permissions.WORKFLOW_READ, Permissions.WORKFLOW_DECISION
         );
 
         PosteEntity dirAbatDla = createPoste("POSTE_DIR_ABAT_DLA", "Directeur Abattoir Frigorifique de Douala", unites.get("ABAT_DLA"), posteDg,

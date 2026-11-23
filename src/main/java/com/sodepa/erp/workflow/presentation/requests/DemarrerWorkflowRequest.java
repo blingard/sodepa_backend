@@ -54,4 +54,8 @@ public class DemarrerWorkflowRequest {
      * utilisé pour l'évaluation dynamique des règles de transition SpEL.
      */
     private Map<String, Object> contexte;
+
+    private com.sodepa.erp.utils.MakerCheckerOperationType operationType;
+
+    private Map<String, Object> initialData;
 }

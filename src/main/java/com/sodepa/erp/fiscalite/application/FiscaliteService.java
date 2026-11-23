@@ -89,6 +89,11 @@ public class FiscaliteService {
      */
     @Transactional
     public TaxeImpotsEntity enregistréerOuRevisionnerTaxe(TaxeImpotsEntity nouvelleTaxe) {
+        if (nouvelleTaxe.getTauxPourcentage() != null && (nouvelleTaxe.getTauxPourcentage().compareTo(BigDecimal.ZERO) < 0
+                || nouvelleTaxe.getTauxPourcentage().compareTo(BigDecimal.valueOf(100)) > 0)) {
+            throw new IllegalArgumentException("Le taux fiscal doit être compris entre 0 et 100 %.");
+        }
+        nouvelleTaxe.setId(null);
         if (nouvelleTaxe.getDateEffet() == null) {
             nouvelleTaxe.setDateEffet(LocalDate.now());
         }
@@ -169,6 +174,11 @@ public class FiscaliteService {
      */
     @Transactional
     public RegimeFiscalEntity creerRegimeFiscal(RegimeFiscalEntity regime) {
+        if (regime.getTauxAirApplicable() != null && (regime.getTauxAirApplicable().compareTo(BigDecimal.ZERO) < 0
+                || regime.getTauxAirApplicable().compareTo(BigDecimal.valueOf(100)) > 0)) {
+            throw new IllegalArgumentException("Le taux AIR applicable doit être compris entre 0 et 100 %.");
+        }
+        regime.setId(null);
         return regimeRepository.save(regime);
     }
 
@@ -244,6 +254,14 @@ public class FiscaliteService {
      */
     @Transactional
     public SeuilGestionEntity enregistréerOuRevisionnerSeuil(SeuilGestionEntity nouveauSeuil) {
+        if (nouveauSeuil.getMontantMinFcfa() != null && nouveauSeuil.getMontantMinFcfa().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Le montant plancher d'un seuil ne peut pas être négatif.");
+        }
+        if (nouveauSeuil.getMontantMaxFcfa() != null && nouveauSeuil.getMontantMinFcfa() != null
+                && nouveauSeuil.getMontantMaxFcfa().compareTo(nouveauSeuil.getMontantMinFcfa()) < 0) {
+            throw new IllegalArgumentException("Le montant plafond ne peut pas être inférieur au montant plancher.");
+        }
+        nouveauSeuil.setId(null);
         if (nouveauSeuil.getDateEffet() == null) {
             nouveauSeuil.setDateEffet(LocalDate.now());
         }

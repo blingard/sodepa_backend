@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -345,6 +346,7 @@ public class OrganigrammeRestController {
      * @return la version projet creee
      */
     @PostMapping("/versions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ORGANIGRAMME', 'CREATE_UNITE', 'UPDATE_UNITE', 'VALIDATE_UNITE')")
     @Operation(summary = "Créer un projet de version d'organigramme (simulation / restructuration)")
     public ResponseEntity<OrganigrammeVersionOutput> creerVersion(@Valid @RequestBody CreerVersionRequest request) {
         OrganigrammeVersionOutput output = creerVersionUseCase.execute(request.toInput());
@@ -359,6 +361,7 @@ public class OrganigrammeRestController {
      * @return la version officialisee
      */
     @PostMapping("/versions/{id}/activer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') or hasAnyAuthority('VALIDATE_OR_REJECT_ORGANIGRAMME', 'VALIDATE_UNITE')")
     @Operation(summary = "Activer une version d'organigramme à date d'effet")
     public ResponseEntity<OrganigrammeVersionOutput> activerVersion(
             @PathVariable UUID id,
@@ -398,6 +401,7 @@ public class OrganigrammeRestController {
      * @return le type cree
      */
     @PostMapping("/types-structures")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ORGANIGRAMME', 'CREATE_UNITE')")
     @Operation(summary = "Créer un nouveau type de structure (avec ou sans type parent)")
     public ResponseEntity<TypeStructureOutput> creerTypeStructure(@Valid @RequestBody CreerTypeStructureRequest request) {
         TypeStructureOutput output = creerTypeStructureUseCase.execute(request.toInput());
@@ -412,6 +416,7 @@ public class OrganigrammeRestController {
      * @return le type actualise
      */
     @PutMapping("/types-structures/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('INIT_UPDATE_ORGANIGRAMME', 'UPDATE_UNITE')")
     @Operation(summary = "Modifier un type de structure")
     public ResponseEntity<TypeStructureOutput> modifierTypeStructure(
             @PathVariable UUID id,
@@ -426,6 +431,7 @@ public class OrganigrammeRestController {
      * @return confirmation sans contenu
      */
     @DeleteMapping("/types-structures/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('DELETE_UNITE', 'VALIDATE_OR_REJECT_ORGANIGRAMME')")
     @Operation(summary = "Désactiver un type de structure")
     public ResponseEntity<Void> supprimerTypeStructure(@PathVariable UUID id) {
         supprimerTypeStructureUseCase.execute(id);
@@ -457,6 +463,7 @@ public class OrganigrammeRestController {
      * @return l'objectif cree
      */
     @PostMapping("/unites/{uniteId}/objectifs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('INIT_UPDATE_ORGANIGRAMME', 'UPDATE_UNITE', 'CREATE_BUDGET_PLAN')")
     @Operation(summary = "Ajouter un objectif opérationnel à une unité organisationnelle")
     public ResponseEntity<ObjectifUniteOutput> ajouterObjectif(
             @PathVariable UUID uniteId,
@@ -473,6 +480,7 @@ public class OrganigrammeRestController {
      * @return l'objectif actualise avec son nouveau pourcentage de realisation
      */
     @PatchMapping("/objectifs/{id}/realise")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('INIT_UPDATE_ORGANIGRAMME', 'UPDATE_UNITE', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Mettre à jour la valeur réalisée d'un objectif et recalculer le taux d'atteinte")
     public ResponseEntity<ObjectifUniteOutput> mettreAJourRealise(
             @PathVariable UUID id,
@@ -487,6 +495,7 @@ public class OrganigrammeRestController {
      * @return confirmation sans contenu
      */
     @DeleteMapping("/objectifs/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') or hasAnyAuthority('DELETE_UNITE', 'VALIDATE_OR_REJECT_ORGANIGRAMME')")
     @Operation(summary = "Supprimer un objectif d'une unité")
     public ResponseEntity<Void> supprimerObjectif(@PathVariable UUID id) {
         supprimerObjectifUniteUseCase.execute(id);

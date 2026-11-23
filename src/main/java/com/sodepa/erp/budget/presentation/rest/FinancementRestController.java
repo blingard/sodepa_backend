@@ -18,6 +18,7 @@ import com.sodepa.erp.budget.application.usecase.GenererReportingHorsBilanUseCas
 import com.sodepa.erp.budget.application.usecase.SimulerAmortissementUseCase;
 import com.sodepa.erp.budget.presentation.requests.CreerFinancementRequest;
 import com.sodepa.erp.budget.presentation.requests.CreerHorsBilanRequest;
+import com.sodepa.erp.share.CurrentUserAuthenticationToken;
 import com.sodepa.erp.utils.PageRecord;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -71,6 +73,7 @@ public class FinancementRestController {
      * @return la liste paginée des financements correspondants
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO', 'VIEW_ECRITURE')")
     @Operation(summary = "Lister les dossiers d'emprunt et de financement")
     public PageRecord<FinancementSmartOutput> listerFinancements(
             @PageableDefault Pageable pageable,
@@ -87,6 +90,7 @@ public class FinancementRestController {
      * @return les informations détaillées du prêt et la liste de toutes ses échéances
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO', 'VIEW_ECRITURE')")
     @Operation(summary = "Consulter un financement et son tableau d'amortissement complet")
     public FinancementOutput getFinancement(@PathVariable UUID id) {
         return getFinancementByIdUseCase.execute(id);
@@ -101,13 +105,15 @@ public class FinancementRestController {
      * @return le dossier de financement créé et son échéancier validé
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BANK', 'INIT_CREATE_BANK', 'INIT_CREATE_ECRITURE', 'CREATE_BUDGET_PLAN')")
     @Operation(summary = "Souscrire et enregistrer un nouveau financement")
     public FinancementOutput enregistrerFinancement(@Valid @RequestBody CreerFinancementRequest request) {
         CreerFinancementInput input = new CreerFinancementInput(
                 request.banqueId(), request.intitule(), request.type(),
                 request.capital(), request.tauxNominal(),
                 request.dateEffet(), request.dureeMois(),
-                request.periodicite(), request.utilisateurId()
+                request.periodicite(),
+                CurrentUserAuthenticationToken.resolveUserIdOrFallback(request.utilisateurId())
         );
         return enregistrerFinancementUseCase.execute(input);
     }
@@ -126,6 +132,7 @@ public class FinancementRestController {
      * @return la projection de l'échéancier avec ventilation capital / intérêts
      */
     @GetMapping("/simuler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO', 'VIEW_ECRITURE')")
     @Operation(summary = "Simuler un tableau d'amortissement financier sans engagement")
     public List<EcheanceOutput> simulerAmortissement(
             @RequestParam BigDecimal capital,
@@ -146,9 +153,11 @@ public class FinancementRestController {
      * @param userId identifiant du trésorier ou comptable effectuant la saisie
      */
     @PostMapping("/echeances/{echeanceId}/payer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('LIQUIDATE_INVOICE', 'VALIDATE_LIQUIDATION', 'CREATE_APPROVISIONNEMENT', 'INIT_CREATE_ECRITURE')")
     @Operation(summary = "Enregistrer le règlement d'une échéance de prêt")
-    public void payerEcheance(@PathVariable UUID echeanceId, @RequestParam UUID userId) {
-        enregistrerReglementEcheanceUseCase.execute(new EnregistrerReglementEcheanceUseCase.Input(echeanceId, userId));
+    public void payerEcheance(@PathVariable UUID echeanceId, @RequestParam(required = false) UUID userId) {
+        enregistrerReglementEcheanceUseCase.execute(new EnregistrerReglementEcheanceUseCase.Input(
+                echeanceId, CurrentUserAuthenticationToken.resolveUserIdOrFallback(userId)));
     }
 
     /**
@@ -160,6 +169,7 @@ public class FinancementRestController {
      * @return l'engagement hors-bilan officialisé
      */
     @PostMapping("/hors-bilan")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BANK', 'INIT_CREATE_BANK', 'INIT_CREATE_ECRITURE', 'CREATE_BUDGET_ENGAGEMENT')")
     @Operation(summary = "Enregistrer un engagement hors-bilan (caution, garantie, aval)")
     public EngagementHorsBilanOutput enregistrerHorsBilan(@Valid @RequestBody CreerHorsBilanRequest request) {
         CreerHorsBilanInput input = new CreerHorsBilanInput(
@@ -175,6 +185,7 @@ public class FinancementRestController {
      * @return le rapport d'annexe financière des engagements hors-bilan
      */
     @GetMapping("/reporting/hors-bilan")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO', 'VIEW_ECRITURE')")
     @Operation(summary = "Produire l'état financier des engagements hors-bilan (Annexe OHADA)")
     public List<EngagementHorsBilanOutput> genererReportingHorsBilan() {
         return genererReportingHorsBilanUseCase.execute(null);
@@ -188,6 +199,7 @@ public class FinancementRestController {
      * @return l'ensemble des ratios financiers consolidés
      */
     @GetMapping("/reporting/kpis")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'VIEW_ECRITURE', 'CREATE_BUDGET_PLAN', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Consulter les ratios financiers de performance (Rentabilité, Liquidité, Solvabilité)")
     public KpiReportOutput genererReportingKpis() {
         return calculerKpisPerformancesUseCase.execute(null);

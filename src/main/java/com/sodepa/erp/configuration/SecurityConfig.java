@@ -1,6 +1,7 @@
 package com.sodepa.erp.configuration;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -38,9 +39,18 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    @Value("#{'${app.cors.allowed-origins:http://localhost:4200,http://127.0.0.1:4200}'.split(',')}")
+    private List<String> allowedOrigins;
+
+    @Value("${springdoc.swagger-ui.enabled:false}")
+    private boolean swaggerUiEnabled;
+
+    private static final String[] SWAGGER_ENDPOINTS = {
+            "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**"
+    };
+
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**",
-            "/actuator/health", "/actuator/info",
+            "/actuator/health", "/actuator/health/**", "/actuator/info",
             // Sans cette entrée, le renvoi interne vers /error se fait refuser
             // et **toute** exception applicative ressort en 403 au lieu de son
             // vrai statut : le diagnostic devient impossible côté client.
@@ -51,7 +61,11 @@ public class SecurityConfig {
 
     @Bean
     public RestTemplate restTemplate() {
-        return new RestTemplate();
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(5));
+        return new RestTemplate(factory);
     }
 
     @Bean
@@ -66,8 +80,20 @@ public class SecurityConfig {
                 .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                 .permissionsPolicy(perms -> perms.policy("geolocation=(), camera=(), microphone=()"))
             )
-            .authorizeHttpRequests(authorize -> authorize.requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                .anyRequest().authenticated())
+            .authorizeHttpRequests(authorize -> {
+                authorize.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                if (swaggerUiEnabled) {
+                    authorize.requestMatchers(SWAGGER_ENDPOINTS).permitAll();
+                }
+                authorize.requestMatchers("/actuator/**").hasAnyRole("ADMIN", "SUPER_ADMIN");
+                authorize.anyRequest().authenticated();
+            })
+            .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"status\":401,\"code\":\"NON_AUTHENTIFIE\",\"message\":\"Authentification requise.\"}");
+            }))
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         return http.build();
@@ -76,9 +102,14 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*")); // En production, restreindre aux origines autorisées
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        List<String> sanitizedOrigins = allowedOrigins != null
+                ? allowedOrigins.stream().map(String::trim).filter(o -> !o.isEmpty() && !"*".equals(o)).toList()
+                : List.of("http://localhost:4200");
+        configuration.setAllowedOrigins(sanitizedOrigins.isEmpty() ? List.of("http://localhost:4200") : sanitizedOrigins);
+        configuration.setAllowCredentials(true);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-Id"));
+        configuration.setExposedHeaders(List.of("X-Correlation-Id", "Content-Disposition"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

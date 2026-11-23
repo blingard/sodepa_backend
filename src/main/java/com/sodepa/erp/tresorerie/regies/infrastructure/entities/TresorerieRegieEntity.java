@@ -103,4 +103,12 @@ public class TresorerieRegieEntity {
     @Column(nullable = false)
     @Builder.Default
     private boolean actif = true;
+
+    /**
+     * Verrouillage optimiste pour sécuriser les mouvements concurrents sur le solde de régie.
+     */
+    @Version
+    @Column(name = "optimistic_version")
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

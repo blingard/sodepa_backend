@@ -30,24 +30,27 @@ public class EcartConversionUseCase implements UseCase<ReevaluationInput, List<R
     @Override
     @Transactional
     public List<ReevaluationLineOutput> execute(ReevaluationInput request) {
-        List<EcritureEntity> toutesEcritures = ecritureRepository.findAll();
+        LocalDate debutAnnee = LocalDate.of(request.annee(), 1, 1);
+        LocalDate finAnnee = LocalDate.of(request.annee(), 12, 31);
+        List<EcritureEntity> toutesEcritures = ecritureRepository.findValidatedForeignCurrencyByPeriod(
+                debutAnnee, finAnnee, List.of(Devise.XOF, Devise.XAF));
         JournalEntity journalOD = journalRepository.findByCode(CodeJournal.OD)
                 .orElseThrow(() -> new IllegalArgumentException("Journal des Opérations Diverses (OD) manquant."));
 
         Map<String, Map<Devise, List<LigneEcritureEntity>>> lignesParCompteDevise = new HashMap<>();
 
         for (EcritureEntity e : toutesEcritures) {
-            if (!e.getValide() || e.getDateComptable().getYear() != request.annee()) {
+            if (!Boolean.TRUE.equals(e.getValide()) || e.getDateComptable() == null) {
                 continue;
             }
             Devise devise = e.getTypeDevise();
-            if (devise == Devise.XOF || devise == Devise.XAF) {
+            if (devise == null || devise == Devise.XOF || devise == Devise.XAF) {
                 continue;
             }
 
             for (LigneEcritureEntity l : e.getLignes()) {
                 String c = l.getCompteCode();
-                if (c.startsWith("40") || c.startsWith("41") || c.startsWith("52") || c.startsWith("53")) {
+                if (c != null && (c.startsWith("40") || c.startsWith("41") || c.startsWith("52") || c.startsWith("53"))) {
                     lignesParCompteDevise
                         .computeIfAbsent(c, k -> new HashMap<>())
                         .computeIfAbsent(devise, k -> new ArrayList<>())
@@ -72,9 +75,13 @@ public class EcartConversionUseCase implements UseCase<ReevaluationInput, List<R
                 BigDecimal valeurLivreXof = BigDecimal.ZERO;
 
                 for (LigneEcritureEntity l : entryDevise.getValue()) {
-                    BigDecimal diffXof = l.getDebit().subtract(l.getCredit());
+                    BigDecimal debit = l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO;
+                    BigDecimal credit = l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO;
+                    BigDecimal diffXof = debit.subtract(credit);
                     BigDecimal taux = l.getEcriture().getTauxChange();
-                    BigDecimal diffDevise = diffXof.divide(taux, 6, RoundingMode.HALF_UP);
+                    BigDecimal diffDevise = (taux != null && taux.compareTo(BigDecimal.ZERO) > 0)
+                            ? diffXof.divide(taux, 6, RoundingMode.HALF_UP)
+                            : diffXof;
 
                     soldeDevise = soldeDevise.add(diffDevise);
                     valeurLivreXof = valeurLivreXof.add(diffXof);

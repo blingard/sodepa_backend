@@ -15,16 +15,24 @@ import com.sodepa.erp.ged.infrastructure.repo.DocumentGedRepository;
 import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
 import com.sodepa.erp.organigramme.infrastructure.repo.UniteOrganisationnelleRepository;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
+import com.sodepa.erp.share.CodeSequenceService;
 import com.sodepa.erp.share.GlobalConstants;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.MinioService;
 import com.sodepa.erp.share.UserData;
+import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowSnapshotMerger;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowInstance;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.infrastructure.repo.WorkflowInstanceRepository;
 import com.sodepa.erp.workflow.presentation.requests.DemarrerWorkflowRequest;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
@@ -68,54 +76,142 @@ public class AchatsService {
     private final MinioService minioService;
     private final DocumentGedRepository documentGedRepository;
     private final WorkflowService workflowService;
+    private final WorkflowInstanceRepository workflowInstanceRepository;
+    private final WorkflowStateService workflowStateService;
+    private final WorkflowSnapshotMerger workflowSnapshotMerger;
     private final ObjectMapper objectMapper;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
 
     // ==========================================
     // FOURNISSEURS
     // ==========================================
 
-    @Transactional(readOnly = true)
+    private static final List<String> FRN_WORKFLOW_ENTITY_NAMES = List.of(
+            "FOURNISSEUR",
+            "FRN",
+            FournisseurEntity.class.getSimpleName(),
+            FournisseurEntity.class.getName()
+    );
+
+    @Transactional
     public List<FournisseurResponse> listerFournisseurs(boolean agreeSeulement) {
         securityService.checkPermission(Permissions.LIST_PROVIDERS);
         List<FournisseurEntity> list = agreeSeulement
                 ? fournisseurRepository.findByAgreeSodepaTrueAndActifTrue()
                 : fournisseurRepository.findAll(Sort.by(Sort.Direction.ASC, "raisonSociale"));
-        return list.stream().map(FournisseurResponse::fromEntity).collect(Collectors.toList());
+
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(FRN_WORKFLOW_ENTITY_NAMES);
+        java.util.Set<UUID> materializedIds = new java.util.HashSet<>();
+        List<FournisseurResponse> responses = new ArrayList<>();
+
+        for (FournisseurEntity entity : list) {
+            materializedIds.add(entity.getId());
+            FournisseurResponse res = FournisseurResponse.fromEntity(entity);
+            WorkflowInstanceEntity activeWf = activeById.get(entity.getId());
+            if (activeWf != null) {
+                enrichirFournisseurAvecWorkflow(res, activeWf);
+            }
+            responses.add(res);
+        }
+
+        // Si on ne demande pas exclusivement les fournisseurs déjà agréés, projeter les créations en cours depuis ClickHouse/Outbox
+        if (!agreeSeulement) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey())) {
+                    continue;
+                }
+                WorkflowInstanceEntity wf = entry.getValue();
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : new java.util.LinkedHashMap<>();
+                responses.add(buildDraftFournisseurFromWorkflow(entry.getKey(), wf, data, current));
+            }
+        }
+
+        responses.sort(java.util.Comparator.comparing(
+                r -> r.getRaisonSociale() != null ? r.getRaisonSociale().toLowerCase() : "",
+                java.util.Comparator.naturalOrder()));
+        return responses;
+    }
+
+    @Transactional
+    public FournisseurResponse obtenirFournisseur(UUID id) {
+        securityService.checkPermission(Permissions.LIST_PROVIDERS);
+        Optional<FournisseurEntity> opt = fournisseurRepository.findById(id);
+        Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(FRN_WORKFLOW_ENTITY_NAMES, id);
+
+        if (opt.isPresent()) {
+            FournisseurResponse res = FournisseurResponse.fromEntity(opt.get());
+            activeWfOpt.ifPresent(wf -> enrichirFournisseurAvecWorkflow(res, wf));
+            return res;
+        }
+
+        if (activeWfOpt.isPresent()) {
+            WorkflowInstanceEntity wf = activeWfOpt.get();
+            WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : new java.util.LinkedHashMap<>();
+            return buildDraftFournisseurFromWorkflow(id, wf, data, current);
+        }
+
+        throw new IllegalArgumentException("Fournisseur introuvable avec l'ID: " + id);
     }
 
     @Transactional
     public UUID creerFournisseur(CreerFournisseurRequest request) {
         securityService.checkPermission(Permissions.CREATE_PROVIDER);
-        long count = fournisseurRepository.count() + 1;
+        long activeCount = workflowStateService.findActiveInstancesByEntityUuid(FRN_WORKFLOW_ENTITY_NAMES).size();
+        long count = fournisseurRepository.count() + activeCount + 1;
         String code = String.format("FRN-%04d", count);
+        while (fournisseurRepository.findByCode(code).isPresent()) {
+            count++;
+            code = String.format("FRN-%04d", count);
+        }
         UUID id = UUID.randomUUID();
 
-        Map<String, Object> payload = new java.util.HashMap<>(objectMapper.convertValue(request, Map.class));
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(objectMapper.convertValue(request, Map.class));
         payload.put("id", id.toString());
         payload.put("code", code);
 
+        // Zéro auto-validation ni persistance anticipée en base PostgreSQL :
+        // l'état v1 est écrit de manière synchrone dans ClickHouse (ou Outbox).
         UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.FOURNISSEUR,
                 id.toString(),
                 payload,
                 MakerCheckerOperationType.CREATE
         );
-        log.info("Création de fournisseur soumise au Maker-Checker. Code: {}, Raison Sociale: {}", code, request.getRaisonSociale());
+        log.info("Création de fournisseur soumise au workflow (ClickHouse State Store). ID: {}, Code: {}, Raison Sociale: {} (Ticket: {})",
+                id, code, request.getRaisonSociale(), uuid);
+        return id;
+    }
 
-        if (securityService.canValidate(Permissions.VALIDATE_PROVIDER)) {
-            log.info("Utilisateur habilité, validation automatique du fournisseur {}", code);
-            try {
-                validateOrRejectFournisseur(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique du fournisseur {}: {}", code, e.getMessage());
-            }
+    @Transactional
+    public FournisseurResponse modifierFournisseur(UUID id, CreerFournisseurRequest request) {
+        securityService.checkPermission(Permissions.CREATE_PROVIDER);
+        FournisseurEntity existing = fournisseurRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Fournisseur introuvable avec l'ID: " + id));
+
+        if (workflowStateService.findActiveInstanceForEntity(FRN_WORKFLOW_ENTITY_NAMES, id).isPresent()) {
+            throw new ConflitMetierException("Une demande de modification est déjà en cours de validation pour ce fournisseur.");
         }
-        return uuid;
+
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(objectMapper.convertValue(request, Map.class));
+        payload.put("id", existing.getId().toString());
+        payload.put("code", existing.getCode());
+
+        UUID uuid = workflowService.submitChange(
+                MakerCheckerEntityName.FOURNISSEUR,
+                existing.getId().toString(),
+                payload,
+                MakerCheckerOperationType.UPDATE
+        );
+        log.info("Modification fournisseur {} soumise au workflow (Ticket: {})", existing.getCode(), uuid);
+
+        FournisseurResponse res = FournisseurResponse.fromEntity(existing);
+        workflowStateService.findActiveInstanceForEntity(FRN_WORKFLOW_ENTITY_NAMES, id)
+                .ifPresent(wf -> enrichirFournisseurAvecWorkflow(res, wf));
+        return res;
     }
 
     @Transactional
@@ -146,46 +242,169 @@ public class AchatsService {
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
             workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
-            log.info("Fournisseur rejeté par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+            log.info("Fournisseur rejeté par le Checker {} (zéro écriture Postgres). Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID frnId = UUID.fromString(checkerOutput.entityPk());
-            Map<String, Object> payload = checkerOutput.payload();
-            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
-                creationFournisseur(payload, frnId);
-            }
+            materialiserFournisseurFinale(frnId, checkerOutput.payload());
             workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
-            log.info("Fournisseur approuvé par le Checker {}. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), frnId);
+            log.info("Fournisseur approuvé et matérialisé en PostgreSQL. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), frnId);
+        }
+    }
+
+    @Transactional
+    public void finaliserFournisseurDepuisWorkflow(UUID frnId, Map<String, Object> finalData) {
+        if (frnId == null || finalData == null || finalData.isEmpty()) {
+            return;
+        }
+        materialiserFournisseurFinale(frnId, finalData);
+    }
+
+    private void materialiserFournisseurFinale(UUID frnId, Map<String, Object> payload) {
+        Map<String, Object> safePayload = payload != null ? payload : new java.util.LinkedHashMap<>();
+        Optional<FournisseurEntity> existingOpt = fournisseurRepository.findById(frnId);
+        if (existingOpt.isPresent()) {
+            miseAJourFournisseur(existingOpt.get(), safePayload);
+        } else {
+            creationFournisseur(safePayload, frnId);
         }
     }
 
     private FournisseurEntity creationFournisseur(Map<String, Object> payload, UUID frnId) {
+        String code = asString(payload.get("code"));
+        if (code == null || code.isBlank() || fournisseurRepository.findByCode(code).isPresent()) {
+            long seq = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_fournisseur", fournisseurRepository::count);
+            code = String.format("FRN-%04d", seq);
+            while (fournisseurRepository.findByCode(code).isPresent()) {
+                seq++;
+                code = String.format("FRN-%04d", seq);
+            }
+        }
         FournisseurEntity entity = FournisseurEntity.builder()
                 .id(frnId)
-                .code((String) payload.get("code"))
-                .raisonSociale((String) payload.get("raisonSociale"))
-                .numeroContribuable((String) payload.get("numeroContribuable"))
-                .rccm((String) payload.get("rccm"))
-                .regimeFiscal(payload.get("regimeFiscal") != null ? (String) payload.get("regimeFiscal") : "REEL")
-                .specialite((String) payload.get("specialite"))
-                .adresse((String) payload.get("adresse"))
-                .telephone((String) payload.get("telephone"))
-                .email((String) payload.get("email"))
-                .banqueNom((String) payload.get("banqueNom"))
-                .compteBancaireRib((String) payload.get("compteBancaireRib"))
-                .agreeSodepa(true)
+                .code(code)
+                .raisonSociale(nonBlankOrDefault(asString(payload.get("raisonSociale")), "Fournisseur SODEPA"))
+                .numeroContribuable(asString(payload.get("numeroContribuable")))
+                .rccm(asString(payload.get("rccm")))
+                .regimeFiscal(nonBlankOrDefault(asString(payload.get("regimeFiscal")), "REEL"))
+                .specialite(asString(payload.get("specialite")))
+                .adresse(asString(payload.get("adresse")))
+                .telephone(asString(payload.get("telephone")))
+                .email(asString(payload.get("email")))
+                .banqueNom(asString(payload.get("banqueNom")))
+                .compteBancaireRib(asString(payload.get("compteBancaireRib")))
+                .agreeSodepa(asBoolean(payload.get("agreeSodepa"), true))
                 .dateAgrement(LocalDate.now())
-                .actif(true)
+                .actif(asBoolean(payload.get("actif"), true))
                 .build();
         FournisseurEntity saved = fournisseurRepository.save(entity);
-        log.info("Fournisseur matérialisé en base: {} ({})", saved.getRaisonSociale(), saved.getCode());
+        log.info("Fournisseur matérialisé en base PostgreSQL à l'approbation finale: {} ({})", saved.getRaisonSociale(), saved.getCode());
         return saved;
+    }
+
+    private FournisseurEntity miseAJourFournisseur(FournisseurEntity entity, Map<String, Object> payload) {
+        if (payload.containsKey("raisonSociale") && asString(payload.get("raisonSociale")) != null) {
+            entity.setRaisonSociale(asString(payload.get("raisonSociale")));
+        }
+        if (payload.containsKey("numeroContribuable")) {
+            entity.setNumeroContribuable(asString(payload.get("numeroContribuable")));
+        }
+        if (payload.containsKey("rccm")) {
+            entity.setRccm(asString(payload.get("rccm")));
+        }
+        if (payload.containsKey("regimeFiscal") && asString(payload.get("regimeFiscal")) != null) {
+            entity.setRegimeFiscal(asString(payload.get("regimeFiscal")));
+        }
+        if (payload.containsKey("specialite")) {
+            entity.setSpecialite(asString(payload.get("specialite")));
+        }
+        if (payload.containsKey("adresse")) {
+            entity.setAdresse(asString(payload.get("adresse")));
+        }
+        if (payload.containsKey("telephone")) {
+            entity.setTelephone(asString(payload.get("telephone")));
+        }
+        if (payload.containsKey("email")) {
+            entity.setEmail(asString(payload.get("email")));
+        }
+        if (payload.containsKey("banqueNom")) {
+            entity.setBanqueNom(asString(payload.get("banqueNom")));
+        }
+        if (payload.containsKey("compteBancaireRib")) {
+            entity.setCompteBancaireRib(asString(payload.get("compteBancaireRib")));
+        }
+        if (payload.containsKey("agreeSodepa") && payload.get("agreeSodepa") != null) {
+            entity.setAgreeSodepa(asBoolean(payload.get("agreeSodepa"), entity.isAgreeSodepa()));
+        }
+        if (payload.containsKey("actif") && payload.get("actif") != null) {
+            entity.setActif(asBoolean(payload.get("actif"), entity.isActif()));
+        }
+        FournisseurEntity saved = fournisseurRepository.save(entity);
+        log.info("Fournisseur {} mis à jour en base PostgreSQL à l'approbation finale.", saved.getCode());
+        return saved;
+    }
+
+    private void enrichirFournisseurAvecWorkflow(FournisseurResponse res, WorkflowInstanceEntity wf) {
+        if (res == null || wf == null) {
+            return;
+        }
+        res.setEnCoursDeModification(true);
+        res.setWorkflowEnCours(true);
+        res.setWorkflowInstanceId(wf.getId());
+        res.setWorkflowStatut(wf.getStatut() != null ? wf.getStatut().name() : null);
+        WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+        res.setWorkflowOperationType(current.getOperationType() != null ? current.getOperationType() : "UPDATE");
+        if (current.getAttachments() != null && !current.getAttachments().isEmpty()) {
+            res.setPiecesJointesWorkflow(current.getAttachments());
+        }
+    }
+
+    private FournisseurResponse buildDraftFournisseurFromWorkflow(
+            UUID frnId,
+            WorkflowInstanceEntity wf,
+            Map<String, Object> data,
+            WorkflowCurrentDataResponse current
+    ) {
+        return FournisseurResponse.builder()
+                .id(frnId)
+                .code(asString(data.get("code")))
+                .raisonSociale(asString(data.get("raisonSociale")))
+                .numeroContribuable(asString(data.get("numeroContribuable")))
+                .rccm(asString(data.get("rccm")))
+                .regimeFiscal(nonBlankOrDefault(asString(data.get("regimeFiscal")), "REEL"))
+                .specialite(asString(data.get("specialite")))
+                .adresse(asString(data.get("adresse")))
+                .telephone(asString(data.get("telephone")))
+                .email(asString(data.get("email")))
+                .banqueNom(asString(data.get("banqueNom")))
+                .compteBancaireRib(asString(data.get("compteBancaireRib")))
+                .agreeSodepa(false)
+                .actif(false)
+                .enCoursDeModification(true)
+                .workflowEnCours(wf != null)
+                .workflowInstanceId(wf != null ? wf.getId() : null)
+                .workflowStatut(wf != null && wf.getStatut() != null ? wf.getStatut().name() : "EN_COURS")
+                .workflowOperationType(current != null && current.getOperationType() != null ? current.getOperationType() : "CREATE")
+                .piecesJointesWorkflow(current != null ? current.getAttachments() : new ArrayList<>())
+                .build();
     }
 
     // ==========================================
     // EXPRESSIONS DE BESOINS (EB)
     // ==========================================
 
-    @Transactional(readOnly = true)
+    private static final List<String> EB_WORKFLOW_ENTITY_NAMES = List.of(
+            "EXPRESSION_BESOIN",
+            "EB",
+            ExpressionBesoinEntity.class.getSimpleName(),
+            ExpressionBesoinEntity.class.getName()
+    );
+
+    private static final List<StatutWorkflowInstance> ACTIVE_WORKFLOW_STATUTS = List.of(
+            StatutWorkflowInstance.EN_COURS,
+            StatutWorkflowInstance.SUSPENDU
+    );
+
+    @Transactional
     public List<ExpressionBesoinResponse> listerExpressionsBesoin() {
         securityService.checkPermission(Permissions.LIST_EXPRESSIONS);
         String scope = securityService.getScopeMaterializedPath();
@@ -195,26 +414,83 @@ public class AchatsService {
         } else {
             list = expressionBesoinRepository.findByMaterializedPathStartingWith(scope);
         }
-        return list.stream()
-                .map(ExpressionBesoinResponse::fromEntity)
-                .collect(Collectors.toList());
+
+        Map<UUID, WorkflowInstanceEntity> activeWorkflowsByEbId = findActiveEbWorkflowsById();
+        java.util.Set<UUID> materializedIds = new java.util.HashSet<>();
+        List<ExpressionBesoinResponse> responses = new ArrayList<>();
+
+        for (ExpressionBesoinEntity entity : list) {
+            materializedIds.add(entity.getId());
+            ExpressionBesoinResponse res = ExpressionBesoinResponse.fromEntity(entity);
+            WorkflowInstanceEntity activeWf = activeWorkflowsByEbId.get(entity.getId());
+            if (activeWf != null) {
+                enrichirAvecWorkflowActif(res, activeWf);
+            }
+            responses.add(res);
+        }
+
+        // Projets en cours de création (non encore persistés dans achat_expressions_besoin) depuis ClickHouse / Outbox
+        for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeWorkflowsByEbId.entrySet()) {
+            UUID ebId = entry.getKey();
+            if (materializedIds.contains(ebId)) {
+                continue;
+            }
+            WorkflowInstanceEntity wf = entry.getValue();
+            WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : new java.util.LinkedHashMap<>();
+            if (!matchesScope(scope, wf, data)) {
+                continue;
+            }
+            responses.add(buildDraftResponseFromWorkflow(ebId, wf, data, current));
+        }
+
+        responses.sort(java.util.Comparator.comparing(
+                ExpressionBesoinResponse::getDateCreation,
+                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        return responses;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ExpressionBesoinResponse obtenirExpressionBesoin(UUID id) {
         securityService.checkPermission(Permissions.VIEW_EXPRESSION);
-        ExpressionBesoinEntity eb = getEbOrThrow(id);
-        securityService.validateAccessToUnite(eb.getUniteOrganisationnelle(),
-                "Accès refusé à cette expression de besoin : hors de votre périmètre hiérarchique.");
-        return ExpressionBesoinResponse.fromEntity(eb);
+        Optional<ExpressionBesoinEntity> ebOpt = expressionBesoinRepository.findById(id);
+        Optional<WorkflowInstanceEntity> activeWfOpt = findActiveEbWorkflow(id);
+
+        if (ebOpt.isPresent()) {
+            ExpressionBesoinEntity eb = ebOpt.get();
+            securityService.validateAccessToUnite(eb.getUniteOrganisationnelle(),
+                    "Accès refusé à cette expression de besoin : hors de votre périmètre hiérarchique.");
+            ExpressionBesoinResponse res = ExpressionBesoinResponse.fromEntity(eb);
+            activeWfOpt.ifPresent(wf -> enrichirAvecWorkflowActif(res, wf));
+            return res;
+        }
+
+        if (activeWfOpt.isPresent()) {
+            WorkflowInstanceEntity wf = activeWfOpt.get();
+            WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : new java.util.LinkedHashMap<>();
+            UniteOrganisationnelleEntity unite = resolveUnite(wf, data);
+            if (unite != null) {
+                securityService.validateAccessToUnite(unite,
+                        "Accès refusé à cette expression de besoin : hors de votre périmètre hiérarchique.");
+            }
+            return buildDraftResponseFromWorkflow(id, wf, data, current);
+        }
+
+        throw new IllegalArgumentException(GlobalConstants.NEED_EXPRESSION_NOT_FOUND);
     }
 
     @Transactional
     public ExpressionBesoinResponse creerExpressionBesoin(CreerExpressionBesoinRequest request) {
         securityService.checkPermission(Permissions.CREATE_EXPRESSION);
-        long count = expressionBesoinRepository.count() + 1;
+        long activeCount = findActiveEbWorkflowsById().size();
+        long count = expressionBesoinRepository.count() + activeCount + 1;
         int annee = LocalDate.now().getYear();
         String numero = String.format("EB-%d-%04d", annee, count);
+        while (expressionBesoinRepository.findByNumero(numero).isPresent()) {
+            count++;
+            numero = String.format("EB-%d-%04d", annee, count);
+        }
         UUID id = UUID.randomUUID();
 
         // Résolution de l'unité de rattachement depuis l'affectation active si omise
@@ -234,57 +510,84 @@ public class AchatsService {
             structureNom = unite.getIntitule();
         }
 
+        UserData ud = securityService.getCurrentUserData();
         String demandeurNom = request.getDemandeurNom();
         if (demandeurNom == null) {
-            UserData ud = securityService.getCurrentUserData();
             demandeurNom = ud.name();
         }
 
-        Map<String, Object> payload = new java.util.HashMap<>(objectMapper.convertValue(request, Map.class));
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(objectMapper.convertValue(request, Map.class));
         payload.put("id", id.toString());
         payload.put("numero", numero);
         payload.put("structureNom", structureNom);
         payload.put("demandeurNom", demandeurNom);
+        if (ud.userId() != null && payload.get("demandeurId") == null) {
+            employeRepository.findByUtilisateurId(UUID.fromString(ud.userId()))
+                    .ifPresent(emp -> payload.put("demandeurId", emp.getId().toString()));
+        }
         if (unite != null) {
             payload.put("uniteOrganisationnelleId", unite.getId().toString());
         }
 
-        UUID uuid = workflowService.submitChange(
+        // Soumission sans aucune écriture ni auto-validation anticipée dans achat_expressions_besoin :
+        // l'état initial v1 est stocké de façon synchrone dans ClickHouse (ou Outbox PostgreSQL).
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.EXPRESSION_BESOIN,
                 id.toString(),
                 payload,
                 MakerCheckerOperationType.CREATE
         );
-        log.info("Expression de besoin soumise au Maker-Checker: {} (Ticket: {})", numero, uuid);
+        log.info("Expression de besoin soumise au workflow (ClickHouse State Store): {} (Ticket: {})", numero, requestId);
 
-        if (securityService.canValidate(Permissions.VALIDATE_EXPRESSION)) {
-            log.info("Utilisateur habilité, validation automatique de l'EB {}", numero);
-            try {
-                validateOrRejectExpressionBesoin(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique de l'EB {}: {}", numero, e.getMessage());
+        WorkflowInstanceEntity activeWf = findActiveEbWorkflow(id).orElse(null);
+        WorkflowCurrentDataResponse current = activeWf != null ? workflowStateService.getCurrentData(activeWf) : null;
+        return buildDraftResponseFromWorkflow(id, activeWf, payload, current);
+    }
+
+    @Transactional
+    public ExpressionBesoinResponse modifierExpressionBesoin(UUID id, CreerExpressionBesoinRequest request) {
+        securityService.checkPermission(Permissions.UPDATE_EXPRESSION);
+        ExpressionBesoinEntity existing = getEbOrThrow(id);
+        securityService.validateAccessToUnite(existing.getUniteOrganisationnelle(),
+                "Accès refusé pour modifier cette expression de besoin.");
+
+        if (findActiveEbWorkflow(id).isPresent()) {
+            throw new ConflitMetierException("Une demande de modification est déjà en cours de validation pour cette expression de besoin.");
+        }
+
+        UniteOrganisationnelleEntity targetUnite = existing.getUniteOrganisationnelle();
+        if (request.getUniteOrganisationnelleId() != null) {
+            targetUnite = uniteOrganisationnelleRepository.findById(request.getUniteOrganisationnelleId()).orElse(targetUnite);
+            if (targetUnite != null) {
+                securityService.validateAccessToUnite(targetUnite, Permissions.UPDATE_EXPRESSION.name());
             }
         }
 
-        final String finalStructureNom = structureNom;
-        final String finalDemandeurNom = demandeurNom;
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(objectMapper.convertValue(request, Map.class));
+        payload.put("id", existing.getId().toString());
+        payload.put("numero", existing.getNumero());
+        if (payload.get("demandeurNom") == null) {
+            payload.put("demandeurNom", existing.getDemandeurNom());
+        }
+        if (payload.get("structureNom") == null) {
+            payload.put("structureNom", targetUnite != null ? targetUnite.getIntitule() : existing.getStructureNom());
+        }
+        if (targetUnite != null) {
+            payload.put("uniteOrganisationnelleId", targetUnite.getId().toString());
+        }
 
-        return expressionBesoinRepository.findById(id)
-                .map(ExpressionBesoinResponse::fromEntity)
-                .orElseGet(() -> ExpressionBesoinResponse.builder()
-                        .id(id)
-                        .numero(numero)
-                        .demandeurNom(finalDemandeurNom)
-                        .structureNom(finalStructureNom)
-                        .motif(request.getMotif())
-                        .dateExpression(LocalDate.now())
-                        .statut(StatutExpressionBesoin.BROUILLON)
-                        .build());
+        // L'entité existante en PostgreSQL reste intacte tant que le workflow UPDATE n'est pas approuvé jusqu'au bout.
+        UUID requestId = workflowService.submitChange(
+                MakerCheckerEntityName.EXPRESSION_BESOIN,
+                existing.getId().toString(),
+                payload,
+                MakerCheckerOperationType.UPDATE
+        );
+        log.info("Modification de l'EB {} soumise au workflow (Ticket: {})", existing.getNumero(), requestId);
+
+        ExpressionBesoinResponse response = ExpressionBesoinResponse.fromEntity(existing);
+        findActiveEbWorkflow(existing.getId()).ifPresent(wf -> enrichirAvecWorkflowActif(response, wf));
+        return response;
     }
 
     @Transactional
@@ -316,54 +619,140 @@ public class AchatsService {
         workflowService.validate(checkerOutput.id(), checkerOutput.createdAt(), checkerOutput.expiredAt());
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
+            // Rejet : aucune création ni altération dans achat_expressions_besoin PostgreSQL
             workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
-            log.info("Expression de besoin rejetée par le Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+            log.info("Expression de besoin rejetée par le Checker {} (zéro persistance métier Postgres). Ticket: {}",
+                    checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID ebId = UUID.fromString(checkerOutput.entityPk());
             Map<String, Object> payload = checkerOutput.payload();
-            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
-                creationExpressionBesoin(payload, ebId);
-            }
+            materialiserExpressionBesoinFinale(ebId, payload);
             workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
-            log.info("Expression de besoin approuvée par le Checker {}. Ticket: {}, PK: {}", checkerId, checkerOutput.id(), ebId);
+            log.info("Expression de besoin approuvée et matérialisée dans PostgreSQL. Ticket: {}, PK: {}", checkerOutput.id(), ebId);
         }
     }
 
-    private ExpressionBesoinEntity creationExpressionBesoin(Map<String, Object> payload, UUID ebId) {
-        UniteOrganisationnelleEntity unite = null;
-        Object uIdObj = payload.get("uniteOrganisationnelleId");
-        if (uIdObj != null) {
-            unite = uniteOrganisationnelleRepository.findById(UUID.fromString(uIdObj.toString())).orElse(null);
+    @Transactional
+    public void finaliserExpressionBesoinDepuisWorkflow(UUID ebId, Map<String, Object> finalData) {
+        if (ebId == null || finalData == null || finalData.isEmpty()) {
+            return;
+        }
+        materialiserExpressionBesoinFinale(ebId, finalData);
+    }
+
+    private void materialiserExpressionBesoinFinale(UUID ebId, Map<String, Object> payload) {
+        Map<String, Object> safePayload = payload != null ? payload : new java.util.LinkedHashMap<>();
+        Optional<ExpressionBesoinEntity> existingOpt = expressionBesoinRepository.findById(ebId);
+        if (existingOpt.isPresent()) {
+            miseAJourExpressionBesoin(existingOpt.get(), safePayload, StatutExpressionBesoin.APPROUVEE_DG);
+        } else {
+            creationExpressionBesoin(safePayload, ebId, StatutExpressionBesoin.APPROUVEE_DG);
+        }
+    }
+
+    private ExpressionBesoinEntity creationExpressionBesoin(
+            Map<String, Object> payload, UUID ebId, StatutExpressionBesoin initialStatut) {
+        UniteOrganisationnelleEntity unite = resolveUniteFromPayload(payload);
+
+        String numero = asString(payload.get("numero"));
+        if (numero == null || numero.isBlank() || expressionBesoinRepository.findByNumero(numero).isPresent()) {
+            int annee = LocalDate.now().getYear();
+            long seq = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_expression_besoin", expressionBesoinRepository::count);
+            numero = String.format("EB-%d-%04d", annee, seq);
+            while (expressionBesoinRepository.findByNumero(numero).isPresent()) {
+                seq++;
+                numero = String.format("EB-%d-%04d", annee, seq);
+            }
         }
 
         ExpressionBesoinEntity eb = ExpressionBesoinEntity.builder()
                 .id(ebId)
-                .numero((String) payload.get("numero"))
-                .demandeurNom((String) payload.get("demandeurNom"))
-                .structureNom((String) payload.get("structureNom"))
-                .motif((String) payload.get("motif"))
+                .numero(numero)
+                .demandeurNom(nonBlankOrDefault(asString(payload.get("demandeurNom")), "SODEPA"))
+                .structureNom(asString(payload.get("structureNom")))
+                .motif(nonBlankOrDefault(asString(payload.get("motif")), "Expression de besoin validée par workflow"))
                 .dateExpression(LocalDate.now())
-                .stockDisponible(false)
-                .attestationCarenceEtablie(true)
-                .budgetDisponible(true)
-                .ligneBudgetaireImputation((String) payload.get("ligneBudgetaireImputation"))
-                .statut(StatutExpressionBesoin.BROUILLON)
+                .stockDisponible(asBoolean(payload.get("stockDisponible"), false))
+                .attestationCarenceEtablie(asBoolean(payload.get("attestationCarenceEtablie"), true))
+                .budgetDisponible(asBoolean(payload.get("budgetDisponible"), true))
+                .ligneBudgetaireImputation(asString(payload.get("ligneBudgetaireImputation")))
+                .statut(initialStatut)
                 .dateCreation(Instant.now())
                 .lignes(new ArrayList<>())
                 .uniteOrganisationnelle(unite)
                 .build();
 
+        applyEmployeAndLignes(eb, payload, true);
+        ExpressionBesoinEntity saved = expressionBesoinRepository.save(eb);
+        log.info("Expression de besoin créée en base PostgreSQL à l'approbation finale: {} (montant={})",
+                saved.getNumero(), saved.getMontantEstimeTotal());
+        return saved;
+    }
+
+    private ExpressionBesoinEntity miseAJourExpressionBesoin(
+            ExpressionBesoinEntity eb, Map<String, Object> payload, StatutExpressionBesoin finalStatut) {
+        if (payload.containsKey("motif") && asString(payload.get("motif")) != null) {
+            eb.setMotif(asString(payload.get("motif")));
+        }
+        if (payload.containsKey("demandeurNom") && asString(payload.get("demandeurNom")) != null) {
+            eb.setDemandeurNom(asString(payload.get("demandeurNom")));
+        }
+        if (payload.containsKey("structureNom") && asString(payload.get("structureNom")) != null) {
+            eb.setStructureNom(asString(payload.get("structureNom")));
+        }
+        if (payload.containsKey("ligneBudgetaireImputation")) {
+            eb.setLigneBudgetaireImputation(asString(payload.get("ligneBudgetaireImputation")));
+        }
+        if (payload.containsKey("stockDisponible") && payload.get("stockDisponible") != null) {
+            eb.setStockDisponible(asBoolean(payload.get("stockDisponible"), eb.isStockDisponible()));
+        }
+        if (payload.containsKey("attestationCarenceEtablie") && payload.get("attestationCarenceEtablie") != null) {
+            eb.setAttestationCarenceEtablie(asBoolean(payload.get("attestationCarenceEtablie"), eb.isAttestationCarenceEtablie()));
+        }
+        if (payload.containsKey("budgetDisponible") && payload.get("budgetDisponible") != null) {
+            eb.setBudgetDisponible(asBoolean(payload.get("budgetDisponible"), eb.isBudgetDisponible()));
+        }
+        if (payload.containsKey("uniteOrganisationnelleId") && payload.get("uniteOrganisationnelleId") != null) {
+            UniteOrganisationnelleEntity unite = resolveUniteFromPayload(payload);
+            if (unite != null) {
+                eb.setUniteOrganisationnelle(unite);
+            }
+        }
+        applyEmployeAndLignes(eb, payload, payload.containsKey("lignes"));
+        eb.setStatut(finalStatut);
+
+        ExpressionBesoinEntity saved = expressionBesoinRepository.save(eb);
+        log.info("Expression de besoin {} mise à jour en base PostgreSQL à l'approbation finale (montant={})",
+                saved.getNumero(), saved.getMontantEstimeTotal());
+        return saved;
+    }
+
+    private void applyEmployeAndLignes(ExpressionBesoinEntity eb, Map<String, Object> payload, boolean applyLignes) {
         Object demandeurIdObj = payload.get("demandeurId");
         if (demandeurIdObj != null) {
-            employeRepository.findById(UUID.fromString(demandeurIdObj.toString())).ifPresent(eb::setDemandeur);
+            try {
+                employeRepository.findById(UUID.fromString(demandeurIdObj.toString())).ifPresent(eb::setDemandeur);
+            } catch (IllegalArgumentException ignored) {
+            }
         }
 
-        BigDecimal totalEstime = BigDecimal.ZERO;
+        if (!applyLignes) {
+            return;
+        }
         Object lignesObj = payload.get("lignes");
         if (lignesObj instanceof List<?> rawList) {
+            if (eb.getLignes() == null) {
+                eb.setLignes(new ArrayList<>());
+            } else {
+                eb.getLignes().clear();
+            }
+            BigDecimal totalEstime = BigDecimal.ZERO;
             int ordre = 1;
             for (Object item : rawList) {
-                CreerExpressionBesoinRequest.LigneExpressionBesoinRequest l = objectMapper.convertValue(item, CreerExpressionBesoinRequest.LigneExpressionBesoinRequest.class);
+                CreerExpressionBesoinRequest.LigneExpressionBesoinRequest l = toLigneRequest(item);
+                if (l == null || l.getQuantite() == null) {
+                    continue;
+                }
                 BigDecimal pu = l.getPrixUnitaireEstime() != null ? l.getPrixUnitaireEstime() : BigDecimal.ZERO;
                 BigDecimal totalLigne = pu.multiply(l.getQuantite()).setScale(2, RoundingMode.HALF_UP);
                 totalEstime = totalEstime.add(totalLigne);
@@ -381,14 +770,212 @@ public class AchatsService {
                         .build();
                 eb.getLignes().add(ligneEntity);
             }
+            eb.setMontantEstimeTotal(totalEstime);
         }
-        eb.setMontantEstimeTotal(totalEstime);
+    }
 
-        ExpressionBesoinEntity saved = expressionBesoinRepository.save(eb);
-        log.info("Expression de besoin matérialisée en base: {} pour un montant estimé de {}", saved.getNumero(), saved.getMontantEstimeTotal());
+    private CreerExpressionBesoinRequest.LigneExpressionBesoinRequest toLigneRequest(Object item) {
+        if (item == null) {
+            return null;
+        }
+        if (item instanceof CreerExpressionBesoinRequest.LigneExpressionBesoinRequest req) {
+            return req;
+        }
+        if (item instanceof Map<?, ?> map) {
+            return CreerExpressionBesoinRequest.LigneExpressionBesoinRequest.builder()
+                    .designation(asString(map.get("designation")))
+                    .specificationsTechniques(asString(map.get("specificationsTechniques")))
+                    .quantite(asBigDecimal(map.get("quantite")))
+                    .uniteMesure(asString(map.get("uniteMesure")))
+                    .prixUnitaireEstime(asBigDecimal(map.get("prixUnitaireEstime")))
+                    .build();
+        }
+        return objectMapper.convertValue(item, CreerExpressionBesoinRequest.LigneExpressionBesoinRequest.class);
+    }
 
+    private Map<UUID, WorkflowInstanceEntity> findActiveEbWorkflowsById() {
+        List<WorkflowInstanceEntity> active = workflowInstanceRepository
+                .findByEntityNameInAndStatutIn(EB_WORKFLOW_ENTITY_NAMES, ACTIVE_WORKFLOW_STATUTS);
+        Map<UUID, WorkflowInstanceEntity> map = new java.util.LinkedHashMap<>();
+        for (WorkflowInstanceEntity wf : active) {
+            UUID ebId = parseUuidSafe(wf.getEntityId());
+            if (ebId == null) {
+                continue;
+            }
+            WorkflowInstanceEntity existing = map.get(ebId);
+            if (existing == null || (wf.getDateInitiation() != null && existing.getDateInitiation() != null
+                    && wf.getDateInitiation().isAfter(existing.getDateInitiation()))) {
+                map.put(ebId, wf);
+            }
+        }
+        return map;
+    }
 
-        return saved;
+    private Optional<WorkflowInstanceEntity> findActiveEbWorkflow(UUID ebId) {
+        if (ebId == null) {
+            return Optional.empty();
+        }
+        return workflowInstanceRepository.findFirstByEntityNameInAndEntityIdAndStatutInOrderByDateInitiationDesc(
+                EB_WORKFLOW_ENTITY_NAMES, ebId.toString(), ACTIVE_WORKFLOW_STATUTS);
+    }
+
+    private void enrichirAvecWorkflowActif(ExpressionBesoinResponse res, WorkflowInstanceEntity wf) {
+        if (res == null || wf == null) {
+            return;
+        }
+        res.setEnCoursDeModification(true);
+        res.setWorkflowEnCours(true);
+        res.setWorkflowInstanceId(wf.getId());
+        res.setWorkflowStatut(wf.getStatut() != null ? wf.getStatut().name() : null);
+        WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+        res.setWorkflowOperationType(current.getOperationType() != null ? current.getOperationType() : "UPDATE");
+        if (current.getAttachments() != null && !current.getAttachments().isEmpty()) {
+            res.setPiecesJointesWorkflow(current.getAttachments());
+        }
+    }
+
+    private ExpressionBesoinResponse buildDraftResponseFromWorkflow(
+            UUID ebId,
+            WorkflowInstanceEntity wf,
+            Map<String, Object> data,
+            WorkflowCurrentDataResponse current
+    ) {
+        UniteOrganisationnelleEntity unite = resolveUnite(wf, data);
+        List<ExpressionBesoinResponse.LigneExpressionBesoinResponse> lignesResp = new ArrayList<>();
+        BigDecimal totalEstime = BigDecimal.ZERO;
+        Object lignesObj = data.get("lignes");
+        if (lignesObj instanceof List<?> rawList) {
+            int ordre = 1;
+            for (Object item : rawList) {
+                CreerExpressionBesoinRequest.LigneExpressionBesoinRequest l = toLigneRequest(item);
+                if (l == null || l.getQuantite() == null) {
+                    continue;
+                }
+                BigDecimal pu = l.getPrixUnitaireEstime() != null ? l.getPrixUnitaireEstime() : BigDecimal.ZERO;
+                BigDecimal totalLigne = pu.multiply(l.getQuantite()).setScale(2, RoundingMode.HALF_UP);
+                totalEstime = totalEstime.add(totalLigne);
+                lignesResp.add(ExpressionBesoinResponse.LigneExpressionBesoinResponse.builder()
+                        .designation(l.getDesignation())
+                        .specificationsTechniques(l.getSpecificationsTechniques())
+                        .quantite(l.getQuantite())
+                        .uniteMesure(l.getUniteMesure() != null ? l.getUniteMesure() : "U")
+                        .prixUnitaireEstime(pu)
+                        .montantTotalEstime(totalLigne)
+                        .ordre(ordre++)
+                        .build());
+            }
+        }
+
+        UUID demandeurId = parseUuidSafe(asString(data.get("demandeurId")));
+        if (demandeurId == null && wf != null && wf.getInitiateurEmploye() != null) {
+            demandeurId = wf.getInitiateurEmploye().getId();
+        }
+        String demandeurNom = asString(data.get("demandeurNom"));
+        if (demandeurNom == null && wf != null && wf.getInitiateurEmploye() != null) {
+            demandeurNom = wf.getInitiateurEmploye().getPrenom() + " " + wf.getInitiateurEmploye().getNom();
+        }
+        String structureNom = asString(data.get("structureNom"));
+        if (structureNom == null && unite != null) {
+            structureNom = unite.getIntitule();
+        }
+
+        return ExpressionBesoinResponse.builder()
+                .id(ebId)
+                .numero(asString(data.get("numero")))
+                .demandeurId(demandeurId)
+                .demandeurNom(demandeurNom)
+                .uniteOrganisationnelleId(unite != null ? unite.getId() : parseUuidSafe(asString(data.get("uniteOrganisationnelleId"))))
+                .structureNom(structureNom)
+                .motif(asString(data.get("motif")))
+                .dateExpression(LocalDate.now())
+                .montantEstimeTotal(totalEstime)
+                .stockDisponible(asBoolean(data.get("stockDisponible"), false))
+                .attestationCarenceEtablie(asBoolean(data.get("attestationCarenceEtablie"), true))
+                .budgetDisponible(asBoolean(data.get("budgetDisponible"), true))
+                .ligneBudgetaireImputation(asString(data.get("ligneBudgetaireImputation")))
+                .statut(StatutExpressionBesoin.BROUILLON)
+                .dateCreation(wf != null && wf.getDateInitiation() != null ? wf.getDateInitiation() : Instant.now())
+                .enCoursDeModification(true)
+                .workflowEnCours(wf != null)
+                .workflowInstanceId(wf != null ? wf.getId() : null)
+                .workflowStatut(wf != null && wf.getStatut() != null ? wf.getStatut().name() : "EN_COURS")
+                .workflowOperationType(current != null && current.getOperationType() != null ? current.getOperationType() : "CREATE")
+                .piecesJointesWorkflow(current != null ? current.getAttachments() : new ArrayList<>())
+                .lignes(lignesResp)
+                .build();
+    }
+
+    private UniteOrganisationnelleEntity resolveUniteFromPayload(Map<String, Object> payload) {
+        if (payload == null) {
+            return null;
+        }
+        UUID uId = parseUuidSafe(asString(payload.get("uniteOrganisationnelleId")));
+        return uId != null ? uniteOrganisationnelleRepository.findById(uId).orElse(null) : null;
+    }
+
+    private UniteOrganisationnelleEntity resolveUnite(WorkflowInstanceEntity wf, Map<String, Object> data) {
+        UniteOrganisationnelleEntity unite = resolveUniteFromPayload(data);
+        if (unite == null && wf != null) {
+            unite = wf.getUniteOrganisationnelle();
+        }
+        return unite;
+    }
+
+    private boolean matchesScope(String scope, WorkflowInstanceEntity wf, Map<String, Object> data) {
+        if (scope == null) {
+            return true;
+        }
+        UniteOrganisationnelleEntity unite = resolveUnite(wf, data);
+        if (unite == null || unite.getMaterializedPath() == null) {
+            return false;
+        }
+        return unite.getMaterializedPath().startsWith(scope);
+    }
+
+    private UUID parseUuidSafe(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private String asString(Object val) {
+        return val != null ? val.toString() : null;
+    }
+
+    private String nonBlankOrDefault(String val, String fallback) {
+        return (val != null && !val.isBlank()) ? val : fallback;
+    }
+
+    private boolean asBoolean(Object val, boolean fallback) {
+        if (val == null) {
+            return fallback;
+        }
+        if (val instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(val.toString());
+    }
+
+    private BigDecimal asBigDecimal(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (val instanceof Number n) {
+            return new BigDecimal(n.toString());
+        }
+        try {
+            return new BigDecimal(val.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private ExpressionBesoinEntity getEbOrThrow(UUID id) {
@@ -475,7 +1062,7 @@ public class AchatsService {
         boolean cipmRequis = (procedure == TypeProcedureAchat.MARCHE_PUBLIC_CIPM || procedure == TypeProcedureAchat.LETTRE_COMMANDE);
 
         int annee = LocalDate.now().getYear();
-        long count = marcheDossierRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_marche_dossier", marcheDossierRepository::count);
         String numeroDossier = String.format("%s-%d-%04d", procedure.getPrefix(), annee, count);
         UUID id = UUID.randomUUID();
 
@@ -506,20 +1093,6 @@ public class AchatsService {
                 MakerCheckerOperationType.CREATE
         );
         log.info("Dossier de commande soumis au Maker-Checker: {} (Ticket: {})", numeroDossier, uuid);
-
-        if (securityService.canValidate(Permissions.VALIDATE_FOLDER)) {
-            log.info("Utilisateur habilité, validation automatique du dossier {}", numeroDossier);
-            try {
-                validateOrRejectMarcheDossier(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique du dossier {}: {}", numeroDossier, e.getMessage());
-            }
-        }
 
         final BigDecimal finalTotalHt = totalHt;
         final BigDecimal finalTotalTva = totalTva;
@@ -706,14 +1279,7 @@ public class AchatsService {
         );
         log.info("Réception des proformas soumise au Maker-Checker pour dossier {} (Ticket: {})", dossier.getNumeroDossier(), uuid);
 
-        if (securityService.canValidate(Permissions.UPDATE_FOLDER)) {
-            dossier.setProformasObtenuesCount(count);
-            dossier.setStatut(StatutMarcheDossier.SELECTION_PRESTATAIRE);
-            dossier = marcheDossierRepository.save(dossier);
-            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation proformas", securityService.getUtilsService().getCurrentUserData().userId());
-        }
-
-        return MarcheDossierResponse.fromEntity(dossier);
+        return MarcheDossierResponse.fromEntity(marcheDossierRepository.findById(dossierId).orElse(dossier));
     }
 
     @Transactional
@@ -739,19 +1305,12 @@ public class AchatsService {
         );
         log.info("Engagement budgétaire soumis au Maker-Checker pour dossier {} (Ticket: {})", dossier.getNumeroDossier(), uuid);
 
-        if (securityService.canValidate(Permissions.ENGAGE_BUDGET)) {
-            if (ligneBudgetaire != null && !ligneBudgetaire.isBlank()) {
-                dossier.setLigneBudgetaireCode(ligneBudgetaire);
-            }
-            dossier.setStatut(StatutMarcheDossier.ENGAGE_BUDGET);
-            dossier = marcheDossierRepository.save(dossier);
-            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation engagement budget", securityService.getUtilsService().getCurrentUserData().userId());
-        }
-        return MarcheDossierResponse.fromEntity(dossier);
+        return MarcheDossierResponse.fromEntity(marcheDossierRepository.findById(dossierId).orElse(dossier));
     }
 
     @Transactional
     public MarcheDossierResponse signerDG(UUID dossierId) {
+        securityService.checkPermission(Permissions.VALIDATE_FOLDER);
         MarcheDossierEntity dossier = getDossierOrThrow(dossierId);
         dossier.setStatut(StatutMarcheDossier.SIGNE);
         return MarcheDossierResponse.fromEntity(marcheDossierRepository.save(dossier));
@@ -784,15 +1343,7 @@ public class AchatsService {
         );
         log.info("Notification fournisseur soumise au Maker-Checker pour dossier {} (Ticket: {})", dossier.getNumeroDossier(), uuid);
 
-        if (securityService.canValidate(Permissions.NOTIFY_PROVIDER)) {
-            dossier.setDateNotification(dateNotif);
-            dossier.setDelaiLivraisonJours(delai);
-            dossier.setDateLimiteLivraison(dateNotif.plusDays(delai));
-            dossier.setStatut(StatutMarcheDossier.NOTIFIE);
-            dossier = marcheDossierRepository.save(dossier);
-            workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Auto-validation notification fournisseur", securityService.getUtilsService().getCurrentUserData().userId());
-        }
-        return MarcheDossierResponse.fromEntity(dossier);
+        return MarcheDossierResponse.fromEntity(marcheDossierRepository.findById(dossierId).orElse(dossier));
     }
 
     private void updateMarcheDossier(Map<String, Object> payload, UUID dossierId) {
@@ -861,7 +1412,7 @@ public class AchatsService {
                     Permissions.CREATE_RECEPTION.name());
         }
 
-        long count = marcheReceptionPvRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_reception_pv", marcheReceptionPvRepository::count);
         int annee = LocalDate.now().getYear();
         String numeroPv = String.format(GlobalConstants.PV_REC, annee, count);
         UUID id = UUID.randomUUID();
@@ -886,19 +1437,6 @@ public class AchatsService {
                 MakerCheckerOperationType.CREATE
         );
         log.info("Procès-verbal de réception soumis au pattern Maker-Checker. PV {} pour le dossier {}", numeroPv, dossier.getNumeroDossier());
-        if(securityService.canValidate(Permissions.VALIDATE_RECEPTION)) {
-            log.info("Utilisateur admin, validation automatique du PV {} pour le dossier {}", numeroPv, dossier.getNumeroDossier());
-            try {
-                validateOrRejectPvReception(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur qui a creer",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique du PV {}: {}", numeroPv, e.getMessage());
-            }
-        }
         return uuid;
     }
 
@@ -993,20 +1531,6 @@ public class AchatsService {
                 MakerCheckerOperationType.UPDATE
         );
         log.info("Liquidation de facture soumise au Maker-Checker: PV {} (Ticket: {})", pv.getNumeroPv(), uuid);
-
-        if (securityService.canValidate(Permissions.VALIDATE_LIQUIDATION)) {
-            log.info("Utilisateur habilité, validation automatique de la liquidation du PV {}", pv.getNumeroPv());
-            try {
-                validateOrRejectLiquidationFacture(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur liquidateur",
-                        MakerCheckerOperationType.UPDATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur lors de la validation automatique de la liquidation du PV {}: {}", pv.getNumeroPv(), e.getMessage());
-            }
-        }
 
         return marcheReceptionPvRepository.findById(receptionPvId)
                 .map(MarcheReceptionPvResponse::fromEntity)

@@ -1,5 +1,6 @@
 package com.sodepa.erp.comptabilite.generale.application.outputs;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -9,6 +10,20 @@ public record BankSmartOutput(
         UUID id,
         String code,
         String nom,
-        String logo
+        String logo,
+        boolean enCoursDeModification,
+        boolean workflowEnCours,
+        UUID workflowInstanceId,
+        String workflowStatut,
+        String workflowOperationType,
+        List<String> piecesJointesWorkflow
 ) {
+    public BankSmartOutput(
+            UUID id,
+            String code,
+            String nom,
+            String logo
+    ) {
+        this(id, code, nom, logo, false, false, null, null, null, null);
+    }
 }

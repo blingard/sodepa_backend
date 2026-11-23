@@ -104,6 +104,82 @@ public class UtilsService {
                 "Habilitation requise pour cette opération : " + permissions.name());
     }
 
+    /**
+     * Exige au moins une des habilitations fournies (logique OU).
+     */
+    public void hasAnyPermission(Permissions... requiredPermissions) {
+        CurrentUserAuthenticationToken currentUserAuthenticationToken = getCurrentUser();
+        UserData ud = currentUserAuthenticationToken.getUserData().orElseThrow(
+                () -> new NonAuthentifieException("Profil utilisateur introuvable."));
+        if (ud.isAdmin() || ud.permissions().size() == Permissions.values().length) {
+            return;
+        }
+        for (Permissions p : requiredPermissions) {
+            if (p != null && ud.permissions().contains(p)) {
+                return;
+            }
+        }
+        throw new AccesRefuseException(
+                "Habilitation insuffisante pour cette opération.");
+    }
+
+    /**
+     * Vérifie de façon non-bloquante si l'utilisateur authentifié détient au moins un rôle métier
+     * (ADMIN, DAF, DG, DRH) ou l'une des permissions fournies.
+     */
+    public boolean hasAnyRoleOrPermission(java.util.Collection<String> roles, Permissions... requiredPermissions) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!(authentication instanceof CurrentUserAuthenticationToken currentUserAuth)) {
+            return false;
+        }
+        UserData ud = currentUserAuth.getUserData().orElse(null);
+        if (ud == null) {
+            return false;
+        }
+        if (ud.isAdmin() || (ud.permissions() != null && ud.permissions().size() == Permissions.values().length)) {
+            return true;
+        }
+        if (roles != null) {
+            for (String role : roles) {
+                if (role == null) {
+                    continue;
+                }
+                String upper = role.trim().toUpperCase(java.util.Locale.ROOT);
+                if ("DAF".equals(upper) && ud.isDaf()) {
+                    return true;
+                }
+                if ("DG".equals(upper) && ud.isDg()) {
+                    return true;
+                }
+                String expectedAuthority = upper.startsWith("ROLE_") ? upper : "ROLE_" + upper;
+                if (authentication.getAuthorities() != null
+                        && authentication.getAuthorities().stream().anyMatch(a -> expectedAuthority.equalsIgnoreCase(a.getAuthority()))) {
+                    return true;
+                }
+            }
+        }
+        if (ud.permissions() != null && requiredPermissions != null) {
+            for (Permissions p : requiredPermissions) {
+                if (p != null && ud.permissions().contains(p)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Retourne l'identifiant UUID de l'utilisateur authentifié, ou {@code null} si absent (contexte batch/test).
+     */
+    public java.util.UUID getCurrentUserIdOrNull() {
+        try {
+            UserData ud = getCurrentUserData();
+            return ud != null && ud.userId() != null ? java.util.UUID.fromString(ud.userId()) : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     /** Absence ou invalidité du contexte d'authentification. */
     private static class NonAuthentifieException
             extends com.sodepa.erp.share.erreurs.ApiException {

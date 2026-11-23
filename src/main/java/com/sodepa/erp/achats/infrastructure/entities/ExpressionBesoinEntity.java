@@ -145,4 +145,9 @@ public class ExpressionBesoinEntity {
     @OrderBy("ordre ASC")
     @Builder.Default
     private List<ExpressionBesoinLigneEntity> lignes = new ArrayList<>();
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

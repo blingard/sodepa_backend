@@ -19,4 +19,9 @@ public class DeleteSessionUseCase implements UseCase<String, Void> {
         authenticationAdapter.deleteSession(sessionId);
         return null;
     }
+
+    public Void executeForUser(String iamId, String sessionId) {
+        authenticationAdapter.deleteSessionForUser(iamId, sessionId);
+        return null;
+    }
 }

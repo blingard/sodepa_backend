@@ -18,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -45,6 +46,7 @@ public class RapprochementRestController {
      * @param valide restreint aux relevés rapprochés ou non, facultatif
      */
     @GetMapping("/releves")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('LIST_RELEVE_BANCAIRE', 'LIST_ALL_BANKS', 'VIEW_ECRITURE')")
     public PageRecord<ReleveBancaireOutput> listerReleves(
             @PageableDefault Pageable pageable,
             @RequestParam(required = false) UUID banqueId,
@@ -57,11 +59,13 @@ public class RapprochementRestController {
      * Consulte un relevé et ses lignes.
      */
     @GetMapping("/releves/{releveId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('LIST_RELEVE_BANCAIRE', 'LIST_ALL_BANKS', 'VIEW_ECRITURE')")
     public ReleveBancaireOutput getReleve(@PathVariable UUID releveId) {
         return getReleveByIdUseCase.execute(releveId);
     }
 
     @PostMapping("/manuel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_RELEVE_BANCAIRE', 'INIT_CREATE_ECRITURE')")
     public ReleveBancaireOutput saisirReleveManuel(@RequestBody @Valid ReleveManuelRequest request) {
         ReleveManuelInput input = new ReleveManuelInput(
                 request.banqueId(),
@@ -76,6 +80,7 @@ public class RapprochementRestController {
     }
 
     @PostMapping("/synchroniser")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_RELEVE_BANCAIRE', 'INIT_UPDATE_RELEVE_BANCAIRE', 'VALIDATE_OR_REJECT_RELEVE_BANCAIRE')")
     public ReleveBancaireOutput synchroniserReleveAutomatique(@RequestBody @Valid SyncRequest request) {
         SyncInput input = new SyncInput(
                 request.banqueId(),
@@ -86,6 +91,7 @@ public class RapprochementRestController {
     }
 
     @PostMapping("/{releveId}/rapprocher")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_OR_REJECT_RELEVE_BANCAIRE', 'INIT_UPDATE_RELEVE_BANCAIRE', 'INIT_CREATE_ECRITURE')")
     public Integer effectuerRapprochementAutomatique(
             @PathVariable UUID releveId,
             @RequestParam String compteBanqueCode) {

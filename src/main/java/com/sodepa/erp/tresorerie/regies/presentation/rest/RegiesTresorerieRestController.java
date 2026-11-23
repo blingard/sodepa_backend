@@ -17,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,18 +36,21 @@ public class RegiesTresorerieRestController {
     private final RegiesTresorerieService regiesService;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_APPROVISIONNEMENT', 'VALIDATE_APPROVISIONNEMENT', 'UPDATE_APPROVISIONNEMENT', 'CREATE_DEPENSE_REGIE', 'VALIDATE_DEPENSE_REGIE', 'VIEW_BUDGET')")
     @Operation(summary = "Lister les caisses de régie des ranches et abattoirs")
     public ResponseEntity<List<TresorerieRegieResponse>> listerRegies() {
         return ResponseEntity.ok(regiesService.listerRegies());
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_APPROVISIONNEMENT', 'VALIDATE_APPROVISIONNEMENT', 'UPDATE_APPROVISIONNEMENT', 'CREATE_DEPENSE_REGIE', 'VALIDATE_DEPENSE_REGIE', 'VIEW_BUDGET')")
     @Operation(summary = "Consulter le détail et le solde d'une régie")
     public ResponseEntity<TresorerieRegieResponse> obtenirRegie(@PathVariable UUID id) {
         return ResponseEntity.ok(regiesService.obtenirRegie(id));
     }
 
     @GetMapping("/approvisionnements")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_APPROVISIONNEMENT', 'VALIDATE_APPROVISIONNEMENT', 'UPDATE_APPROVISIONNEMENT', 'VIEW_BUDGET')")
     @Operation(summary = "Lister les demandes de réapprovisionnement")
     public ResponseEntity<List<TresorerieRegieApprovisionnementResponse>> listerApprovisionnements(
             @RequestParam(required = false) UUID regieId) {
@@ -61,12 +65,14 @@ public class RegiesTresorerieRestController {
     }
 
     @PostMapping("/approvisionnements/{id}/signer-daf")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAuthority('VALIDATE_APPROVISIONNEMENT')")
     @Operation(summary = "Visa préalable du Directeur Administratif et Financier (DAF)")
     public ResponseEntity<TresorerieRegieApprovisionnementResponse> signerDaf(@PathVariable UUID id) {
         return ResponseEntity.ok(regiesService.signerDaf(id));
     }
 
     @PostMapping("/approvisionnements/{id}/signer-dg")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') and hasAnyAuthority('VALIDATE_APPROVISIONNEMENT', 'WORKFLOW_DECISION', 'INIT_CREATE_USER')")
     @Operation(summary = "Approbation finale du Directeur Général et déblocage des fonds")
     public ResponseEntity<TresorerieRegieApprovisionnementResponse> signerDg(
             @PathVariable UUID id,
@@ -90,6 +96,7 @@ public class RegiesTresorerieRestController {
     }
 
     @GetMapping("/depenses")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_DEPENSE_REGIE', 'VALIDATE_DEPENSE_REGIE', 'CREATE_APPROVISIONNEMENT', 'VALIDATE_APPROVISIONNEMENT', 'VIEW_BUDGET')")
     @Operation(summary = "Lister les menues dépenses effectuées sur la caisse locale")
     public ResponseEntity<Page<TresorerieRegieDepenseResponse>> listerDepenses(
             @RequestParam(required = false) UUID regieId,

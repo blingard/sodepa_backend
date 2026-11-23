@@ -143,7 +143,8 @@ public class FileStorageService {
             throw new RuntimeException("Nom de fichier invalide : " + original);
         }
         String ext = getExtension(original);
-        return System.currentTimeMillis() + (ext.isBlank() ? "" : "." + ext);
+        String uniqueSuffix = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return System.currentTimeMillis() + "-" + uniqueSuffix + (ext.isBlank() ? "" : "." + ext);
     }
 
     private String getExtension(String filename) {

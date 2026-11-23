@@ -1,5 +1,7 @@
 package com.sodepa.erp.utils;
 
+import com.sodepa.erp.authorisation.infrastructure.entities.AffectationProfilUtilisateurEntity;
+import com.sodepa.erp.authorisation.infrastructure.repo.AffectationProfilUtilisateurRepository;
 import com.sodepa.erp.organigramme.infrastructure.entities.AffectationPosteEntity;
 import com.sodepa.erp.organigramme.infrastructure.entities.DelegationPouvoirEntity;
 import com.sodepa.erp.organigramme.infrastructure.entities.DerogationPermissionEntity;
@@ -40,12 +42,83 @@ public class UserManagementEngine implements UserManagementEnginePort {
     private final DelegationPouvoirRepository delegationPouvoirRepository;
     private final DerogationPermissionRepository derogationPermissionRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AffectationProfilUtilisateurRepository affectationProfilRepository;
+
+    private static final long AUTH_CACHE_TTL_MS = 5_000L;
+    private static final int AUTH_CACHE_MAX_SIZE = 512;
+
+    private record CachedAuthContext(AuthContext context, long expiresAtMillis) {}
+
+    private final Map<UUID, CachedAuthContext> authContextCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Override
+    public void evictAuthCache(UUID userId) {
+        if (userId != null) {
+            authContextCache.remove(userId);
+        } else {
+            authContextCache.clear();
+        }
+    }
+
+    @Override
+    public AuthContext resolveAuthContext(UUID userId) {
+        if (userId == null) {
+            throw new org.springframework.security.oauth2.jwt.JwtException("User ID is required");
+        }
+        long now = System.currentTimeMillis();
+        CachedAuthContext cached = authContextCache.get(userId);
+        if (cached != null && cached.expiresAtMillis() > now) {
+            return cached.context();
+        }
+
+        // Chargement unique sans appel HTTP MinIO presigned-URL pour les filtres d'authentification
+        UtilisateurEntity entity = getUserEntityById(userId);
+        Set<Permissions> effectivePermissions = resolveEffectivePermissions(entity);
+        Set<PosteDto> activePostes = getAllActiveAffectations(entity).stream()
+                .map(aff -> PosteDto.fromEntity(aff.getPoste()))
+                .collect(Collectors.toSet());
+
+        UserOutput userOutput = UserOutput.builder()
+                .id(entity.getId())
+                .username(entity.getUsername())
+                .nom(entity.getNom())
+                .prenom(entity.getPrenom())
+                .email(entity.getEmail())
+                .photoProfile(entity.getPhotoProfile())
+                .actif(entity.isActif())
+                .telephones(entity.getTelephones())
+                .permissions(effectivePermissions)
+                .build();
+
+        AuthContext context = new AuthContext(userOutput, activePostes);
+        if (authContextCache.size() >= AUTH_CACHE_MAX_SIZE) {
+            authContextCache.entrySet().removeIf(e -> e.getValue().expiresAtMillis() <= now);
+            if (authContextCache.size() >= AUTH_CACHE_MAX_SIZE) {
+                authContextCache.clear();
+            }
+        }
+        authContextCache.put(userId, new CachedAuthContext(context, now + AUTH_CACHE_TTL_MS));
+        return context;
+    }
+
     private UtilisateurEntity getUserEntityById(UUID id) {
-        UtilisateurEntity entity = userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
+        UtilisateurEntity entity = userRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.security.oauth2.jwt.JwtException("User not found"));
         if (!entity.isActif()) {
-            throw new RuntimeException("Current user is not active");
+            throw new org.springframework.security.oauth2.jwt.JwtException("Current user is not active");
         }
         return entity;
+    }
+
+    @Override
+    public Set<Permissions> resolveEffectivePermissions(UUID userId) {
+        if (userId == null) {
+            return Collections.emptySet();
+        }
+        return userRepository.findById(userId)
+                .map(this::resolveEffectivePermissions)
+                .orElseGet(Collections::emptySet);
     }
     @Override
     public UserOutput getUserById(UUID id) {
@@ -120,7 +193,9 @@ public class UserManagementEngine implements UserManagementEnginePort {
             return entity.getPermissions() != null ? entity.getPermissions() : Collections.emptySet();
         }
 
-        Set<Permissions> permissions = new HashSet<>();
+        Set<Permissions> permissions = entity.getPermissions() != null
+                ? new HashSet<>(entity.getPermissions())
+                : new HashSet<>();
         Instant now = Instant.now();
 
         // 1. Affectations de postes actives
@@ -154,6 +229,19 @@ public class UserManagementEngine implements UserManagementEnginePort {
             boolean dateFinOk = der.getDateFin() == null || !der.getDateFin().isBefore(now);
             if (dateDebutOk && dateFinOk && der.getPermission() != null) {
                 permissions.add(der.getPermission());
+            }
+        }
+
+        // 4. Profils fonctionnels multidimensionnels actifs dans la fenêtre de validité (résolution dynamique sans duplication)
+        if (affectationProfilRepository != null) {
+            final LocalDate today = LocalDate.now();
+            List<AffectationProfilUtilisateurEntity> profilAffs = affectationProfilRepository.findByUtilisateurIdAndActifTrue(entity.getId());
+            for (AffectationProfilUtilisateurEntity aff : profilAffs) {
+                boolean dateDebutOk = aff.getDateDebut() == null || !aff.getDateDebut().isAfter(today);
+                boolean dateFinOk = aff.getDateFin() == null || !aff.getDateFin().isBefore(today);
+                if (dateDebutOk && dateFinOk && aff.getProfil() != null && aff.getProfil().isActif() && aff.getProfil().getPermissions() != null) {
+                    permissions.addAll(aff.getProfil().getPermissions());
+                }
             }
         }
 

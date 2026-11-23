@@ -40,6 +40,13 @@ public interface WorkflowEntityHandler {
     void onWorkflowCompleted(WorkflowInstanceEntity instance);
 
     /**
+     * Exécuté lors de la clôture finale APPROUVÉE avec l'instantané complet consolidé depuis ClickHouse/Outbox.
+     */
+    default void onWorkflowCompleted(WorkflowInstanceEntity instance, java.util.Map<String, Object> finalData) {
+        onWorkflowCompleted(instance);
+    }
+
+    /**
      * Appelé lorsque le workflow est rejeté définitivement.
      *
      * @param instance L'instance de workflow rejetée.

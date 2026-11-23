@@ -1,17 +1,18 @@
 package com.sodepa.erp.notification.infrastructure.entities;
 
 /**
- * Énumération des canaux de diffusion de notifications supportés par le socleée transversal SODEPA (CT-REF-05).
- * <ul>
- *   <li>{@link #EMAIL} : Envoi d'un courrier électronique SMTP au collaborateur ou partenaire.</li>
- *   <li>{@link #SMS} : Envoi d'un message texte court (SMS) sur le numéro mobile de l'agent ou du tiers.</li>
- *   <li>{@link #EMAIL_ET_SMS} : Diffusion simultanée par courrier électronique et par SMS (recommandé pour les circuits de validation et alertes critiques).</li>
- *   <li>{@link #IN_APP} : Notification interne consultable dans le centre de notifications de l'ERP.</li>
- * </ul>
+ * Canaux de diffusion supportés par le moteur de notifications ERP SODEPA.
  */
 public enum CanalNotification {
     EMAIL,
     SMS,
+    WHATSAPP,
+    /**
+     * Canal historique multi-canaux : conservé uniquement en tant qu'alias d'entrée
+     * et automatiquement éclaté en une ligne {@link #EMAIL} et une ligne {@link #SMS}
+     * liées par {@code groupId}.
+     */
+    @Deprecated(forRemoval = false)
     EMAIL_ET_SMS,
     IN_APP
 }

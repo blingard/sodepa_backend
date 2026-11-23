@@ -10,10 +10,12 @@ import com.sodepa.erp.budget.application.usecase.ValiderEtapeWorkflowUseCase;
 import com.sodepa.erp.budget.presentation.requests.PreEngagementRequest;
 import com.sodepa.erp.budget.presentation.requests.RejeterRequest;
 import com.sodepa.erp.budget.presentation.requests.ValiderEtapeRequest;
+import com.sodepa.erp.share.CurrentUserAuthenticationToken;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -45,10 +47,12 @@ public class EngagementWorkflowRestController {
      * @return DTO contenant les informations de l'engagement créé et son statut initial.
      */
     @PostMapping("/pre-engager")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET_ENGAGEMENT', 'ENGAGE_BUDGET')")
     @Operation(summary = "Créer un pré-engagement de dépense avec réservation de crédit budgétaire")
     public BudgetEngagementOutput preEngager(@Valid @RequestBody PreEngagementRequest request) {
         return soumettrePreEngagementUseCase.execute(
-                new PreEngagementInput(request.planId(), request.compteCode(), request.sectionId(), request.numeroEngagement(), request.description(), request.montant(), request.utilisateurId())
+                new PreEngagementInput(request.planId(), request.compteCode(), request.sectionId(), request.numeroEngagement(), request.description(), request.montant(),
+                        CurrentUserAuthenticationToken.resolveUserIdOrFallback(request.utilisateurId()))
         );
     }
 
@@ -58,10 +62,12 @@ public class EngagementWorkflowRestController {
      * @param request Paramètres de validation contenant le numéro d'engagement, le rôle et l'utilisateur.
      */
     @PostMapping("/valider")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET_ENGAGEMENT', 'BUDGET_VISA_SB', 'VALIDATE_LIQUIDATION')")
     @Operation(summary = "Valider une étape du circuit d'engagement budgétaire")
     public void validerEtape(@Valid @RequestBody ValiderEtapeRequest request) {
         validerEtapeWorkflowUseCase.execute(
-                new ValiderEtapeInput(request.numeroEngagement(), request.roleApprobateur(), request.utilisateurId())
+                new ValiderEtapeInput(request.numeroEngagement(), request.roleApprobateur(),
+                        CurrentUserAuthenticationToken.resolveUserIdOrFallback(request.utilisateurId()))
         );
     }
 
@@ -71,10 +77,12 @@ public class EngagementWorkflowRestController {
      * @param request Paramètres de rejet contenant le numéro d'engagement, le motif et l'utilisateur.
      */
     @PostMapping("/rejeter")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET_ENGAGEMENT', 'BUDGET_VISA_SB', 'VALIDATE_LIQUIDATION')")
     @Operation(summary = "Rejeter un engagement budgétaire et restituer les crédits réservés")
     public void rejeter(@Valid @RequestBody RejeterRequest request) {
         rejeterEngagementUseCase.execute(
-                new RejeterInput(request.numeroEngagement(), request.motif(), request.utilisateurId())
+                new RejeterInput(request.numeroEngagement(), request.motif(),
+                        CurrentUserAuthenticationToken.resolveUserIdOrFallback(request.utilisateurId()))
         );
     }
 }

@@ -88,6 +88,12 @@ public class WorkflowEtapeDefinitionEntity {
     private String intitule;
 
     /**
+     * Description ou consignes de validation affichées dans le Studio Visuel.
+     */
+    @Column(name = "description", length = 500)
+    private String description;
+
+    /**
      * Typologie de l'étape : validation humaine manuelle, signature qualifiée, contrôle automatique ou notification.
      */
     @Enumerated(EnumType.STRING)
@@ -139,6 +145,12 @@ public class WorkflowEtapeDefinitionEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "strategie_assignation", length = 40)
     private StrategieAssignation strategieAssignation;
+
+    /**
+     * Valeur cible associée à la stratégie par défaut (ex: code poste ou rôle Keycloak).
+     */
+    @Column(name = "valeur_assignation", length = 150)
+    private String valeurAssignation;
 
     /**
      * Délai maximal de traitement alloué pour cette étape en heures (SLA).

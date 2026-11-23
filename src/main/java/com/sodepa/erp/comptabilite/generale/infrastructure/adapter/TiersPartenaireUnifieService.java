@@ -7,9 +7,13 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.entities.TiersEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.PieceConformiteTiersRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.TiersRepository;
 import com.sodepa.erp.notification.application.NotificationService;
+import com.sodepa.erp.share.CodeSequenceService;
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.utils.TypeTiers;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +47,24 @@ public class TiersPartenaireUnifieService {
     private final PieceConformiteTiersRepository pieceConformiteRepository;
     private final NotificationService notificationService;
 
+    @Autowired(required = false)
+    private UtilsService utilsService;
+
+    @Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
+
+    private boolean callerCanValidateTiers() {
+        if (utilsService == null) {
+            return true;
+        }
+        try {
+            utilsService.hasAnyPermission(Permissions.VALIDATE_OR_REJECT_TIERS, Permissions.VALIDATE_OR_REJECT_CREATE_TIERS, Permissions.VALIDATE_PROVIDER);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /**
      * Liste les fiches du référentiel unifié des tiers selon leur catégorie et leur état d'activité.
      *
@@ -71,6 +93,9 @@ public class TiersPartenaireUnifieService {
      */
     @Transactional
     public TiersEntity creerFicheTiersUnifiee(TiersEntity requete) {
+        if (utilsService != null && org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null) {
+            utilsService.hasAnyPermission(Permissions.INIT_CREATE_TIERS, Permissions.CREATE_PROVIDER, Permissions.VALIDATE_OR_REJECT_TIERS);
+        }
         if (requete.getNumeroContribuable() != null && !requete.getNumeroContribuable().isBlank()) {
             String niu = requete.getNumeroContribuable().trim();
             if (tiersRepository.existsByNumeroContribuableIgnoreCase(niu)
@@ -90,9 +115,8 @@ public class TiersPartenaireUnifieService {
             validerCleRib(requete.getCompteBancaireRib());
         }
 
-        if (requete.getId() == null) {
-            requete.setId(UUID.randomUUID());
-        }
+        // Anti Mass-Assignment : forcer un nouvel UUID serveur
+        requete.setId(UUID.randomUUID());
         if (requete.getCode() == null || requete.getCode().isBlank()) {
             String prefix = switch (requete.getTypeTiers() != null ? requete.getTypeTiers() : TypeTiers.CLIENT) {
                 case FOURNISSEUR -> "FRN";
@@ -101,7 +125,8 @@ public class TiersPartenaireUnifieService {
                 case ELEVEUR_PARTENAIRE -> "ELV";
                 default -> "TRS";
             };
-            requete.setCode(String.format("%s-%04d", prefix, tiersRepository.count() + 1));
+            long seq = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_tiers", tiersRepository::count);
+            requete.setCode(String.format("%s-%04d", prefix, seq));
         }
         if (requete.getCompteCollectifCode() == null || requete.getCompteCollectifCode().isBlank()) {
             requete.setCompteCollectifCode(requete.getTypeTiers() == TypeTiers.FOURNISSEUR ? "4011" : "4111");
@@ -109,12 +134,13 @@ public class TiersPartenaireUnifieService {
         if (requete.getPlafondCreditFcfa() == null) {
             requete.setPlafondCreditFcfa(BigDecimal.ZERO);
         }
+        boolean accredited = callerCanValidateTiers();
         requete.setActif(true);
-        requete.setStatutTiers("ACTIF");
+        requete.setStatutTiers(accredited ? "ACTIF" : "EN_ATTENTE_AGREMENT");
 
         TiersEntity saved = tiersRepository.save(requete);
 
-        // Synchronisation automatique vers achat_fournisseurs si type = FOURNISSEUR (RG-REF-016 / CA-REF-032-01)
+        // Synchronisation automatique vers achat_fournisseurs sans auto-agrément si le créateur n'est pas habilité
         if (saved.getTypeTiers() == TypeTiers.FOURNISSEUR && fournisseurRepository.findByCode(saved.getCode()).isEmpty()) {
             FournisseurEntity frn = FournisseurEntity.builder()
                     .id(saved.getId())
@@ -128,8 +154,8 @@ public class TiersPartenaireUnifieService {
                     .email(saved.getEmail())
                     .banqueNom(saved.getBanqueNom())
                     .compteBancaireRib(saved.getCompteBancaireRib())
-                    .agreeSodepa(true)
-                    .dateAgrement(LocalDate.now())
+                    .agreeSodepa(accredited)
+                    .dateAgrement(accredited ? LocalDate.now() : null)
                     .actif(true)
                     .build();
             fournisseurRepository.save(frn);
@@ -227,11 +253,11 @@ public class TiersPartenaireUnifieService {
             TiersEntity tiers = tiersRepository.findById(p.getTiersId()).orElse(null);
             String raisonSociale = tiers != null ? tiers.getRaisonSociale() : p.getCodeTiers();
             String emailDest = (tiers != null && tiers.getEmail() != null && !tiers.getEmail().isBlank())
-                    ? tiers.getEmail()
-                    : "conformite-tiers@sodepa.cm";
+                    ? tiers.getEmail().trim()
+                    : null;
             String telDest = (tiers != null && tiers.getTelephone() != null && !tiers.getTelephone().isBlank())
-                    ? tiers.getTelephone()
-                    : "+237600000000";
+                    ? tiers.getTelephone().trim()
+                    : null;
 
             if (!Boolean.TRUE.equals(p.isAlerteJ15Envoyee())) {
                 try {

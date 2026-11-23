@@ -36,4 +36,8 @@ public class DemarrerWorkflowMetierRequest {
 
     /** Contexte et métadonnées pour les conditions d'aiguillage éventuelles. */
     private Map<String, Object> contexte;
+
+    private com.sodepa.erp.utils.MakerCheckerOperationType operationType;
+
+    private Map<String, Object> initialData;
 }
