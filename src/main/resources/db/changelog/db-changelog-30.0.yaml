@@ -1,0 +1,36 @@
+# Changelog 30.0 — Table ShedLock distribuée et verrouillage optimiste (optimistic_version) sur les entités financières/RH/achats.
+databaseChangeLog:
+  - changeSet:
+      id: 30.0-01-shedlock-and-optimistic-locking
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS public.shedlock (
+                name VARCHAR(64) NOT NULL,
+                lock_until TIMESTAMP NOT NULL,
+                locked_at TIMESTAMP NOT NULL,
+                locked_by VARCHAR(255) NOT NULL,
+                PRIMARY KEY (name)
+              );
+              DO $$
+              DECLARE
+                tbl text;
+                tables text[] := ARRAY[
+                  'ecritures',
+                  'immobilisations',
+                  'tiers',
+                  'achat_expressions_besoin',
+                  'marche_dossiers',
+                  'paie_bulletins',
+                  'rh_contrats_travail',
+                  'rh_employes'
+                ];
+              BEGIN
+                FOREACH tbl IN ARRAY tables LOOP
+                  IF to_regclass('public.' || tbl) IS NOT NULL THEN
+                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0', tbl);
+                  END IF;
+                END LOOP;
+              END $$;

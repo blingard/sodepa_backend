@@ -9,10 +9,12 @@ import com.sodepa.erp.budget.application.usecase.*;
 import com.sodepa.erp.budget.presentation.requests.CadrageRequest;
 import com.sodepa.erp.budget.presentation.requests.GenererHistoriqueRequest;
 import com.sodepa.erp.budget.presentation.requests.SaisirDemandeRequest;
+import com.sodepa.erp.share.CurrentUserAuthenticationToken;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -57,6 +59,7 @@ public class BudgetCollaboratifRestController {
      * @return la liste des propositions budgetaires conformes aux filtres
      */
     @GetMapping("/demandes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'CREATE_BUDGET', 'CREATE_BUDGET_PLAN', 'VALIDATE_BUDGET', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Lister les demandes budgétaires pour la commission d'arbitrage")
     public List<BudgetDemandeOutput> listerDemandes(
             @RequestParam(required = false) UUID departementId,
@@ -76,6 +79,7 @@ public class BudgetCollaboratifRestController {
      * @return la proposition budgetaire enregistree
      */
     @PostMapping("/demandes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Saisir une proposition budgétaire par un service (Bottom-Up)")
     public BudgetDemandeOutput saisirDemande(@Valid @RequestBody SaisirDemandeRequest request) {
         return saisirDemandeBudgetaireUseCase.execute(
@@ -92,6 +96,7 @@ public class BudgetCollaboratifRestController {
      * @param annee exercice budgetaire prepare
      */
     @PostMapping("/demandes/soumettre")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Soumettre l'avant-projet de budget d'une unité à l'arbitrage")
     public void soumettreDemandes(@RequestParam UUID departementId, @RequestParam int annee) {
         soumettreDemandesUseCase.execute(new SoumettreDemandesUseCase.Input(departementId, annee));
@@ -104,9 +109,11 @@ public class BudgetCollaboratifRestController {
      * @param userId identifiant du responsable ayant arbitre favorablement
      */
     @PostMapping("/demandes/{demandeId}/approuver")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Approuver une demande budgétaire lors des arbitrages")
-    public void approuverDemande(@PathVariable UUID demandeId, @RequestParam UUID userId) {
-        approuverDemandeUseCase.execute(new ApprouverDemandeUseCase.Input(demandeId, userId));
+    public void approuverDemande(@PathVariable UUID demandeId, @RequestParam(required = false) UUID userId) {
+        approuverDemandeUseCase.execute(new ApprouverDemandeUseCase.Input(
+                demandeId, CurrentUserAuthenticationToken.resolveUserIdOrFallback(userId)));
     }
 
     /**
@@ -119,9 +126,11 @@ public class BudgetCollaboratifRestController {
      * @param userId identifiant du gestionnaire ou de l'autorite ayant tranche
      */
     @PostMapping("/demandes/{demandeId}/rejeter")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Rejeter une demande budgétaire avec motivation obligatoire")
-    public void rejeterDemande(@PathVariable UUID demandeId, @RequestParam String motif, @RequestParam UUID userId) {
-        rejeterDemandeUseCase.execute(new RejeterDemandeUseCase.Input(demandeId, motif, userId));
+    public void rejeterDemande(@PathVariable UUID demandeId, @RequestParam String motif, @RequestParam(required = false) UUID userId) {
+        rejeterDemandeUseCase.execute(new RejeterDemandeUseCase.Input(
+                demandeId, motif, CurrentUserAuthenticationToken.resolveUserIdOrFallback(userId)));
     }
 
     /**
@@ -132,10 +141,12 @@ public class BudgetCollaboratifRestController {
      * @param request parametres du cadrage (prefixe des comptes cibles, coefficient multiplicateur et responsable)
      */
     @PostMapping("/cadrage")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET', 'VALIDATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Appliquer un coefficient de cadrage budgétaire (Top-Down)")
     public void appliquerCadrage(@Valid @RequestBody CadrageRequest request) {
         appliquerTauxCadrageUseCase.execute(
-                new CadrageInput(request.annee(), request.comptePrefix(), request.coefficient(), request.responsableId())
+                new CadrageInput(request.annee(), request.comptePrefix(), request.coefficient(),
+                        CurrentUserAuthenticationToken.resolveUserIdOrFallback(request.responsableId()))
         );
     }
 
@@ -148,6 +159,7 @@ public class BudgetCollaboratifRestController {
      * @param request parametres de projection (annee de reference, annee cible et coefficients d'indexation)
      */
     @PostMapping("/generer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'CREATE_BUDGET_PLAN', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Pré-remplir les demandes budgétaires depuis les réalisations réelles N-1")
     public void genererDepuisHistorique(@Valid @RequestBody GenererHistoriqueRequest request) {
         genererBudgetDepuisHistoriqueUseCase.execute(
@@ -165,8 +177,10 @@ public class BudgetCollaboratifRestController {
      * @param userId identifiant du responsable de la consolidation (Chef Service Budget)
      */
     @PostMapping("/consolider")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET', 'VALIDATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Consolider l'ensemble des besoins validés dans le budget officiel")
-    public void consolider(@RequestParam int annee, @RequestParam UUID planId, @RequestParam UUID userId) {
-        consoliderDemandesDansPlanUseCase.execute(new ConsoliderDemandesDansPlanUseCase.Input(annee, planId, userId));
+    public void consolider(@RequestParam int annee, @RequestParam UUID planId, @RequestParam(required = false) UUID userId) {
+        consoliderDemandesDansPlanUseCase.execute(new ConsoliderDemandesDansPlanUseCase.Input(
+                annee, planId, CurrentUserAuthenticationToken.resolveUserIdOrFallback(userId)));
     }
 }

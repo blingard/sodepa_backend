@@ -29,6 +29,15 @@ public class EcritureRestController {
     private final ValiderEcritureUseCase validerEcritureUseCase;
     private final RejeterEcritureUseCase rejeterEcritureUseCase;
     private final GetEcritureByIdUseCase getEcritureByIdUseCase;
+    private final com.sodepa.erp.comptabilite.generale.infrastructure.adapter.EcritureAdapter ecritureAdapter;
+
+    /**
+     * Liste les écritures comptables (y compris celles en cours de validation dans ClickHouse avec `enCoursDeModification = true`).
+     */
+    @GetMapping
+    public java.util.List<EcritureOutput> listerEcritures() {
+        return ecritureAdapter.listerEcritures();
+    }
 
     /**
      * Saisit une nouvelle écriture comptable.

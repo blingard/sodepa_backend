@@ -50,10 +50,13 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
                                             ContentCachingResponseWrapper response,
                                             long durationMs, String requestPath) {
         UserData userData = null;
-        if (requestPath.startsWith("/api/auth/login")) {
+        if (requestPath.startsWith("/api/auth/login") && response.getStatus() == 200) {
             String token = extractAccessTokenFromResponse(response);
             if (token != null) {
-                userData = filterBaseMethod.getUser(token);
+                try {
+                    userData = filterBaseMethod.getUser(token);
+                } catch (RuntimeException ignored) {
+                }
             }
         } else {
             // Une requête anonyme est un cas normal sur les points d'entrée
@@ -192,7 +195,7 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
         if (body == null) {
             return null;
         }
-        String masked = body.replaceAll("(?i)(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
+        String masked = body.replaceAll("(?i)(\"(?:password|newPassword|currentPassword|motDePasse)\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
         masked = masked.replaceAll("(?i)(\"access_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
         masked = masked.replaceAll("(?i)(\"refresh_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
         masked = masked.replaceAll("(?i)(\"id_token\"\\s*:\\s*\")[^\"]*(\")", "$1***$2");
@@ -215,33 +218,69 @@ public class TrackingUserActionsFilter implements HandlerInterceptor {
     }
 
     @Override
-    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable ModelAndView modelAndView) throws Exception {
-        String requestPath = request.getRequestURI();
-        String correlationId = request.getHeader(GlobalConstants.CORRELATION_ID_HEADER);
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable Exception ex) throws Exception {
+        try {
+            if (Boolean.TRUE.equals(request.getAttribute("auditLogged"))) {
+                return;
+            }
+            request.setAttribute("auditLogged", Boolean.TRUE);
 
-        if (requestPath.startsWith("/api/auth/login") && response.getStatus() != 200) {
-            return;
-        }
-        
-        long start = 0;
-        Object startAttr = request.getAttribute("startTime");
-        if (startAttr instanceof Long) {
-            start = (Long) startAttr;
-        }
-        long duration = start > 0 ? System.currentTimeMillis() - start : 0;
+            String requestPath = request.getRequestURI();
+            String correlationId = request.getHeader(GlobalConstants.CORRELATION_ID_HEADER);
+            if (correlationId == null || correlationId.isBlank()) {
+                correlationId = "MISSING_CID_" + UUID.randomUUID();
+            }
 
-        ContentCachingRequestWrapper wrappedRequest = getRequestWrapper(request);
-        ContentCachingResponseWrapper wrappedResponse = getResponseWrapper(response);
+            long start = 0;
+            Object startAttr = request.getAttribute("startTime");
+            if (startAttr instanceof Long l) {
+                start = l;
+            }
+            long duration = start > 0 ? System.currentTimeMillis() - start : 0;
 
-        if (wrappedRequest != null && wrappedResponse != null) {
-            RequestTrackingEvent event = buildEvent(correlationId, wrappedRequest, wrappedResponse, duration, requestPath);
+            ContentCachingRequestWrapper wrappedRequest = getRequestWrapper(request);
+            ContentCachingResponseWrapper wrappedResponse = getResponseWrapper(response);
+
+            RequestTrackingEvent event;
+            if (wrappedRequest != null && wrappedResponse != null) {
+                event = buildEvent(correlationId, wrappedRequest, wrappedResponse, duration, requestPath);
+            } else {
+                event = buildLightweightEvent(correlationId, request, response, duration);
+            }
             auditEventPublisher.publishActivity(event);
-        } else {
-            log.warn("Request or response was not wrapped in ContentCaching wrappers. Event tracking skipped for: {}. requestWrapper: {}, responseWrapper: {}", 
-                    requestPath, wrappedRequest != null, wrappedResponse != null);
+        } catch (Exception trackingEx) {
+            log.warn("Erreur non bloquante lors du suivi d'audit HTTP pour {}: {}", request.getRequestURI(), trackingEx.getMessage());
+        } finally {
+            org.slf4j.MDC.clear();
         }
+    }
 
-        HandlerInterceptor.super.postHandle(request, response, handler, modelAndView);
+    private RequestTrackingEvent buildLightweightEvent(String correlationId,
+                                                       HttpServletRequest request,
+                                                       HttpServletResponse response,
+                                                       long durationMs) {
+        UserData userData = null;
+        try {
+            userData = utilsService.getCurrentUserData();
+        } catch (RuntimeException ignored) {
+        }
+        return new RequestTrackingEvent(
+                correlationId,
+                userData != null ? userData.sessionId() : "NO_SESSION",
+                Instant.now(),
+                request.getMethod(),
+                request.getRequestURI(),
+                request.getQueryString(),
+                request.getRemoteAddr(),
+                userData != null ? userData.name() : "ANONYMOUS",
+                userData != null ? userData.userId() : "ANONYMOUS",
+                extractHeaders(request),
+                null,
+                response.getStatus(),
+                extractResponseHeaders(response),
+                null,
+                durationMs
+        );
     }
 
     private ContentCachingRequestWrapper getRequestWrapper(HttpServletRequest request) {

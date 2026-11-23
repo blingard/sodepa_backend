@@ -13,9 +13,7 @@ import com.sodepa.erp.budget.infrastructure.repo.ContratCouvertureRepository;
 import com.sodepa.erp.budget.infrastructure.repo.EcheanceFinancementRepository;
 import com.sodepa.erp.budget.infrastructure.repo.LigneDecouvertRepository;
 import com.sodepa.erp.budget.infrastructure.repo.PrevisionTresorerieRepository;
-import com.sodepa.erp.comptabilite.generale.infrastructure.entities.EcritureEntity;
-import com.sodepa.erp.comptabilite.generale.infrastructure.entities.LigneEcritureEntity;
-import com.sodepa.erp.comptabilite.generale.infrastructure.repo.EcritureRepository;
+import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneEcritureRepository;
 import com.sodepa.erp.utils.StatutEcriture;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -38,7 +36,7 @@ public class TresorerieAdapter {
     private final LigneDecouvertRepository ligneDecouvertRepository;
     private final EcheanceFinancementRepository echeanceFinancementRepository;
     private final ContratCouvertureRepository contratCouvertureRepository;
-    private final EcritureRepository ecritureRepository;
+    private final LigneEcritureRepository ligneEcritureRepository;
 
     @Transactional
     public PrevisionTresorerieOutput ajouterPrevision(CreerPrevisionInput input) {
@@ -276,19 +274,7 @@ public class TresorerieAdapter {
     }
 
     private BigDecimal calculerCumulComptePrefix(String prefix) {
-        BigDecimal total = BigDecimal.ZERO;
-        List<EcritureEntity> ecritures = ecritureRepository.findAll();
-
-        for (EcritureEntity e : ecritures) {
-            if (e.getStatut() == StatutEcriture.VALIDE) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().startsWith(prefix)) {
-                        BigDecimal val = l.getDebit().compareTo(BigDecimal.ZERO) > 0 ? l.getDebit() : l.getCredit();
-                        total = total.add(val);
-                    }
-                }
-            }
-        }
-        return total;
+        BigDecimal total = ligneEcritureRepository.sumLineAmountsByComptePrefixAndStatut(prefix, StatutEcriture.VALIDE);
+        return total != null ? total : BigDecimal.ZERO;
     }
 }

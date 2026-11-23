@@ -4,8 +4,10 @@ import com.sodepa.erp.budget.infrastructure.entities.AchatSeuilConfigEntity;
 import com.sodepa.erp.budget.infrastructure.repo.AchatSeuilConfigRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -55,10 +57,11 @@ public class AchatSeuilsRestController {
      * @throws IllegalArgumentException si l'identifiant du seuil n'existe pas
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET_PLAN', 'VALIDATE_FOLDER')")
     @Operation(summary = "Mettre à jour un seuil de passation des achats et commandes")
     public ResponseEntity<AchatSeuilConfigEntity> modifierSeuil(
             @PathVariable UUID id,
-            @RequestBody ModifierSeuilRequest request) {
+            @Valid @RequestBody ModifierSeuilRequest request) {
         AchatSeuilConfigEntity entity = seuilRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Seuil introuvable avec l'ID: " + id));
 

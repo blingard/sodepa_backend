@@ -31,6 +31,12 @@ public class FournisseurResponse {
     private boolean agreeSodepa;
     private LocalDate dateAgrement;
     private boolean actif;
+    private boolean enCoursDeModification;
+    private boolean workflowEnCours;
+    private UUID workflowInstanceId;
+    private String workflowStatut;
+    private String workflowOperationType;
+    private java.util.List<java.util.Map<String, Object>> piecesJointesWorkflow;
 
     public static FournisseurResponse fromEntity(FournisseurEntity entity) {
         if (entity == null) return null;

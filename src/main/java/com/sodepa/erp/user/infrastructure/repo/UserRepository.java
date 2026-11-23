@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,6 +20,8 @@ public interface UserRepository extends JpaRepository<UtilisateurEntity, UUID> {
     Optional<UtilisateurEntity> findByUsername(String username);
 
     Optional<UtilisateurEntity> findByEmail(String email);
+
+    List<UtilisateurEntity> findByActifTrueAndDateExpirationBefore(LocalDate date);
 
     @Query("SELECT DISTINCT u FROM UtilisateurEntity u LEFT JOIN u.telephones t WHERE " +
            "(:nom IS NULL OR LOWER(u.nom) LIKE LOWER(CONCAT('%', :nom, '%'))) AND " +

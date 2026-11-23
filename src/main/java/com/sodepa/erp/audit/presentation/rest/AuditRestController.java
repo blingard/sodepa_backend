@@ -1,12 +1,15 @@
 package com.sodepa.erp.audit.presentation.rest;
 
+import com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager;
 import com.sodepa.erp.audit.infrastructure.repo.DuckDbAuditManager;
+import com.sodepa.erp.utils.Permissions;
+import com.sodepa.erp.share.UserData;
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.share.erreurs.AccesRefuseException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,6 +32,8 @@ import java.util.Map;
 public class AuditRestController {
 
     private final DuckDbAuditManager duckDbAuditManager;
+    private final ClickHouseManager clickHouseManager;
+    private final UtilsService utilsService;
 
     /**
      * Restitue l'ensemble des actions et operations recentes effectuees par l'utilisateur connecte.
@@ -36,14 +41,19 @@ public class AuditRestController {
      * Permet a chaque collaborateur de visualiser sa propre piste d'activite et de verifier l'historique
      * de ses interventions dans le systeme ERP.
      *
-     * @param jwt jeton de securite contenant l'identite numerique de l'agent
      * @return la liste ordonnee des activites recentes de l'utilisateur
      */
     @GetMapping("/activities")
     @Operation(summary = "Consulter mon historique d'activité personnel")
-    public ResponseEntity<List<Map<String, Object>>> getMyActivities(@AuthenticationPrincipal Jwt jwt) {
-        String userId = jwt.getSubject();
-        List<Map<String, Object>> activities = duckDbAuditManager.listActivities(userId);
+    public ResponseEntity<List<Map<String, Object>>> getMyActivities() {
+        UserData userData = utilsService.getCurrentUserData();
+        String userId = (userData.userId() != null && !userData.userId().isBlank())
+                ? userData.userId()
+                : userData.iamId();
+        List<Map<String, Object>> activities = clickHouseManager.listActivitiesForUser(userId, 100);
+        if (activities.isEmpty()) {
+            activities = duckDbAuditManager.listActivities(userId);
+        }
         return ResponseEntity.ok(activities);
     }
 
@@ -60,7 +70,9 @@ public class AuditRestController {
     @Operation(summary = "Consulter les transactions financières archivées dans le lac de données")
     public ResponseEntity<List<Map<String, Object>>> getClickHouseTransactions(
             @RequestParam(defaultValue = "100") int limit) {
-        return ResponseEntity.ok(duckDbAuditManager.listClickHouseTransactions(limit));
+        verifierHabilitationAuditClickHouse();
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        return ResponseEntity.ok(clickHouseManager.listTransactions(safeLimit));
     }
 
     /**
@@ -75,6 +87,22 @@ public class AuditRestController {
     @Operation(summary = "Consulter les journaux d'activité transverses archivés")
     public ResponseEntity<List<Map<String, Object>>> getClickHouseActivities(
             @RequestParam(defaultValue = "100") int limit) {
-        return ResponseEntity.ok(duckDbAuditManager.listClickHouseActivities(limit));
+        verifierHabilitationAuditClickHouse();
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        return ResponseEntity.ok(clickHouseManager.listActivities(safeLimit));
+    }
+
+    private void verifierHabilitationAuditClickHouse() {
+        UserData userData = utilsService.getCurrentUserData();
+        java.util.Set<Permissions> perms = userData.permissions() != null
+                ? userData.permissions()
+                : java.util.Collections.emptySet();
+        boolean autorise = "admin_maker".equalsIgnoreCase(userData.username())
+                || perms.contains(Permissions.WORKFLOW_SUPERVISION)
+                || perms.contains(Permissions.WORKFLOW_CONFIG)
+                || perms.contains(Permissions.GET_FULL_USER_INFO);
+        if (!autorise) {
+            throw new AccesRefuseException("Accès refusé aux journaux globaux d'audit ClickHouse.");
+        }
     }
 }

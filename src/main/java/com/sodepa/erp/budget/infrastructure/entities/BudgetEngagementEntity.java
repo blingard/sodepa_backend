@@ -147,4 +147,12 @@ public class BudgetEngagementEntity {
      */
     @Column(name = "motif_annulation", length = 500)
     private String motifAnnulation;
+
+    /**
+     * Verrouillage optimiste pour sécuriser les liquidations et annulations concurrentes.
+     */
+    @Version
+    @Column(name = "optimistic_version")
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

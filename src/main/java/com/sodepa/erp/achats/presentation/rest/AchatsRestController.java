@@ -80,6 +80,20 @@ public class AchatsRestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(achatsService.creerFournisseur(request));
     }
 
+    @GetMapping("/fournisseurs/{id}")
+    @Operation(summary = "Consulter le détail d'un fournisseur / prestataire (y compris en cours de validation)")
+    public ResponseEntity<FournisseurResponse> obtenirFournisseur(@PathVariable UUID id) {
+        return ResponseEntity.ok(achatsService.obtenirFournisseur(id));
+    }
+
+    @PutMapping("/fournisseurs/{id}")
+    @Operation(summary = "Soumettre la modification d'un fournisseur au circuit de validation workflow")
+    public ResponseEntity<FournisseurResponse> modifierFournisseur(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreerFournisseurRequest request) {
+        return ResponseEntity.ok(achatsService.modifierFournisseur(id, request));
+    }
+
     // ==========================================
     // EXPRESSIONS DE BESOINS (EB)
     // ==========================================
@@ -119,6 +133,18 @@ public class AchatsRestController {
     @Operation(summary = "Consulter le détail d'une expression de besoin")
     public ResponseEntity<ExpressionBesoinResponse> obtenirExpressionBesoin(@PathVariable UUID id) {
         return ResponseEntity.ok(achatsService.obtenirExpressionBesoin(id));
+    }
+
+    /**
+     * Initie une demande de modification d'une expression de besoin existante via circuit de validation workflow.
+     * L'entité PostgreSQL n'est mise à jour qu'à la validation finale et apparaît en attendant avec le flag {@code enCoursDeModification}.
+     */
+    @PutMapping("/expressions-besoin/{id}")
+    @Operation(summary = "Soumettre une modification d'expression de besoin au circuit de validation")
+    public ResponseEntity<ExpressionBesoinResponse> modifierExpressionBesoin(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreerExpressionBesoinRequest request) {
+        return ResponseEntity.ok(achatsService.modifierExpressionBesoin(id, request));
     }
 
     // ==========================================

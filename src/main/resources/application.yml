@@ -20,6 +20,12 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 5000
+      validation-timeout: 2500
+      max-lifetime: 1800000
   jpa:
     hibernate:
       ddl-auto: ${DB_DDL}
@@ -35,6 +41,32 @@ spring:
     port: ${RABBITMQ_PORT}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 5000
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 5000ms
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   security:
     oauth2:
       resourceserver:
@@ -55,6 +87,8 @@ spring:
 
 server:
   port: ${SERVER_PORT}
+  shutdown: graceful
+  forward-headers-strategy: native
 
 # Keycloak Admin
 keycloak:
@@ -79,8 +113,10 @@ minio:
 # Springdoc
 springdoc:
   api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
     path: /v3/api-docs
   swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
     path: /swagger-ui.html
     operations-sorter: method
 
@@ -89,6 +125,8 @@ collabora:
 app:
   public_url: ${BACK_END_BASE_URL}
   duration: 30
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://127.0.0.1:4200}
   interceptor-throttle:
     enabled: true
     default-rule:
@@ -384,10 +422,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    mail:
+      enabled: false
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
   datadog:
     metrics:
       export:
@@ -398,12 +445,72 @@ management:
         enabled: false
 
 clickhouse:
-  url: jdbc:ch://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}?compress=0&decompress=0
+  url: jdbc:ch://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}?compress=0&decompress=0&connect_timeout=2000&socket_timeout=5000
   url-http: http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}
   username: ${CLICKHOUSE_USERNAME:default}
   password: ${CLICKHOUSE_PASSWORD:}
 
 sodepa:
   seed:
-    enabled: ${SODEPA_SEED_ENABLED:true}
-    purge-on-startup: ${SODEPA_PURGE_ON_STARTUP:true}
+    enabled: ${SODEPA_SEED_ENABLED:false}
+    purge-on-startup: ${SODEPA_PURGE_ON_STARTUP:false}
+    keep-bootstrap-roots: ${SODEPA_SEED_KEEP_BOOTSTRAP_ROOTS:false}
+  notifications:
+    async-enabled: ${NOTIF_ASYNC_ENABLED:true}
+    max-retries: ${NOTIF_MAX_RETRIES:5}
+    initial-backoff-seconds: ${NOTIF_BACKOFF_SECONDS:10}
+    outbox-batch-size: ${NOTIF_OUTBOX_BATCH_SIZE:50}
+    outbox-replay-ms: ${NOTIF_OUTBOX_REPLAY_MS:15000}
+    mail:
+      enabled: ${NOTIF_MAIL_ENABLED:true}
+      from-address: ${NOTIF_MAIL_FROM:noreply@sodepa.cm}
+      from-name: ${NOTIF_MAIL_FROM_NAME:ERP SODEPA}
+    sandbox:
+      enabled: ${NOTIF_SANDBOX_ENABLED:true}
+      redirect-email: ${NOTIF_SANDBOX_REDIRECT_EMAIL:}
+      sms-dry-run: ${NOTIF_SANDBOX_SMS_DRY_RUN:true}
+      whatsapp-dry-run: ${NOTIF_SANDBOX_WA_DRY_RUN:true}
+    sms:
+      enabled: ${NOTIF_SMS_ENABLED:true}
+      default-country-code: ${NOTIF_SMS_COUNTRY_CODE:+237}
+      provider-order: africa_talking,nexah,infobip,twilio,sandbox
+      africa-talking:
+        enabled: ${SMS_AFRICA_TALKING_ENABLED:false}
+        base-url: ${SMS_AFRICA_TALKING_URL:https://api.africastalking.com/version1/messaging}
+        username: ${SMS_AFRICA_TALKING_USERNAME:}
+        api-key: ${SMS_AFRICA_TALKING_API_KEY:}
+        sender-id: ${SMS_AFRICA_TALKING_SENDER_ID:SODEPA}
+      nexah:
+        enabled: ${SMS_NEXAH_ENABLED:false}
+        base-url: ${SMS_NEXAH_URL:https://api.nexah.net/api/v1/sms/send}
+        user: ${SMS_NEXAH_USER:}
+        password: ${SMS_NEXAH_PASSWORD:}
+        api-key: ${SMS_NEXAH_API_KEY:}
+        sender-id: ${SMS_NEXAH_SENDER_ID:SODEPA}
+      infobip:
+        enabled: ${SMS_INFOBIP_ENABLED:false}
+        base-url: ${SMS_INFOBIP_URL:https://api.infobip.com/sms/2/text/advanced}
+        api-key: ${SMS_INFOBIP_API_KEY:}
+        sender-id: ${SMS_INFOBIP_SENDER_ID:SODEPA}
+      twilio:
+        enabled: ${SMS_TWILIO_ENABLED:false}
+        base-url: ${SMS_TWILIO_URL:https://api.twilio.com/2010-04-01}
+        account-sid: ${SMS_TWILIO_ACCOUNT_SID:}
+        auth-token: ${SMS_TWILIO_AUTH_TOKEN:}
+        from-number: ${SMS_TWILIO_FROM:}
+    whatsapp:
+      enabled: ${NOTIF_WA_ENABLED:true}
+      fallback-to-sms-on-failure: ${NOTIF_WA_FALLBACK_SMS:true}
+      provider-order: meta_whatsapp,twilio_whatsapp,sandbox
+      meta:
+        enabled: ${WA_META_ENABLED:false}
+        api-url: ${WA_META_API_URL:https://graph.facebook.com/v21.0}
+        phone-number-id: ${WA_META_PHONE_NUMBER_ID:}
+        access-token: ${WA_META_ACCESS_TOKEN:}
+        default-language: ${WA_META_LANGUAGE:fr}
+      twilio:
+        enabled: ${WA_TWILIO_ENABLED:false}
+        base-url: ${WA_TWILIO_URL:https://api.twilio.com/2010-04-01}
+        account-sid: ${WA_TWILIO_ACCOUNT_SID:}
+        auth-token: ${WA_TWILIO_AUTH_TOKEN:}
+        from-number: ${WA_TWILIO_FROM:}

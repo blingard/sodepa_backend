@@ -28,6 +28,7 @@ public class ReportingUseCase {
 
     private final EcritureRepository ecritureRepository;
     private final CompteRepository compteRepository;
+    private final LigneEcritureRepository ligneEcritureRepository;
 
     // ==========================================
     // DTOs POUR LE REPORTING
@@ -155,26 +156,22 @@ public class ReportingUseCase {
      */
     @Transactional(readOnly = true)
     public List<LivreJournalLine> genererLivreJournal(LocalDate debut, LocalDate fin) {
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getValide() && !e.getDateComptable().isBefore(debut) && !e.getDateComptable().isAfter(fin))
-                .sorted(Comparator.comparing(EcritureEntity::getDateComptable).thenComparing(EcritureEntity::getNumeroPiece))
-                .collect(Collectors.toList());
+        List<LigneEcritureEntity> lignes = ligneEcritureRepository.findValidatedLinesBetweenDates(debut, fin);
 
-        List<LivreJournalLine> lignesReport = new ArrayList<>();
-        for (EcritureEntity e : ecritures) {
-            for (LigneEcritureEntity l : e.getLignes()) {
-                lignesReport.add(LivreJournalLine.builder()
-                        .dateComptable(e.getDateComptable())
-                        .numeroPiece(e.getNumeroPiece())
-                        .libellePiece(e.getLibelle())
-                        .codeJournal(e.getJournal().getCode().name())
-                        .compteCode(l.getCompteCode())
-                        .tiersCode(l.getTiers() != null ? l.getTiers().getCode() : null)
-                        .libelleLigne(l.getLibelleLigne())
-                        .debit(l.getDebit())
-                        .credit(l.getCredit())
-                        .build());
-            }
+        List<LivreJournalLine> lignesReport = new ArrayList<>(lignes.size());
+        for (LigneEcritureEntity l : lignes) {
+            EcritureEntity e = l.getEcriture();
+            lignesReport.add(LivreJournalLine.builder()
+                    .dateComptable(e.getDateComptable())
+                    .numeroPiece(e.getNumeroPiece())
+                    .libellePiece(e.getLibelle())
+                    .codeJournal(e.getJournal() != null && e.getJournal().getCode() != null ? e.getJournal().getCode().name() : "")
+                    .compteCode(l.getCompteCode())
+                    .tiersCode(l.getTiers() != null ? l.getTiers().getCode() : null)
+                    .libelleLigne(l.getLibelleLigne())
+                    .debit(l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO)
+                    .credit(l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO)
+                    .build());
         }
         return lignesReport;
     }
@@ -185,73 +182,54 @@ public class ReportingUseCase {
     @Transactional(readOnly = true)
     public List<GrandLivreAccount> genererGrandLivre(LocalDate debut, LocalDate fin) {
         List<CompteEntity> comptes = compteRepository.findAll();
-        List<EcritureEntity> toutesEcritures = ecritureRepository.findAll();
-
-        // Filtrer les écritures validées avant 'debut' (pour solde initial) et pendant la période
-        List<EcritureEntity> ecrituresInitiales = toutesEcritures.stream()
-                .filter(e -> e.getValide() && e.getDateComptable().isBefore(debut))
-                .collect(Collectors.toList());
-
-        List<EcritureEntity> ecrituresPeriode = toutesEcritures.stream()
-                .filter(e -> e.getValide() && !e.getDateComptable().isBefore(debut) && !e.getDateComptable().isAfter(fin))
-                .collect(Collectors.toList());
+        Map<String, BigDecimal[]> initiauxParCompte = indexMovementsByCompte(
+                ligneEcritureRepository.sumValidatedMovementsBeforeDate(debut));
+        Map<String, List<LigneEcritureEntity>> lignesParCompte = ligneEcritureRepository
+                .findValidatedLinesBetweenDates(debut, fin).stream()
+                .collect(Collectors.groupingBy(LigneEcritureEntity::getCompteCode));
 
         List<GrandLivreAccount> grandLivre = new ArrayList<>();
 
         for (CompteEntity c : comptes) {
-            // Calcul du solde initial
+            BigDecimal[] init = initiauxParCompte.getOrDefault(c.getCode(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal cumulInitialDebit = init[0];
+            BigDecimal cumulInitialCredit = init[1];
+
             BigDecimal soldeInitialDebit = BigDecimal.ZERO;
             BigDecimal soldeInitialCredit = BigDecimal.ZERO;
-
-            BigDecimal cumulInitialDebit = BigDecimal.ZERO;
-            BigDecimal cumulInitialCredit = BigDecimal.ZERO;
-
-            for (EcritureEntity e : ecrituresInitiales) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().equals(c.getCode())) {
-                        cumulInitialDebit = cumulInitialDebit.add(l.getDebit());
-                        cumulInitialCredit = cumulInitialCredit.add(l.getCredit());
-                    }
-                }
-            }
-
             if (cumulInitialDebit.compareTo(cumulInitialCredit) >= 0) {
                 soldeInitialDebit = cumulInitialDebit.subtract(cumulInitialCredit);
             } else {
                 soldeInitialCredit = cumulInitialCredit.subtract(cumulInitialDebit);
             }
 
-            // Récupération des lignes de la période
-            List<GrandLivreLine> lignesPeriode = new ArrayList<>();
+            List<LigneEcritureEntity> compteLignes = lignesParCompte.getOrDefault(c.getCode(), List.of());
+            List<GrandLivreLine> lignesPeriode = new ArrayList<>(compteLignes.size());
             BigDecimal totalPeriodeDebit = BigDecimal.ZERO;
             BigDecimal totalPeriodeCredit = BigDecimal.ZERO;
 
-            for (EcritureEntity e : ecrituresPeriode) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().equals(c.getCode())) {
-                        lignesPeriode.add(GrandLivreLine.builder()
-                                .dateComptable(e.getDateComptable())
-                                .numeroPiece(e.getNumeroPiece())
-                                .libellePiece(e.getLibelle())
-                                .libelleLigne(l.getLibelleLigne())
-                                .debit(l.getDebit())
-                                .credit(l.getCredit())
-                                .build());
-                        totalPeriodeDebit = totalPeriodeDebit.add(l.getDebit());
-                        totalPeriodeCredit = totalPeriodeCredit.add(l.getCredit());
-                    }
-                }
+            for (LigneEcritureEntity l : compteLignes) {
+                EcritureEntity e = l.getEcriture();
+                BigDecimal d = l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO;
+                BigDecimal cr = l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO;
+                lignesPeriode.add(GrandLivreLine.builder()
+                        .dateComptable(e.getDateComptable())
+                        .numeroPiece(e.getNumeroPiece())
+                        .libellePiece(e.getLibelle())
+                        .libelleLigne(l.getLibelleLigne())
+                        .debit(d)
+                        .credit(cr)
+                        .build());
+                totalPeriodeDebit = totalPeriodeDebit.add(d);
+                totalPeriodeCredit = totalPeriodeCredit.add(cr);
             }
 
-            // Si aucune écriture et solde initial nul, on n'affiche pas le compte pour alléger le Grand Livre
             if (lignesPeriode.isEmpty() && soldeInitialDebit.compareTo(BigDecimal.ZERO) == 0 && soldeInitialCredit.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
 
-            // Calcul du solde final
             BigDecimal soldeFinalDebit = BigDecimal.ZERO;
             BigDecimal soldeFinalCredit = BigDecimal.ZERO;
-
             BigDecimal totalDebitCumule = soldeInitialDebit.add(totalPeriodeDebit);
             BigDecimal totalCreditCumule = soldeInitialCredit.add(totalPeriodeCredit);
 
@@ -283,30 +261,17 @@ public class ReportingUseCase {
     @Transactional(readOnly = true)
     public List<BalanceLine> genererBalance(LocalDate debut, LocalDate fin) {
         List<CompteEntity> comptes = compteRepository.findAll();
-        List<EcritureEntity> toutesEcritures = ecritureRepository.findAll();
-
-        List<EcritureEntity> ecrituresInitiales = toutesEcritures.stream()
-                .filter(e -> e.getValide() && e.getDateComptable().isBefore(debut))
-                .collect(Collectors.toList());
-
-        List<EcritureEntity> ecrituresPeriode = toutesEcritures.stream()
-                .filter(e -> e.getValide() && !e.getDateComptable().isBefore(debut) && !e.getDateComptable().isAfter(fin))
-                .collect(Collectors.toList());
+        Map<String, BigDecimal[]> initiauxParCompte = indexMovementsByCompte(
+                ligneEcritureRepository.sumValidatedMovementsBeforeDate(debut));
+        Map<String, BigDecimal[]> periodeParCompte = indexMovementsByCompte(
+                ligneEcritureRepository.sumValidatedMovementsBetweenDates(debut, fin));
 
         List<BalanceLine> balance = new ArrayList<>();
 
         for (CompteEntity c : comptes) {
-            BigDecimal cumulInitialDebit = BigDecimal.ZERO;
-            BigDecimal cumulInitialCredit = BigDecimal.ZERO;
-
-            for (EcritureEntity e : ecrituresInitiales) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().equals(c.getCode())) {
-                        cumulInitialDebit = cumulInitialDebit.add(l.getDebit());
-                        cumulInitialCredit = cumulInitialCredit.add(l.getCredit());
-                    }
-                }
-            }
+            BigDecimal[] init = initiauxParCompte.getOrDefault(c.getCode(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal cumulInitialDebit = init[0];
+            BigDecimal cumulInitialCredit = init[1];
 
             BigDecimal soldeOuvertureDebit = BigDecimal.ZERO;
             BigDecimal soldeOuvertureCredit = BigDecimal.ZERO;
@@ -316,17 +281,9 @@ public class ReportingUseCase {
                 soldeOuvertureCredit = cumulInitialCredit.subtract(cumulInitialDebit);
             }
 
-            BigDecimal mouvementsDebit = BigDecimal.ZERO;
-            BigDecimal mouvementsCredit = BigDecimal.ZERO;
-
-            for (EcritureEntity e : ecrituresPeriode) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().equals(c.getCode())) {
-                        mouvementsDebit = mouvementsDebit.add(l.getDebit());
-                        mouvementsCredit = mouvementsCredit.add(l.getCredit());
-                    }
-                }
-            }
+            BigDecimal[] periode = periodeParCompte.getOrDefault(c.getCode(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal mouvementsDebit = periode[0];
+            BigDecimal mouvementsCredit = periode[1];
 
             // Ignorer si aucune activité
             if (soldeOuvertureDebit.compareTo(BigDecimal.ZERO) == 0 &&
@@ -684,5 +641,20 @@ public class ReportingUseCase {
                 .tvaNetAReverser(tvaNetAReverser)
                 .creditTvaReportable(creditTvaReportable)
                 .build();
+    }
+
+    private Map<String, BigDecimal[]> indexMovementsByCompte(List<Object[]> rows) {
+        Map<String, BigDecimal[]> map = new HashMap<>();
+        if (rows == null) {
+            return map;
+        }
+        for (Object[] row : rows) {
+            String code = (String) row[0];
+            if (code == null) continue;
+            BigDecimal debit = row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO;
+            BigDecimal credit = row[2] != null ? (BigDecimal) row[2] : BigDecimal.ZERO;
+            map.put(code, new BigDecimal[]{debit, credit});
+        }
+        return map;
     }
 }

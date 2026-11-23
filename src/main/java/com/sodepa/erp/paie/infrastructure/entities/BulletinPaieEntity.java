@@ -304,4 +304,9 @@ public class BulletinPaieEntity {
     @OrderBy("ordre ASC")
     @Builder.Default
     private List<BulletinLigneEntity> lignes = new ArrayList<>();
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

@@ -7,6 +7,7 @@ import com.sodepa.erp.comptabilite.generale.application.usecase.EcartConversionU
 import com.sodepa.erp.comptabilite.generale.presentation.requests.ReevaluationRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/comptabilite/cloture")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_FISCAL_YEAR_CLOSING', 'BUDGET_CLOTURE_EXERCICE', 'VALIDATE_OR_REJECT_ECRITURE')")
 public class ClotureRestController {
 
     private final ClotureExerciceUseCase clotureExerciceUseCase;

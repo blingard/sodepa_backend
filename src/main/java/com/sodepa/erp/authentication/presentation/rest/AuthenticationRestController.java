@@ -110,7 +110,7 @@ public class AuthenticationRestController {
     @DeleteMapping("/sessions/{sessionId}")
     @Operation(summary = "Fermer à distance une session de travail spécifique")
     public void deleteSession(@PathVariable @Valid @NotBlank(message = "SESSION_ID_IS_BLANK") String sessionId) {
-        deleteSessionUseCase.execute(sessionId);
+        deleteSessionUseCase.executeForUser(utilsService.getCurrentUserData().iamId(), sessionId);
     }
 
     /**
@@ -121,8 +121,9 @@ public class AuthenticationRestController {
     @PostMapping("/change-password")
     @Operation(summary = "Changer le mot de passe de l'utilisateur connecté")
     public void changePassword(@RequestBody @Valid @StrongPassword ChangePasswordRequest request) {
+        var userData = utilsService.getCurrentUserData();
         changePasswordUseCase.execute(
-                new ChangePasswordInput(utilsService.getCurrentUserData().iamId(), request.password())
+                new ChangePasswordInput(userData.iamId(), request.password(), userData.username(), request.currentPassword())
         );
     }
 }

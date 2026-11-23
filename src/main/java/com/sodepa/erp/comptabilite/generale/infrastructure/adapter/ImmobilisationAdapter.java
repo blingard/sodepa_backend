@@ -19,6 +19,9 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.repo.EcritureReposito
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.ImmobilisationRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
@@ -71,8 +74,10 @@ public class ImmobilisationAdapter {
      * </p>
      */
     private final static String PREFIXE_CAMPAGNE = "SYSTEM-";
+    private static final List<String> IMMO_WORKFLOW_ENTITY_NAMES = List.of("IMMOBILISATION", "ImmobilisationEntity");
 
     private final WorkflowService workflowService;
+    private final WorkflowStateService workflowStateService;
     private final ImmobilisationRepository immobilisationRepository;
     private final EcritureRepository ecritureRepository;
     private final JournalRepository journalRepository;
@@ -153,12 +158,25 @@ public class ImmobilisationAdapter {
      * @param id l'identifiant.
      * @return les données de l'immobilisation.
      */
+    @Transactional
     public ImmoOutput getImmoById(UUID id) {
         utilsService.hasPermission(Permissions.GET_FULL_IMMOBILISATION_INFO);
-        ImmobilisationEntity entity = immobilisationRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Immobilisation introuvable"));
+        java.util.Optional<ImmobilisationEntity> opt = immobilisationRepository.findById(id);
+        java.util.Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(IMMO_WORKFLOW_ENTITY_NAMES, id);
 
-        return map(entity);
+        if (opt.isPresent()) {
+            ImmobilisationEntity entity = opt.get();
+            if (activeWfOpt.isPresent()) {
+                return buildImmoFromWorkflow(id, entity, activeWfOpt.get());
+            }
+            return map(entity);
+        }
+
+        if (activeWfOpt.isPresent()) {
+            return buildImmoFromWorkflow(id, null, activeWfOpt.get());
+        }
+
+        throw new IllegalArgumentException("Immobilisation introuvable");
     }
 
     /**
@@ -172,7 +190,7 @@ public class ImmobilisationAdapter {
      * @param input pagination, fragment de recherche et statut, tous facultatifs.
      * @return la page demandée.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<ImmoOutput> getImmobilisationsByPage(RechercheImmoInput input) {
         utilsService.hasPermission(Permissions.GET_FULL_IMMOBILISATION_INFO);
 
@@ -186,15 +204,49 @@ public class ImmobilisationAdapter {
                 : input.recherche().toLowerCase();
 
         Page<ImmobilisationEntity> page = immobilisationRepository.rechercher(recherche, input.statut(), pageable);
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(IMMO_WORKFLOW_ENTITY_NAMES);
+        java.util.Set<UUID> materializedIds = new java.util.HashSet<>();
+        List<ImmoOutput> items = new ArrayList<>();
+
+        for (ImmobilisationEntity entity : page.getContent()) {
+            materializedIds.add(entity.getId());
+            WorkflowInstanceEntity wf = activeById.get(entity.getId());
+            if (wf != null) {
+                items.add(buildImmoFromWorkflow(entity.getId(), entity, wf));
+            } else {
+                items.add(map(entity));
+            }
+        }
+
+        if (pageable.getPageNumber() == 0) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey()) || immobilisationRepository.existsById(entry.getKey())) {
+                    continue;
+                }
+                ImmoOutput draft = buildImmoFromWorkflow(entry.getKey(), null, entry.getValue());
+                if (input.statut() != null && draft.statut() != input.statut()) {
+                    continue;
+                }
+                if (recherche != null) {
+                    String c = draft.code() != null ? draft.code().toLowerCase() : "";
+                    String d = draft.designation() != null ? draft.designation().toLowerCase() : "";
+                    if (!c.contains(recherche) && !d.contains(recherche)) {
+                        continue;
+                    }
+                }
+                items.add(draft);
+            }
+        }
+
         boolean paged = page.getPageable().isPaged();
 
         return new PageRecord<>(
-                page.getContent().stream().map(this::map).toList(),
-                page.isEmpty(),
+                items,
+                items.isEmpty(),
                 page.isFirst(),
                 page.isLast(),
                 page.getNumber(),
-                page.getNumberOfElements(),
+                items.size(),
                 PageableRecord.builder()
                         .offset(paged ? page.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
@@ -208,6 +260,37 @@ public class ImmobilisationAdapter {
                 page.getTotalElements(),
                 page.getTotalPages()
         );
+    }
+
+    private ImmoOutput buildImmoFromWorkflow(UUID id, ImmobilisationEntity base, WorkflowInstanceEntity wf) {
+        WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+        Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+        List<String> attachments = current.getAttachments() == null ? List.of()
+                : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+        ImmoEventInput evt = null;
+        try {
+            evt = objectMapper.convertValue(data, ImmoEventInput.class);
+        } catch (Exception ignored) {}
+
+        return ImmoOutput.builder()
+                .id(id)
+                .code(evt != null && evt.code() != null ? evt.code() : (base != null ? base.getCode() : ""))
+                .designation(evt != null && evt.designation() != null ? evt.designation() : (base != null ? base.getDesignation() : ""))
+                .valeurOrigine(evt != null && evt.valeurOrigine() != null ? evt.valeurOrigine() : (base != null ? base.getValeurOrigine() : BigDecimal.ZERO))
+                .dateAcquisition(evt != null && evt.dateAcquisition() != null ? evt.dateAcquisition() : (base != null ? base.getDateAcquisition() : LocalDate.now()))
+                .dateMiseEnService(evt != null && evt.dateMiseEnService() != null ? evt.dateMiseEnService() : (base != null ? base.getDateMiseEnService() : LocalDate.now()))
+                .modeAmortissement(evt != null && evt.modeAmortissement() != null ? evt.modeAmortissement() : (base != null ? base.getModeAmortissement() : ModeAmortissement.LINEAIRE))
+                .dureeUtile(evt != null && evt.dureeUtile() > 0 ? evt.dureeUtile() : (base != null ? base.getDureeUtile() : 5))
+                .valeurResiduelle(evt != null && evt.valeurResiduelle() != null ? evt.valeurResiduelle() : (base != null ? base.getValeurResiduelle() : BigDecimal.ZERO))
+                .statut(evt != null && evt.statut() != null ? evt.statut() : (base != null ? base.getStatut() : StatutImmobilisation.ACTIVE))
+                .amortissementCumule(base != null ? base.getAmortissementCumule() : BigDecimal.ZERO)
+                .enCoursDeModification(true)
+                .workflowEnCours(true)
+                .workflowInstanceId(wf.getId())
+                .workflowStatut(wf.getStatut() != null ? wf.getStatut().name() : null)
+                .workflowOperationType(current.getOperationType() != null ? current.getOperationType() : (base != null ? "UPDATE" : "CREATE"))
+                .piecesJointesWorkflow(attachments)
+                .build();
     }
 
     /**

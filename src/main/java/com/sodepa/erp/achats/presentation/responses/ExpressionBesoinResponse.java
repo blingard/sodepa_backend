@@ -37,6 +37,12 @@ public class ExpressionBesoinResponse {
     private boolean budgetDisponible;
     private String ligneBudgetaireImputation;
     private StatutExpressionBesoin statut;
+    private boolean enCoursDeModification;
+    private boolean workflowEnCours;
+    private UUID workflowInstanceId;
+    private String workflowStatut;
+    private String workflowOperationType;
+    private java.util.List<java.util.Map<String, Object>> piecesJointesWorkflow;
     private Instant dateCreation;
     private List<LigneExpressionBesoinResponse> lignes;
 

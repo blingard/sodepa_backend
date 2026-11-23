@@ -8,11 +8,13 @@ import com.sodepa.erp.organigramme.infrastructure.entities.EvolutionStructureOrg
 import com.sodepa.erp.utils.StatutCycleVieReferentiel;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -67,8 +69,9 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 201 contenant la famille crée.
      */
     @PostMapping("/familles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_UNITE', 'VALIDATE_OR_REJECT_COMPTE')")
     @Operation(summary = "Créer une famille de référentiel avec masque et propriétaire métier obligatoire (CA-REF-001-02 & 04)")
-    public ResponseEntity<FamilleReferentielEntity> creerFamille(@RequestBody FamilleReferentielEntity famille) {
+    public ResponseEntity<FamilleReferentielEntity> creerFamille(@Valid @RequestBody FamilleReferentielEntity famille) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerFamille(famille));
     }
 
@@ -79,6 +82,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant le code généré.
      */
     @PostMapping("/familles/{codeFamille}/generer-code")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('CREATE_UNITE', 'UPDATE_UNITE', 'INIT_CREATE_COMPTE', 'INIT_CREATE_TIERS', 'WORKFLOW_CONFIG')")
     @Operation(summary = "Générer le prochain code séquentiel d'une famille selon son masque (F-REF-003)")
     public ResponseEntity<Map<String, String>> genererProchainCode(@PathVariable String codeFamille) {
         return ResponseEntity.ok(Map.of(
@@ -132,9 +136,10 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 201 contenant la version crée.
      */
     @PostMapping("/fiches")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('CREATE_UNITE', 'UPDATE_UNITE', 'INIT_CREATE_COMPTE', 'INIT_CREATE_TIERS', 'CREATE_BUDGET_PLAN', 'WORKFLOW_CONFIG')")
     @Operation(summary = "Soumettre ou créer une nouvelle version datée d'une fiche de référentiel (F-REF-002 & F-REF-006)")
     public ResponseEntity<FicheReferentielVersionEntity> soumettreOuVersionnerFiche(
-            @RequestBody FicheReferentielVersionEntity fiche) {
+            @Valid @RequestBody FicheReferentielVersionEntity fiche) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.soumettreOuVersionnerFiche(fiche));
     }
 
@@ -142,18 +147,19 @@ public class GouvernanceMdmRestController {
      * Valide ou rejette fonctionnellement une fiche de référentiel avec séparation des tâches et notification Email/SMS.
      *
      * @param ficheId          Identifiant UUID de la fiche.
-     * @param valideurUsername Identifiant du valideur métier.
-     * @param roleValideur     Rôle du valideur.
+     * @param valideurUsername Identifiant du valideur métier (ignoré au profit du JWT).
+     * @param roleValideur     Rôle du valideur (ignoré au profit du JWT).
      * @param approuver        {@code true} pour approuver, {@code false} pour rejeter.
      * @param motif            Motif obligatoire en cas de rejet.
      * @return Réponse HTTP 200 contenant la fiche mise à jour.
      */
     @PostMapping("/fiches/{ficheId}/decision-metier")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('VALIDATE_UNITE', 'VALIDATE_OR_REJECT_COMPTE', 'VALIDATE_OR_REJECT_TIERS')")
     @Operation(summary = "Valider ou rejeter une fiche de référentiel avec séparation des tâches et notification Email+SMS (CA-REF-002-07)")
     public ResponseEntity<FicheReferentielVersionEntity> validerOuRejeterFicheMetier(
             @PathVariable UUID ficheId,
-            @RequestParam String valideurUsername,
-            @RequestParam(defaultValue = "PROPRIETAIRE_METIER") String roleValideur,
+            @RequestParam(required = false) String valideurUsername,
+            @RequestParam(required = false, defaultValue = "PROPRIETAIRE_METIER") String roleValideur,
             @RequestParam boolean approuver,
             @RequestParam(required = false) String motif) {
         return ResponseEntity.ok(service.validerOuRejeterFicheMetier(ficheId, valideurUsername, roleValideur, approuver, motif));
@@ -169,6 +175,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant la fiche mise à jour.
      */
     @PatchMapping("/fiches/{codeFamille}/{codeFiche}/statut")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_UNITE', 'VALIDATE_OR_REJECT_COMPTE')")
     @Operation(summary = "Suspendre ou archiver une fiche de référentiel sans transactions non soldées (CA-REF-002-03)")
     public ResponseEntity<FicheReferentielVersionEntity> suspendreOuArchiverFiche(
             @PathVariable String codeFamille,
@@ -185,6 +192,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 204 après suppression.
      */
     @DeleteMapping("/fiches/{ficheId}/brouillon")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_UNITE', 'DELETE_UNITE')")
     @Operation(summary = "Supprimer physiquement une fiche à l'état BROUILLON jamais utilisée (CA-REF-002-04 & 05)")
     public ResponseEntity<Void> suppriméerFicheBrouillon(@PathVariable UUID ficheId) {
         service.suppriméerFicheBrouillon(ficheId);
@@ -218,12 +226,13 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant le rapport de fusion.
      */
     @PostMapping("/doublons/fusionner")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_UNITE', 'VALIDATE_OR_REJECT_TIERS')")
     @Operation(summary = "Fusionner deux fiches doublons avec réaffectation des transactions et archivage tracé (CA-REF-004-02)")
     public ResponseEntity<Map<String, Object>> fusionnerDoublons(
             @RequestParam String codeFamille,
             @RequestParam String codeFicheMaitre,
             @RequestParam String codeFicheSecondaire,
-            @RequestParam String operateurUsername) {
+            @RequestParam(required = false) String operateurUsername) {
         return ResponseEntity.ok(service.fusionnerFichesDoublons(
                 codeFamille, codeFicheMaitre, codeFicheSecondaire, operateurUsername));
     }
@@ -239,11 +248,12 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant le rapport d'importation.
      */
     @PostMapping("/import-masse/{codeFamille}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_UNITE', 'INIT_CREATE_TIERS')")
     @Operation(summary = "Importer en masse des fiches en BROUILLON avec rapport d'erreurs ligne par ligne (F-REF-007)")
     public ResponseEntity<Map<String, Object>> importerEnMasse(
             @PathVariable String codeFamille,
-            @RequestParam(defaultValue = "import.operator") String auteurUsername,
-            @RequestBody List<Map<String, String>> lignes) {
+            @RequestParam(required = false, defaultValue = "import.operator") String auteurUsername,
+            @Valid @RequestBody List<Map<String, String>> lignes) {
         return ResponseEntity.ok(service.importerFichesEnMasse(codeFamille, lignes, auteurUsername));
     }
 
@@ -256,6 +266,7 @@ public class GouvernanceMdmRestController {
      * @return Fichier CSV en téléchargement.
      */
     @GetMapping("/export-csv/{codeFamille}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('GET_ORGANIGRAMME_INFO', 'LIST_ALL_COMPTE', 'WORKFLOW_SUPERVISION', 'VIEW_BUDGET')")
     @Operation(summary = "Exporter les fiches d'une famille au format CSV (F-REF-007 / CT-REF-08)")
     public ResponseEntity<String> exporterCsv(
             @PathVariable String codeFamille,
@@ -290,9 +301,10 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 201 contenant l'enregistréement cré.
      */
     @PostMapping("/organigramme-evolutions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') or hasAnyAuthority('CREATE_UNITE', 'UPDATE_UNITE', 'VALIDATE_UNITE')")
     @Operation(summary = "Enregistrer une fiche d'unité ou une évolution d'organigramme avec texte organique obligatoire (RG-REF-017)")
     public ResponseEntity<EvolutionStructureOrganigrammeEntity> enregistréerFicheOuEvolutionUnite(
-            @RequestBody EvolutionStructureOrganigrammeEntity evolution) {
+            @Valid @RequestBody EvolutionStructureOrganigrammeEntity evolution) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.enregistréerFicheOuEvolutionUnite(evolution));
     }
 
@@ -316,9 +328,10 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 201 contenant le modèle cré.
      */
     @PostMapping("/modeles-documents")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAuthority('INIT_CREATE_USER')")
     @Operation(summary = "Créer un modèle de document officiel SODEPA avec son masque de numérotation (F-REF-029)")
     public ResponseEntity<ModeleDocumentNumMasqueEntity> creerModeleDocument(
-            @RequestBody ModeleDocumentNumMasqueEntity modele) {
+            @Valid @RequestBody ModeleDocumentNumMasqueEntity modele) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerModeleDocument(modele));
     }
 
@@ -331,6 +344,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant le numéro généré.
      */
     @PostMapping("/modeles-documents/{codeModele}/numeroter")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('CREATE_UNITE', 'UPDATE_UNITE', 'INIT_CREATE_USER', 'WORKFLOW_CONFIG')")
     @Operation(summary = "Générer un numéro séquentiel continu sans trou ni doublon pour un document officiel (CA-REF-029-01 & 02)")
     public ResponseEntity<Map<String, Object>> genererNumeroDocument(
             @PathVariable String codeModele,
@@ -348,6 +362,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant le pack JSON autonome.
      */
     @GetMapping("/mode-degrade/pack-unite/{codeUnite}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('GET_ORGANIGRAMME_INFO', 'WORKFLOW_SUPERVISION', 'VIEW_BUDGET')")
     @Operation(summary = "Exporter le pack de consultation hors ligne (mode dégradé) pour une unité distante (CA-REF-032-03)")
     public ResponseEntity<Map<String, Object>> exporterPackModeDegrade(@PathVariable String codeUnite) {
         return ResponseEntity.ok(service.exporterPackModeDegradeUnite(codeUnite));
@@ -359,6 +374,7 @@ public class GouvernanceMdmRestController {
      * @return Réponse HTTP 200 contenant l'archive complète de réversibilité.
      */
     @GetMapping("/reversibilite/export-integral")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') or hasAnyAuthority('WORKFLOW_SUPERVISION', 'GET_FULL_USER_INFO')")
     @Operation(summary = "Exporter l'intégralité du Référentiel et de ses historiques pour réversibilité sans perte (F-REF-033 / RG-REF-015)")
     public ResponseEntity<Map<String, Object>> exporterReversibiliteIntegrale() {
         return ResponseEntity.ok(service.exporterReversibiliteIntegrale());

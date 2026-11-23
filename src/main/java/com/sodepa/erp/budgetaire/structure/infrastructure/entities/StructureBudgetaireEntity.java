@@ -37,7 +37,7 @@ import java.util.UUID;
  * Le périmètre d'une structure est le sous-arbre de son unité, moins les
  * sous-structures qu'il contient : une dépense relève de la structure la plus
  * proche en remontant l'organigramme (US-BUD-115). Le schéma est porté par le
- * changelog 29.0.
+ * changelog 34.0.
  * </p>
  */
 @Entity

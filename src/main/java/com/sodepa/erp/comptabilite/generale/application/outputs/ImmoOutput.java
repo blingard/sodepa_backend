@@ -6,6 +6,7 @@ import com.sodepa.erp.utils.StatutImmobilisation;
 import lombok.Builder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,6 +24,29 @@ public record ImmoOutput(
     Integer dureeUtile,
     BigDecimal valeurResiduelle,
     StatutImmobilisation statut,
-    BigDecimal amortissementCumule
+    BigDecimal amortissementCumule,
+    boolean enCoursDeModification,
+    boolean workflowEnCours,
+    UUID workflowInstanceId,
+    String workflowStatut,
+    String workflowOperationType,
+    List<String> piecesJointesWorkflow
 ) {
+    public ImmoOutput(
+        UUID id,
+        String code,
+        String designation,
+        BigDecimal valeurOrigine,
+        LocalDate dateAcquisition,
+        LocalDate dateMiseEnService,
+        ModeAmortissement modeAmortissement,
+        Integer dureeUtile,
+        BigDecimal valeurResiduelle,
+        StatutImmobilisation statut,
+        BigDecimal amortissementCumule
+    ) {
+        this(id, code, designation, valeurOrigine, dateAcquisition, dateMiseEnService,
+                modeAmortissement, dureeUtile, valeurResiduelle, statut, amortissementCumule,
+                false, false, null, null, null, null);
+    }
 }

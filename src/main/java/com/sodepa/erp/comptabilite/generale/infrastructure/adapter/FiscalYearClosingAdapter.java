@@ -93,7 +93,7 @@ public class FiscalYearClosingAdapter {
             throw new RuntimeException(String.format(
                     "Invalid transition: Cannot transition from %s to %s.", currentStatus, input.decision()));
 
-        utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BANK_INFO);
+        utilsService.hasAnyPermission(Permissions.INIT_CREATE_FISCAL_YEAR_CLOSING, Permissions.BUDGET_CLOTURE_EXERCICE);
 
         UUID checkerId = UUID.fromString(utilsService.getCurrentUser().getUserData().get().userId());
 

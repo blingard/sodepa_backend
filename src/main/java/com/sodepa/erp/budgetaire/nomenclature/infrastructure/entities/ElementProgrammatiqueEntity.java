@@ -24,7 +24,7 @@ import java.util.UUID;
  * Une seule table pour les quatre niveaux, reliés par {@code parent_id} : les
  * cumuls par programme, les rapports et l'import du plan de codification
  * (US-BUD-106) parcourent ainsi un seul arbre. Le schéma est porté par le
- * changelog 28.0.
+ * changelog 33.0.
  * </p>
  *
  * <p>

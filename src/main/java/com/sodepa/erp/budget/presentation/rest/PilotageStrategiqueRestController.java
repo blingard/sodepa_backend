@@ -7,6 +7,7 @@ import com.sodepa.erp.budget.application.usecase.GenererTftOhadaUseCase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/reporting")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'VIEW_ECRITURE', 'CREATE_BUDGET_PLAN', 'VALIDATE_BUDGET_PLAN')")
 @Tag(name = "Pilotage Stratégique & Indicateurs", description = "Tableau des flux de trésorerie OHADA, autonomie financière et vitesse de dépense")
 public class PilotageStrategiqueRestController {
 

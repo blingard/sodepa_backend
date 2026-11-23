@@ -18,3 +18,23 @@ spring:
 logging:
   level:
     com.sodepa.erp.configuration.TestDataSeeder: DEBUG
+
+sodepa:
+  ged:
+    hmac-secret: ${SODEPA_GED_HMAC_SECRET:sodepa-test-ged-hmac-local-key}
+  seed:
+    enabled: ${SODEPA_SEED_ENABLED:true}
+    purge-on-startup: ${SODEPA_PURGE_ON_STARTUP:true}
+    keep-bootstrap-roots: ${SODEPA_SEED_KEEP_BOOTSTRAP_ROOTS:true}
+  notifications:
+    sandbox:
+      enabled: ${NOTIF_SANDBOX_ENABLED:true}
+      redirect-email: ${NOTIF_SANDBOX_REDIRECT_EMAIL:}
+      sms-dry-run: ${NOTIF_SANDBOX_SMS_DRY_RUN:true}
+      whatsapp-dry-run: ${NOTIF_SANDBOX_WA_DRY_RUN:true}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

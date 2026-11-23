@@ -12,7 +12,11 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.event.TiersEventInput
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.TiersRepository;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +40,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class TiersAdapter {
+    private static final List<String> TIERS_WORKFLOW_ENTITY_NAMES = List.of("TIERS", "TiersEntity");
+
     private final WorkflowService workflowService;
+    private final WorkflowStateService workflowStateService;
     private final TiersRepository tiersRepository;
     private final CompteRepository compteRepository;
     private final ObjectMapper objectMapper;
@@ -51,7 +58,7 @@ public class TiersAdapter {
      * @throws IllegalArgumentException si le code existe déjà ou si le compte n'est pas présent dans le plan.
      */
     @Transactional
-    public void initCreateTiers(CreateTiersInput request) {
+    public SubmissionOutput initCreateTiers(CreateTiersInput request) {
         utilsService.hasPermission(Permissions.INIT_CREATE_TIERS);
         if (tiersRepository.findByCode(request.code()).isPresent()) {
             throw new IllegalArgumentException("Le code tiers " + request.code() + " est déjà utilisé.");
@@ -61,11 +68,12 @@ public class TiersAdapter {
         }
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk, true);
-        workflowService.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.TIERS,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
         );
+        return new SubmissionOutput(requestId, entityPk);
     }
 
     /**
@@ -74,15 +82,77 @@ public class TiersAdapter {
      * @param id l'identifiant du tiers.
      * @return le tiers correspondant.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public TiersOutput getTiersById(UUID id) {
         utilsService.hasPermission(Permissions.GET_FULL_TIERS_INFO);
-        TiersEntity entity = tiersRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Tiers introuvable avec l'ID: " + id));
+        Optional<TiersEntity> opt = tiersRepository.findById(id);
+        Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(TIERS_WORKFLOW_ENTITY_NAMES, id);
 
-        return new TiersOutput(entity.getId(), entity.getCode(), entity.getRaisonSociale(),
-                entity.getAdresse(), entity.getTelephone(), entity.getEmail(),
-                entity.getTypeTiers(), entity.getActif(), entity.getCompteCollectifCode());
+        if (opt.isPresent()) {
+            TiersEntity entity = opt.get();
+            if (activeWfOpt.isPresent()) {
+                WorkflowInstanceEntity wf = activeWfOpt.get();
+                WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                TypeTiers tt = entity.getTypeTiers();
+                if (data.get("typeTiers") != null) {
+                    try { tt = TypeTiers.valueOf(data.get("typeTiers").toString()); } catch (Exception ignored) {}
+                }
+                return new TiersOutput(
+                        entity.getId(),
+                        data.get("code") != null ? data.get("code").toString() : entity.getCode(),
+                        data.get("raisonSociale") != null ? data.get("raisonSociale").toString() : entity.getRaisonSociale(),
+                        data.get("adresse") != null ? data.get("adresse").toString() : entity.getAdresse(),
+                        data.get("telephone") != null ? data.get("telephone").toString() : entity.getTelephone(),
+                        data.get("email") != null ? data.get("email").toString() : entity.getEmail(),
+                        tt,
+                        data.get("actif") != null ? Boolean.valueOf(data.get("actif").toString()) : entity.getActif(),
+                        data.get("compteCollectifCode") != null ? data.get("compteCollectifCode").toString() : entity.getCompteCollectifCode(),
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "UPDATE",
+                        attachments
+                );
+            }
+            return new TiersOutput(entity.getId(), entity.getCode(), entity.getRaisonSociale(),
+                    entity.getAdresse(), entity.getTelephone(), entity.getEmail(),
+                    entity.getTypeTiers(), entity.getActif(), entity.getCompteCollectifCode());
+        }
+
+        if (activeWfOpt.isPresent()) {
+            WorkflowInstanceEntity wf = activeWfOpt.get();
+            WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+            List<String> attachments = current.getAttachments() == null ? List.of()
+                    : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+            TypeTiers tt = TypeTiers.FOURNISSEUR;
+            if (data.get("typeTiers") != null) {
+                try { tt = TypeTiers.valueOf(data.get("typeTiers").toString()); } catch (Exception ignored) {}
+            }
+            return new TiersOutput(
+                    id,
+                    data.get("code") != null ? data.get("code").toString() : "",
+                    data.get("raisonSociale") != null ? data.get("raisonSociale").toString() : "",
+                    data.get("adresse") != null ? data.get("adresse").toString() : "",
+                    data.get("telephone") != null ? data.get("telephone").toString() : "",
+                    data.get("email") != null ? data.get("email").toString() : "",
+                    tt,
+                    data.get("actif") == null || Boolean.parseBoolean(data.get("actif").toString()),
+                    data.get("compteCollectifCode") != null ? data.get("compteCollectifCode").toString() : "401",
+                    true,
+                    true,
+                    wf.getId(),
+                    wf.getStatut() != null ? wf.getStatut().name() : null,
+                    current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                    attachments
+            );
+        }
+
+        throw new IllegalArgumentException("Tiers introuvable avec l'ID: " + id);
     }
 
     /**
@@ -148,7 +218,7 @@ public class TiersAdapter {
      *
      * @return la liste des tiers.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<TiersSmartOutput> getTiersByPage(Pageable pageable) {
         utilsService.hasPermission(Permissions.GET_FULL_TIERS_INFO);
         if(pageable.getPageSize() > MAX_PAGE_SIZE)
@@ -158,15 +228,76 @@ public class TiersAdapter {
                     pageable.getSort()
             );
         Page<TiersEntity> entityPage = tiersRepository.findAll(pageable);
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(TIERS_WORKFLOW_ENTITY_NAMES);
+        Set<UUID> materializedIds = new HashSet<>();
+        List<TiersSmartOutput> items = new ArrayList<>();
+
+        for (TiersEntity entity : entityPage.getContent()) {
+            materializedIds.add(entity.getId());
+            WorkflowInstanceEntity wf = activeById.get(entity.getId());
+            if (wf != null) {
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                TypeTiers tt = entity.getTypeTiers();
+                if (data.get("typeTiers") != null) {
+                    try { tt = TypeTiers.valueOf(data.get("typeTiers").toString()); } catch (Exception ignored) {}
+                }
+                items.add(new TiersSmartOutput(
+                        entity.getId(),
+                        data.get("code") != null ? data.get("code").toString() : entity.getCode(),
+                        data.get("raisonSociale") != null ? data.get("raisonSociale").toString() : entity.getRaisonSociale(),
+                        tt,
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "UPDATE",
+                        attachments
+                ));
+            } else {
+                items.add(this.map(entity));
+            }
+        }
+
+        if (pageable.getPageNumber() == 0) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey()) || tiersRepository.existsById(entry.getKey())) {
+                    continue;
+                }
+                WorkflowInstanceEntity wf = entry.getValue();
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                TypeTiers tt = TypeTiers.FOURNISSEUR;
+                if (data.get("typeTiers") != null) {
+                    try { tt = TypeTiers.valueOf(data.get("typeTiers").toString()); } catch (Exception ignored) {}
+                }
+                items.add(new TiersSmartOutput(
+                        entry.getKey(),
+                        data.get("code") != null ? data.get("code").toString() : "",
+                        data.get("raisonSociale") != null ? data.get("raisonSociale").toString() : "",
+                        tt,
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                        attachments
+                ));
+            }
+        }
 
         boolean paged = entityPage.getPageable().isPaged();
         return new PageRecord<>(
-                entityPage.getContent().stream().map(this::map).toList(),
-                entityPage.isEmpty(),
+                items,
+                items.isEmpty(),
                 entityPage.isFirst(),
                 entityPage.isLast(),
                 entityPage.getNumber(),
-                entityPage.getNumberOfElements(),
+                items.size(),
                 PageableRecord.builder()
                         .offset(paged ? entityPage.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? entityPage.getPageable().getPageNumber() : 0L)

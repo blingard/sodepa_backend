@@ -1,29 +1,45 @@
 package com.sodepa.erp.workflow.presentation.rest;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDecision;
 import com.sodepa.erp.workflow.presentation.requests.*;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import com.sodepa.erp.workflow.presentation.responses.WorkflowDefinitionResponse;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowEntityStateResponse;
 import com.sodepa.erp.workflow.presentation.responses.WorkflowInstanceResponse;
 import com.sodepa.erp.workflow.presentation.responses.WorkflowMetierResponse;
 import com.sodepa.erp.workflow.presentation.responses.WorkflowTacheResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Part;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Service du Moteur Universel de Workflow et des Circuits d'Approbation SODEPA (REF-07 / Transverse).
@@ -47,6 +63,12 @@ public class WorkflowRestController {
 
     /** Service transverse de vérification des habilitations et de sécurité de session. */
     private final UtilsService utilsService;
+
+    /** Sérialiseur JSON pour le parsing des requêtes multipart mixtes. */
+    private final ObjectMapper objectMapper;
+
+    /** Validateur Bean Validation appliqué aux requêtes multipart construites manuellement. */
+    private final Validator validator;
 
     /**
      * Liste l'ensemble des opérations métiers enregistrées dans le moteur de workflow (Achats, Budget, Recrutement, Missions).
@@ -85,7 +107,7 @@ public class WorkflowRestController {
     @Operation(summary = "Lister les circuits de validation configurés (filtrage par unité organisationnelle)")
     public ResponseEntity<Page<WorkflowDefinitionResponse>> listerDefinitions(
             @PageableDefault(size = 20) @NotNull Pageable pageable,
-            @RequestParam(required = false, name = "active") boolean active) {
+            @RequestParam(required = false, name = "active") Boolean active) {
         return ResponseEntity.ok(workflowService.listerPageDefinitions(pageable, active));
     }
 
@@ -121,6 +143,58 @@ public class WorkflowRestController {
     }
 
     /**
+     * Restitue la projection consolidée des données courantes d'une instance (ClickHouse / Outbox PostgreSQL).
+     *
+     * @param id identifiant UUID de l'instance de workflow
+     * @return l'état courant consolidé, les pièces jointes accumulées et la source de persistance
+     */
+    @GetMapping("/instances/{id}/current-data")
+    @Operation(summary = "Consulter l'état consolidé courant d'un dossier en circuit (ClickHouse / Outbox, Need-to-Know)")
+    public ResponseEntity<WorkflowCurrentDataResponse> getInstanceCurrentData(
+            @Parameter(description = "Identifiant UUID de l'instance") @PathVariable UUID id) {
+        return ResponseEntity.ok(workflowService.getCurrentData(id));
+    }
+
+    /**
+     * Restitue l'historique versionné des instantanés d'état enregistrés à chaque étape dans ClickHouse / Outbox.
+     *
+     * @param id identifiant UUID de l'instance de workflow
+     * @return la liste ordonnée des versions v1..vn avec patches et snapshots
+     */
+    @GetMapping("/instances/{id}/states")
+    @Operation(summary = "Consulter l'historique des états versionnés d'une instance dans ClickHouse / Outbox (Need-to-Know)")
+    public ResponseEntity<List<WorkflowEntityStateResponse>> getInstanceStates(
+            @Parameter(description = "Identifiant UUID de l'instance") @PathVariable UUID id) {
+        return ResponseEntity.ok(workflowService.getStateHistory(id));
+    }
+
+    /**
+     * Démarre une nouvelle instance de circuit de validation à partir d'une définition de workflow existante.
+     *
+     * @param request paramètres de démarrage (définition, entité cible, initiateur, contexte)
+     * @return l'instance créée avec les tâches initiales générées
+     */
+    @PostMapping("/instances")
+    @Operation(summary = "Démarrer une instance de workflow à partir d'une définition")
+    public ResponseEntity<WorkflowInstanceResponse> demarrerWorkflow(
+            @Valid @RequestBody DemarrerWorkflowRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.demarrerWorkflow(request));
+    }
+
+    /**
+     * Démarre une nouvelle instance de circuit de validation par code d'opération métier et employé.
+     *
+     * @param request paramètres métier (code métier, entité cible, employé initiateur, contexte)
+     * @return l'instance créée avec les tâches initiales générées
+     */
+    @PostMapping("/metiers/demarrer")
+    @Operation(summary = "Démarrer une instance de workflow par opération métier")
+    public ResponseEntity<WorkflowInstanceResponse> demarrerWorkflowMetier(
+            @Valid @RequestBody DemarrerWorkflowMetierRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(workflowService.demarrerWorkflowMetier(request));
+    }
+
+    /**
      * Recherche l'instance de workflow active associée à un objet métier particulier (bon de commande, budget, recrutement).
      *
      * @param entityName nom de l'objet métier (ex: 'BudgetPlanEntity', 'DossierAchatEntity')
@@ -151,7 +225,7 @@ public class WorkflowRestController {
     @Operation(summary = "Lister les dossiers en attente d'approbation pour l'utilisateur courant")
     public ResponseEntity<Page<WorkflowTacheResponse>> getMesTaches(
             @RequestParam(required = false) StatutWorkflowTache statut,
-            @PageableDefault(size = 20) Pageable pageable) {
+            @PageableDefault(size = 20, sort = "dateCreation", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(workflowService.getMesTaches(statut, pageable));
     }
 
@@ -165,15 +239,76 @@ public class WorkflowRestController {
      * @param request décision formalisée (ACCORD, REJET, DEMANDE_MODIFICATION) accompagnée des notes justificatives
      * @return confirmation d'enregistrement de la décision
      */
-    @PostMapping({"/task/decision"})
+    @PostMapping(value = {"/task/decision"}, consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Approuver, rejeter ou demander des corrections sur un dossier")
     public ResponseEntity<Void> traiterTache(@Valid @RequestBody TraitTaskWorkflowRequest request) {
-        // 1. Contrôle d'habilitation de l'autorité décisionnaire
-        utilsService.hasPermission(Permissions.WORKFLOW_DECISION);
-
-        // 2. Traitement et application de la transition de statut
+        // Contrôle d'habilitation et transition appliqués dans workflowService (autorise la retransmission par l'initiateur)
         workflowService.traiterTache(request);
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Enregistre une décision accompagnée d'une pièce justificative téléversée (multipart/form-data).
+     * Supporte une partie JSON {@code request} et/ou des champs formulaire classiques + {@code file}.
+     */
+    @PostMapping(value = {"/task/decision", "/task/decision/multipart"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Approuver, rejeter ou demander des corrections sur un dossier avec pièce jointe")
+    public ResponseEntity<Void> traiterTacheMultipart(
+            HttpServletRequest httpRequest,
+            @RequestPart(value = "file", required = false) MultipartFile file) {
+        TraitTaskWorkflowRequest request = extractMultipartDecisionRequest(httpRequest, file);
+        workflowService.traiterTache(request);
+        return ResponseEntity.ok().build();
+    }
+
+    private TraitTaskWorkflowRequest extractMultipartDecisionRequest(HttpServletRequest httpRequest, MultipartFile file) {
+        TraitTaskWorkflowRequest request;
+        try {
+            String requestJson = httpRequest.getParameter("request");
+            if (requestJson == null || requestJson.isBlank()) {
+                Part reqPart = httpRequest.getPart("request");
+                if (reqPart != null && reqPart.getSize() > 0) {
+                    requestJson = new String(reqPart.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            if (requestJson != null && !requestJson.isBlank()) {
+                request = objectMapper.readValue(requestJson, TraitTaskWorkflowRequest.class);
+            } else {
+                String taskIdStr = httpRequest.getParameter("workflowTaskId");
+                String decisionStr = httpRequest.getParameter("decision");
+                String champsStr = httpRequest.getParameter("champsModifiesJson");
+                String acceptStr = httpRequest.getParameter("accept");
+
+                Map<String, Object> champsMap = null;
+                if (champsStr != null && !champsStr.isBlank()) {
+                    champsMap = objectMapper.readValue(champsStr, new TypeReference<>() {});
+                }
+                request = TraitTaskWorkflowRequest.builder()
+                        .workflowTaskId(taskIdStr != null && !taskIdStr.isBlank() ? UUID.fromString(taskIdStr.trim()) : null)
+                        .decision(decisionStr != null && !decisionStr.isBlank() ? WorkflowDecision.valueOf(decisionStr.trim()) : null)
+                        .commentaire(httpRequest.getParameter("commentaire"))
+                        .accept(acceptStr != null && !acceptStr.isBlank() ? Boolean.valueOf(acceptStr.trim()) : null)
+                        .champsModifiesJson(champsMap)
+                        .build();
+            }
+        } catch (IllegalArgumentException e) {
+            throw new RequeteInvalideException("Paramètres multipart invalides : " + e.getMessage());
+        } catch (Exception e) {
+            throw new RequeteInvalideException("Impossible de lire la requête multipart : " + e.getMessage());
+        }
+
+        if (file != null && !file.isEmpty()) {
+            request.setFile(file);
+        }
+
+        Set<ConstraintViolation<TraitTaskWorkflowRequest>> violations = validator.validate(request);
+        if (!violations.isEmpty()) {
+            String details = violations.stream()
+                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                    .collect(Collectors.joining(", "));
+            throw new RequeteInvalideException("Requête de décision invalide : " + details);
+        }
+        return request;
     }
 
     /**

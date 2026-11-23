@@ -8,6 +8,7 @@ import com.sodepa.erp.comptabilite.generale.application.usecase.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/comptabilite/reporting")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_ECRITURE', 'INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'GET_FULL_ECRITURE_INFO', 'VALIDATE_OR_REJECT_ECRITURE')")
 public class ReportingRestController {
 
     private final GetLivreJournalUseCase getLivreJournalUseCase;

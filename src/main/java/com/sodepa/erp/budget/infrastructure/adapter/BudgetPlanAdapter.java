@@ -18,7 +18,11 @@ import com.sodepa.erp.budget.application.outputs.BudgetPlanSmartOutput;
 import com.sodepa.erp.budget.infrastructure.entities.*;
 import com.sodepa.erp.budget.infrastructure.repo.*;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
+import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -122,6 +126,15 @@ public class BudgetPlanAdapter {
     private final ClickHouseManager clickHouseManager;
     private final BudgetSecurityService budgetSecurityService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private WorkflowStateService workflowStateService;
+
+    private static final List<String> BUDGET_PLAN_WORKFLOW_ENTITY_NAMES = List.of(
+            "BUDGET_PLAN",
+            BudgetPlanEntity.class.getSimpleName(),
+            BudgetPlanEntity.class.getName()
+    );
+
     public boolean canValidate(Permissions permission) {
         try {
             utilsService.hasPermission(permission);
@@ -165,7 +178,7 @@ public class BudgetPlanAdapter {
      * est obtenu en une requête pour la page entière.
      * </p>
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<BudgetPlanSmartOutput> getPlansByPage(RechercheBudgetPlanInput input) {
         Pageable pageable = input.pageable();
         if (pageable.getPageSize() > MAX_PAGE_SIZE) {
@@ -182,17 +195,52 @@ public class BudgetPlanAdapter {
                                 BudgetItemRepository.DecompteItems::getPlanId,
                                 BudgetItemRepository.DecompteItems::getNombre));
 
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService != null
+                ? workflowStateService.findActiveInstancesByEntityUuid(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES)
+                : new HashMap<>();
+
+        List<BudgetPlanSmartOutput> content = new ArrayList<>();
+        for (BudgetPlanEntity plan : page.getContent()) {
+            content.add(mapPlanSmart(plan, decomptes.getOrDefault(plan.getId(), 0L), activeById.get(plan.getId())));
+        }
+
+        long extraDraftCount = 0L;
+        if (!activeById.isEmpty() && workflowStateService != null) {
+            List<BudgetPlanSmartOutput> matchingDrafts = new ArrayList<>();
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                UUID draftId = entry.getKey();
+                if (budgetPlanRepository.existsById(draftId)) {
+                    continue;
+                }
+                WorkflowInstanceEntity wf = entry.getValue();
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : new HashMap<>();
+                Integer draftAnnee = asInteger(data.get("annee"));
+                StatutBudget draftStatut = resolveStatutBudget(data.get("statut"), StatutBudget.DRAFT);
+                if (input.annee() != null && (draftAnnee == null || !input.annee().equals(draftAnnee))) {
+                    continue;
+                }
+                if (input.statut() != null && input.statut() != draftStatut) {
+                    continue;
+                }
+                matchingDrafts.add(buildDraftSmartPlanFromWorkflow(draftId, wf, data, current));
+            }
+            extraDraftCount = matchingDrafts.size();
+            boolean paged = page.getPageable().isPaged();
+            if (!paged || page.getNumber() == 0) {
+                content.addAll(0, matchingDrafts);
+            }
+        }
+
         boolean paged = page.getPageable().isPaged();
 
         return new PageRecord<>(
-                page.getContent().stream()
-                        .map(plan -> mapPlanSmart(plan, decomptes.getOrDefault(plan.getId(), 0L)))
-                        .toList(),
-                page.isEmpty(),
+                content,
+                content.isEmpty(),
                 page.isFirst(),
                 page.isLast(),
                 page.getNumber(),
-                page.getNumberOfElements(),
+                content.size(),
                 PageableRecord.builder()
                         .offset(paged ? page.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
@@ -203,25 +251,30 @@ public class BudgetPlanAdapter {
                         .build(),
                 page.getSize(),
                 page.getSort(),
-                page.getTotalElements(),
+                page.getTotalElements() + extraDraftCount,
                 page.getTotalPages()
         );
     }
 
     /**
      * Fiche complète d'un plan, postes compris.
-     *
-     * <p>
-     * C'est ce point d'entrée qui rend le workflow praticable : sans lui,
-     * l'identifiant rendu à la création était le seul lien vers le plan, et il
-     * se perdait au premier rechargement de page.
-     * </p>
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public BudgetPlanOutput getPlanById(UUID planId) {
-        BudgetPlanEntity plan = budgetPlanRepository.findByIdAvecItems(planId)
-                .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
-        return mapPlan(plan);
+        Optional<BudgetPlanEntity> opt = budgetPlanRepository.findByIdAvecItems(planId);
+        Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService != null
+                ? workflowStateService.findActiveInstanceForEntity(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES, planId)
+                : Optional.empty();
+        if (opt.isPresent()) {
+            return mapPlanWithWorkflow(opt.get(), activeWfOpt.orElse(null));
+        }
+        if (activeWfOpt.isPresent() && workflowStateService != null) {
+            WorkflowInstanceEntity wf = activeWfOpt.get();
+            WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : new HashMap<>();
+            return buildDraftPlanFromWorkflow(planId, wf, data, current);
+        }
+        throw new IllegalArgumentException("Plan budgétaire introuvable.");
     }
 
     /**
@@ -287,12 +340,23 @@ public class BudgetPlanAdapter {
     public BudgetPlanOutput creerBudgetPlan(CreerBudgetPlanInput input) {
         utilsService.hasPermission(Permissions.CREATE_BUDGET_PLAN);
         List<BudgetPlanEntity> existants = budgetPlanRepository.findByAnnee(input.annee());
-        int nouvelleVersion = existants.size() + 1;
+        int activeSameYear = 0;
+        if (workflowStateService != null) {
+            for (WorkflowInstanceEntity wf : workflowStateService.findActiveInstancesByEntityUuid(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES).values()) {
+                Map<String, Object> d = workflowStateService.getLatestMergedDataMap(wf);
+                Integer annee = asInteger(d.get("annee"));
+                if (annee != null && annee == input.annee()) {
+                    activeSameYear++;
+                }
+            }
+        }
+        int nouvelleVersion = existants.size() + activeSameYear + 1;
 
         UUID id = UUID.randomUUID();
         Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
         payload.put("id", id.toString());
         payload.put("version", nouvelleVersion);
+        payload.put("statut", StatutBudget.DRAFT.name());
 
         UUID uuid = workflowService.submitChange(
                 MakerCheckerEntityName.BUDGET_PLAN,
@@ -300,7 +364,7 @@ public class BudgetPlanAdapter {
                 payload,
                 MakerCheckerOperationType.CREATE
         );
-        log.info("Plan budgétaire exercice {} V{} soumis au Maker-Checker (Ticket: {})", input.annee(), nouvelleVersion, uuid);
+        log.info("Plan budgétaire exercice {} V{} soumis au workflow ClickHouse (Ticket: {})", input.annee(), nouvelleVersion, uuid);
 
         trackClickHouse(MakerCheckerEntityName.BUDGET_PLAN.name(), id.toString(), Map.of(
                 "action", "SOUMISSION_CREER_BUDGET_PLAN",
@@ -310,48 +374,92 @@ public class BudgetPlanAdapter {
                 "ticket", uuid.toString()
         ));
 
-        if (canValidate(Permissions.VALIDATE_BUDGET_PLAN)) {
-            try {
-                validateOrRejectBudgetPlan(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto plan budgétaire: {}", e.getMessage());
-            }
+        WorkflowInstanceEntity activeWf = workflowStateService != null
+                ? workflowStateService.findActiveInstanceForEntity(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES, id).orElse(null)
+                : null;
+        return new BudgetPlanOutput(
+                id,
+                input.annee(),
+                input.intitule(),
+                nouvelleVersion,
+                StatutBudget.DRAFT,
+                BigDecimal.ZERO,
+                LocalDateTime.now(),
+                input.utilisateurId(),
+                null,
+                null,
+                new ArrayList<>(),
+                true,
+                activeWf != null,
+                activeWf != null ? activeWf.getId() : null,
+                activeWf != null && activeWf.getStatut() != null ? activeWf.getStatut().name() : "EN_COURS",
+                "CREATE",
+                List.of()
+        );
+    }
+
+    @Transactional
+    public BudgetPlanOutput modifierBudgetPlan(UUID planId, CreerBudgetPlanInput input) {
+        utilsService.hasPermission(Permissions.UPDATE_BUDGET_PLAN);
+        BudgetPlanEntity existing = budgetPlanRepository.findByIdAvecItems(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
+
+        if (workflowStateService != null
+                && workflowStateService.findActiveInstanceForEntity(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES, planId).isPresent()) {
+            throw new ConflitMetierException("Une demande de modification est déjà en cours de validation pour ce plan budgétaire.");
         }
 
-        return budgetPlanRepository.findById(id)
-                .map(this::mapPlan)
-                .orElseGet(() -> new BudgetPlanOutput(
-                        id,
-                        input.annee(),
-                        input.intitule(),
-                        nouvelleVersion,
-                        StatutBudget.DRAFT,
-                        BigDecimal.ZERO,
-                        LocalDateTime.now(),
-                        input.utilisateurId(),
-                        null,
-                        null,
-                        new ArrayList<>()
-                ));
+        Map<String, Object> payload = new HashMap<>(objectMapper.convertValue(input, Map.class));
+        payload.put("id", existing.getId().toString());
+        payload.put("version", existing.getVersion());
+
+        UUID uuid = workflowService.submitChange(
+                MakerCheckerEntityName.BUDGET_PLAN,
+                existing.getId().toString(),
+                payload,
+                MakerCheckerOperationType.UPDATE
+        );
+        log.info("Modification plan budgétaire {} soumise au workflow (Ticket: {})", existing.getId(), uuid);
+
+        WorkflowInstanceEntity activeWf = workflowStateService != null
+                ? workflowStateService.findActiveInstanceForEntity(BUDGET_PLAN_WORKFLOW_ENTITY_NAMES, planId).orElse(null)
+                : null;
+        return mapPlanWithWorkflow(existing, activeWf);
+    }
+
+    @Transactional
+    public void finaliserBudgetPlanDepuisWorkflow(UUID planId, Map<String, Object> finalData) {
+        if (planId == null || finalData == null || finalData.isEmpty()) {
+            return;
+        }
+        materialiserBudgetPlanFinale(planId, finalData);
+    }
+
+    private void materialiserBudgetPlanFinale(UUID planId, Map<String, Object> payload) {
+        Map<String, Object> safePayload = payload != null ? payload : new HashMap<>();
+        Optional<BudgetPlanEntity> existingOpt = budgetPlanRepository.findById(planId);
+        if (existingOpt.isPresent()) {
+            miseAJourBudgetPlan(existingOpt.get(), safePayload);
+        } else {
+            creationBudgetPlan(safePayload, planId);
+        }
     }
 
     private BudgetPlanEntity creationBudgetPlan(Map<String, Object> payload, UUID planId) {
-        int annee = (Integer) payload.get("annee");
-        String intitule = (String) payload.get("intitule");
+        Integer anneeParsed = asInteger(payload.get("annee"));
+        int annee = anneeParsed != null ? anneeParsed : LocalDateTime.now().getYear();
+        String intitule = payload.get("intitule") != null ? payload.get("intitule").toString() : "Plan budgétaire " + annee;
         UUID userId = payload.get("utilisateurId") != null ? UUID.fromString(payload.get("utilisateurId").toString()) : null;
-        int version = payload.get("version") != null ? ((Number) payload.get("version")).intValue() : 1;
+        Integer verParsed = asInteger(payload.get("version"));
+        int version = verParsed != null ? verParsed : 1;
+        StatutBudget finalStatut = resolveStatutBudget(payload.get("statut"), StatutBudget.DRAFT);
 
         BudgetPlanEntity plan = BudgetPlanEntity.builder()
                 .id(planId)
                 .annee(annee)
                 .intitule(intitule)
                 .version(version)
-                .statut(StatutBudget.DRAFT)
+                .statut(finalStatut)
                 .totalBudget(BigDecimal.ZERO)
                 .creeLe(LocalDateTime.now())
                 .creePar(userId)
@@ -368,6 +476,29 @@ public class BudgetPlanAdapter {
                 .utilisateur(userId)
                 .build());
 
+        log.info("Plan budgétaire {} (exercice {} V{}) matérialisé en PostgreSQL à l'approbation finale.",
+                saved.getId(), annee, version);
+        return saved;
+    }
+
+    private BudgetPlanEntity miseAJourBudgetPlan(BudgetPlanEntity plan, Map<String, Object> payload) {
+        if (payload.containsKey("intitule") && payload.get("intitule") != null) {
+            plan.setIntitule(payload.get("intitule").toString());
+        }
+        Integer anneeParsed = asInteger(payload.get("annee"));
+        if (anneeParsed != null) {
+            plan.setAnnee(anneeParsed);
+        }
+        if (payload.containsKey("statut") && payload.get("statut") != null) {
+            plan.setStatut(resolveStatutBudget(payload.get("statut"), plan.getStatut()));
+        }
+        UUID userId = payload.get("utilisateurId") != null ? parseUuidSafe(payload.get("utilisateurId").toString()) : null;
+        plan.setModifieLe(LocalDateTime.now());
+        if (userId != null) {
+            plan.setModifiePar(userId);
+        }
+        BudgetPlanEntity saved = budgetPlanRepository.save(plan);
+        log.info("Plan budgétaire {} mis à jour en PostgreSQL à l'approbation finale.", saved.getId());
         return saved;
     }
 
@@ -399,12 +530,10 @@ public class BudgetPlanAdapter {
 
         if (MakerCheckerStatus.REJECTED.equals(newStatus)) {
             workflowService.update(checkerOutput.id(), newStatus, input.notes(), checkerId.toString());
-            log.info("Plan budgétaire rejeté par Checker {}. Ticket: {}", checkerId, checkerOutput.id());
+            log.info("Plan budgétaire rejeté par Checker {} (zéro écriture Postgres). Ticket: {}", checkerId, checkerOutput.id());
         } else if (MakerCheckerStatus.ACCEPTED.equals(newStatus)) {
             UUID planId = UUID.fromString(checkerOutput.entityPk());
-            if (checkerOutput.checkerOperationType() == MakerCheckerOperationType.CREATE) {
-                creationBudgetPlan(checkerOutput.payload(), planId);
-            }
+            materialiserBudgetPlanFinale(planId, checkerOutput.payload());
             workflowService.update(checkerOutput.id(), input.decision(), input.notes(), checkerId.toString());
             log.info("Plan budgétaire approuvé par Checker {}. Ticket: {}, Plan PK: {}", checkerId, checkerOutput.id(), planId);
         }
@@ -459,8 +588,15 @@ public class BudgetPlanAdapter {
         return mapItem(saved);
     }
 
+    private UUID resolveActorIdOrFallback(UUID requestedUserId) {
+        UUID currentId = utilsService.getCurrentUserIdOrNull();
+        return currentId != null ? currentId : requestedUserId;
+    }
+
     @Transactional
     public void soumettrePlan(UUID planId, UUID userId) {
+        utilsService.hasPermission(Permissions.UPDATE_BUDGET_PLAN);
+        UUID actorId = resolveActorIdOrFallback(userId);
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
         if (!plan.getStatut().isModifiable()) {
@@ -469,7 +605,7 @@ public class BudgetPlanAdapter {
 
         plan.setStatut(StatutBudget.SUBMITTED);
         plan.setModifieLe(LocalDateTime.now());
-        plan.setModifiePar(userId);
+        plan.setModifiePar(actorId);
         budgetPlanRepository.save(plan);
 
         auditTrailRepository.save(AuditTrailEntity.builder()
@@ -478,21 +614,26 @@ public class BudgetPlanAdapter {
                 .action("SUBMIT")
                 .details("Soumission du budget pour approbation.")
                 .timestamp(LocalDateTime.now())
-                .utilisateur(userId)
+                .utilisateur(actorId)
                 .build());
     }
 
     @Transactional
     public void approuverPlan(UUID planId, UUID userId) {
+        utilsService.hasPermission(Permissions.VALIDATE_BUDGET_PLAN);
+        UUID actorId = resolveActorIdOrFallback(userId);
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
         if (plan.getStatut() != StatutBudget.SUBMITTED && plan.getStatut() != StatutBudget.SOUMIS) {
             throw new IllegalStateException("Le plan doit être soumis pour être approuvé.");
         }
+        if (plan.getModifiePar() != null && plan.getModifiePar().equals(actorId) && !utilsService.isAdmin()) {
+            throw new ConflitMetierException("Principe des 4 yeux : le soumetteur ne peut pas approuver son propre budget.");
+        }
 
         plan.setStatut(StatutBudget.PUBLISHED);
         plan.setModifieLe(LocalDateTime.now());
-        plan.setModifiePar(userId);
+        plan.setModifiePar(actorId);
         budgetPlanRepository.save(plan);
 
         auditTrailRepository.save(AuditTrailEntity.builder()
@@ -501,12 +642,14 @@ public class BudgetPlanAdapter {
                 .action("APPROVE")
                 .details("Approbation et publication du plan budgétaire.")
                 .timestamp(LocalDateTime.now())
-                .utilisateur(userId)
+                .utilisateur(actorId)
                 .build());
     }
 
     @Transactional
     public void rejeterPlan(UUID planId, UUID userId) {
+        utilsService.hasPermission(Permissions.VALIDATE_BUDGET_PLAN);
+        UUID actorId = resolveActorIdOrFallback(userId);
         BudgetPlanEntity plan = budgetPlanRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan budgétaire introuvable."));
         if (plan.getStatut() != StatutBudget.SUBMITTED && plan.getStatut() != StatutBudget.SOUMIS) {
@@ -515,7 +658,7 @@ public class BudgetPlanAdapter {
 
         plan.setStatut(StatutBudget.REJECTED);
         plan.setModifieLe(LocalDateTime.now());
-        plan.setModifiePar(userId);
+        plan.setModifiePar(actorId);
         budgetPlanRepository.save(plan);
 
         auditTrailRepository.save(AuditTrailEntity.builder()
@@ -524,7 +667,7 @@ public class BudgetPlanAdapter {
                 .action("REJECT")
                 .details("Rejet du plan budgétaire lors du workflow de validation.")
                 .timestamp(LocalDateTime.now())
-                .utilisateur(userId)
+                .utilisateur(actorId)
                 .build());
     }
 
@@ -575,29 +718,30 @@ public class BudgetPlanAdapter {
                 "circuit", circuit
         ));
 
-        // Seules les réallocations SIMPLES (circuit WF-DAF-06) peuvent être auto-validées.
-        // Les significatives et les mesures d'urgence doivent parcourir leur circuit complet (comité, DG, CA).
-        boolean autoValidable = WF_REALLOC_SIMPLE.equals(circuit);
-        if (autoValidable && canValidate(Permissions.VALIDATE_BUDGET_REALLOCATION)) {
-            try {
-                validateOrRejectReallocation(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto réallocation budgétaire: {}", e.getMessage());
-            }
-        }
+        // RG-BUD-016 : Seules les réallocations simples ou mesures d'urgence validées suivent les circuits spécifiques.
+        // Conformément au principe strict des 4 yeux (Séparation Maker/Checker), aucune auto-validation n'est exécutée ici.
+    }
+
+    private BudgetItemEntity lockBudgetItemOrFallback(UUID itemId, String notFoundMessage) {
+        return budgetItemRepository.findWithLockById(itemId)
+                .or(() -> budgetItemRepository.findById(itemId))
+                .orElseThrow(() -> new IllegalArgumentException(notFoundMessage));
     }
 
     private void creationReallocation(Map<String, Object> payload, UUID reallocationId) {
         ReallocationInput input = objectMapper.convertValue(payload, ReallocationInput.class);
-        BudgetItemEntity source = budgetItemRepository.findById(input.sourceItemId())
-                .orElseThrow(() -> new IllegalArgumentException("Item source introuvable."));
-        BudgetItemEntity dest = budgetItemRepository.findById(input.destItemId())
-                .orElseThrow(() -> new IllegalArgumentException("Item destinataire introuvable."));
+        // Ordre déterministe de verrouillage pessimiste pour prévenir tout interblocage (deadlock) concurrent.
+        BudgetItemEntity source;
+        BudgetItemEntity dest;
+        if (input.sourceItemId().compareTo(input.destItemId()) <= 0) {
+            source = lockBudgetItemOrFallback(input.sourceItemId(), "Item source introuvable.");
+            dest = input.sourceItemId().equals(input.destItemId())
+                    ? source
+                    : lockBudgetItemOrFallback(input.destItemId(), "Item destinataire introuvable.");
+        } else {
+            dest = lockBudgetItemOrFallback(input.destItemId(), "Item destinataire introuvable.");
+            source = lockBudgetItemOrFallback(input.sourceItemId(), "Item source introuvable.");
+        }
 
         if (!source.getBudgetPlan().getId().equals(dest.getBudgetPlan().getId())) {
             throw new IllegalArgumentException("Les lignes budgétaires doivent appartenir au même plan.");
@@ -740,19 +884,6 @@ public class BudgetPlanAdapter {
                 "ticket", uuid.toString()
         ));
 
-        if (canValidate(Permissions.VALIDATE_BUDGET_ENGAGEMENT)) {
-            try {
-                validateOrRejectEngagement(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto engagement budgétaire: {}", e.getMessage());
-            }
-        }
-
         return budgetEngagementRepository.findById(id)
                 .map(this::mapEngagement)
                 .orElseGet(() -> new BudgetEngagementOutput(
@@ -768,7 +899,9 @@ public class BudgetPlanAdapter {
 
     private BudgetEngagementEntity creationEngagement(Map<String, Object> payload, UUID engagementId) {
         EngagementInput input = objectMapper.convertValue(payload, EngagementInput.class);
-        BudgetItemEntity item = budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(input.planId(), input.compteCode(), input.sectionId())
+        BudgetItemEntity item = budgetItemRepository
+                .findWithLockByPlanAndCompteAndSection(input.planId(), input.compteCode(), input.sectionId())
+                .or(() -> budgetItemRepository.findByBudgetPlanIdAndCompteCodeAndSectionId(input.planId(), input.compteCode(), input.sectionId()))
                 .orElseThrow(() -> new IllegalArgumentException("Ligne budgétaire inexistante pour ce plan, compte et section."));
 
         if (!item.getBudgetPlan().getStatut().isExecutoire()) {
@@ -860,6 +993,8 @@ public class BudgetPlanAdapter {
 
     @Transactional
     public void liquiderEngagement(String numeroEngagement, UUID userId) {
+        utilsService.hasAnyPermission(Permissions.VALIDATE_BUDGET_ENGAGEMENT, Permissions.LIQUIDATE_INVOICE, Permissions.VALIDATE_LIQUIDATION);
+        UUID actorId = resolveActorIdOrFallback(userId);
         BudgetEngagementEntity engagement = budgetEngagementRepository.findByNumeroEngagement(numeroEngagement)
                 .orElseThrow(() -> new IllegalArgumentException("Engagement introuvable."));
 
@@ -867,10 +1002,17 @@ public class BudgetPlanAdapter {
             throw new IllegalStateException("L'engagement n'est plus à l'état ENGAGED (état actuel: " + engagement.getStatut() + ").");
         }
 
+        BudgetItemEntity item = lockAssociatedBudgetItem(engagement);
+        budgetSecurityService.validateAccessToUnite(item.getSectionId());
+
         engagement.setStatut("CONVERTED_TO_REAL");
-        BudgetItemEntity item = engagement.getBudgetItem();
-        item.setMontantEngage(item.getMontantEngage().subtract(engagement.getMontant()));
-        
+        BigDecimal currentEngage = item.getMontantEngage() != null ? item.getMontantEngage() : BigDecimal.ZERO;
+        BigDecimal newEngage = currentEngage.subtract(engagement.getMontant());
+        item.setMontantEngage(newEngage.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : newEngage);
+
+        BigDecimal currentReal = item.getMontantReal() != null ? item.getMontantReal() : BigDecimal.ZERO;
+        item.setMontantReal(currentReal.add(engagement.getMontant()));
+
         budgetItemRepository.save(item);
         budgetEngagementRepository.save(engagement);
 
@@ -880,12 +1022,24 @@ public class BudgetPlanAdapter {
                 .action("LIQUIDATE")
                 .details("Liquidation (conversion en réel) de l'engagement " + numeroEngagement)
                 .timestamp(LocalDateTime.now())
-                .utilisateur(userId)
+                .utilisateur(actorId)
                 .build());
+    }
+
+    private BudgetItemEntity lockAssociatedBudgetItem(BudgetEngagementEntity engagement) {
+        BudgetItemEntity attached = engagement.getBudgetItem();
+        if (attached == null || attached.getId() == null) {
+            return attached;
+        }
+        return budgetItemRepository.findWithLockById(attached.getId())
+                .or(() -> budgetItemRepository.findById(attached.getId()))
+                .orElse(attached);
     }
 
     @Transactional
     public void annulerEngagement(String numeroEngagement, UUID userId) {
+        utilsService.hasAnyPermission(Permissions.VALIDATE_BUDGET_ENGAGEMENT, Permissions.CREATE_BUDGET_ENGAGEMENT);
+        UUID actorId = resolveActorIdOrFallback(userId);
         BudgetEngagementEntity engagement = budgetEngagementRepository.findByNumeroEngagement(numeroEngagement)
                 .orElseThrow(() -> new IllegalArgumentException("Engagement introuvable."));
 
@@ -893,9 +1047,13 @@ public class BudgetPlanAdapter {
             throw new IllegalStateException("Seuls les engagements à l'état ENGAGED peuvent être annulés.");
         }
 
+        BudgetItemEntity item = lockAssociatedBudgetItem(engagement);
+        budgetSecurityService.validateAccessToUnite(item.getSectionId());
+
         engagement.setStatut("CANCELLED");
-        BudgetItemEntity item = engagement.getBudgetItem();
-        item.setMontantEngage(item.getMontantEngage().subtract(engagement.getMontant()));
+        BigDecimal currentEngage = item.getMontantEngage() != null ? item.getMontantEngage() : BigDecimal.ZERO;
+        BigDecimal newEngage = currentEngage.subtract(engagement.getMontant());
+        item.setMontantEngage(newEngage.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : newEngage);
 
         budgetItemRepository.save(item);
         budgetEngagementRepository.save(engagement);
@@ -906,15 +1064,23 @@ public class BudgetPlanAdapter {
                 .action("CANCEL")
                 .details("Annulation de l'engagement budgétaire " + numeroEngagement)
                 .timestamp(LocalDateTime.now())
-                .utilisateur(userId)
+                .utilisateur(actorId)
                 .build());
     }
 
     private BudgetPlanOutput mapPlan(BudgetPlanEntity p) {
+        return mapPlanWithWorkflow(p, null);
+    }
+
+    private BudgetPlanOutput mapPlanWithWorkflow(BudgetPlanEntity p, WorkflowInstanceEntity activeWf) {
         List<BudgetItemOutput> items = new ArrayList<>();
         if (p.getItems() != null) {
             items = p.getItems().stream().map(this::mapItem).collect(Collectors.toList());
         }
+        boolean enCours = activeWf != null;
+        WorkflowCurrentDataResponse current = (enCours && workflowStateService != null)
+                ? workflowStateService.getCachedCurrentData(activeWf)
+                : null;
         return new BudgetPlanOutput(
                 p.getId(),
                 p.getAnnee(),
@@ -926,11 +1092,21 @@ public class BudgetPlanAdapter {
                 p.getCreePar(),
                 p.getModifieLe(),
                 p.getModifiePar(),
-                items
+                items,
+                enCours,
+                enCours,
+                activeWf != null ? activeWf.getId() : null,
+                activeWf != null && activeWf.getStatut() != null ? activeWf.getStatut().name() : null,
+                current != null && current.getOperationType() != null ? current.getOperationType() : (enCours ? "UPDATE" : null),
+                current != null && current.getAttachments() != null ? current.getAttachments() : List.of()
         );
     }
 
-    private BudgetPlanSmartOutput mapPlanSmart(BudgetPlanEntity p, long nombreItems) {
+    private BudgetPlanSmartOutput mapPlanSmart(BudgetPlanEntity p, long nombreItems, WorkflowInstanceEntity activeWf) {
+        boolean enCours = activeWf != null;
+        WorkflowCurrentDataResponse current = (enCours && workflowStateService != null)
+                ? workflowStateService.getCachedCurrentData(activeWf)
+                : null;
         return new BudgetPlanSmartOutput(
                 p.getId(),
                 p.getAnnee(),
@@ -942,8 +1118,116 @@ public class BudgetPlanAdapter {
                 p.getCreeLe(),
                 p.getCreePar(),
                 p.getModifieLe(),
-                p.getModifiePar()
+                p.getModifiePar(),
+                enCours,
+                enCours,
+                activeWf != null ? activeWf.getId() : null,
+                activeWf != null && activeWf.getStatut() != null ? activeWf.getStatut().name() : null,
+                current != null && current.getOperationType() != null ? current.getOperationType() : (enCours ? "UPDATE" : null),
+                current != null && current.getAttachments() != null ? current.getAttachments() : List.of()
         );
+    }
+
+    private BudgetPlanOutput buildDraftPlanFromWorkflow(
+            UUID planId,
+            WorkflowInstanceEntity wf,
+            Map<String, Object> data,
+            WorkflowCurrentDataResponse current
+    ) {
+        Integer annee = asInteger(data.get("annee"));
+        Integer version = asInteger(data.get("version"));
+        UUID creePar = parseUuidSafe(data.get("utilisateurId") != null ? data.get("utilisateurId").toString() : null);
+        LocalDateTime creeLe = wf != null && wf.getDateInitiation() != null
+                ? LocalDateTime.ofInstant(wf.getDateInitiation(), java.time.ZoneId.systemDefault())
+                : LocalDateTime.now();
+        return new BudgetPlanOutput(
+                planId,
+                annee != null ? annee : LocalDateTime.now().getYear(),
+                data.get("intitule") != null ? data.get("intitule").toString() : "Plan budgétaire en cours",
+                version != null ? version : 1,
+                resolveStatutBudget(data.get("statut"), StatutBudget.DRAFT),
+                BigDecimal.ZERO,
+                creeLe,
+                creePar,
+                null,
+                null,
+                new ArrayList<>(),
+                true,
+                wf != null,
+                wf != null ? wf.getId() : null,
+                wf != null && wf.getStatut() != null ? wf.getStatut().name() : "EN_COURS",
+                current != null && current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                current != null && current.getAttachments() != null ? current.getAttachments() : List.of()
+        );
+    }
+
+    private BudgetPlanSmartOutput buildDraftSmartPlanFromWorkflow(
+            UUID planId,
+            WorkflowInstanceEntity wf,
+            Map<String, Object> data,
+            WorkflowCurrentDataResponse current
+    ) {
+        Integer annee = asInteger(data.get("annee"));
+        Integer version = asInteger(data.get("version"));
+        UUID creePar = parseUuidSafe(data.get("utilisateurId") != null ? data.get("utilisateurId").toString() : null);
+        LocalDateTime creeLe = wf != null && wf.getDateInitiation() != null
+                ? LocalDateTime.ofInstant(wf.getDateInitiation(), java.time.ZoneId.systemDefault())
+                : LocalDateTime.now();
+        return new BudgetPlanSmartOutput(
+                planId,
+                annee != null ? annee : LocalDateTime.now().getYear(),
+                data.get("intitule") != null ? data.get("intitule").toString() : "Plan budgétaire en cours",
+                version != null ? version : 1,
+                resolveStatutBudget(data.get("statut"), StatutBudget.DRAFT),
+                BigDecimal.ZERO,
+                0,
+                creeLe,
+                creePar,
+                null,
+                null,
+                true,
+                wf != null,
+                wf != null ? wf.getId() : null,
+                wf != null && wf.getStatut() != null ? wf.getStatut().name() : "EN_COURS",
+                current != null && current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                current != null && current.getAttachments() != null ? current.getAttachments() : List.of()
+        );
+    }
+
+    private Integer asInteger(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(val.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private UUID parseUuidSafe(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private StatutBudget resolveStatutBudget(Object raw, StatutBudget fallback) {
+        if (raw == null) {
+            return fallback;
+        }
+        try {
+            return StatutBudget.valueOf(raw.toString().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
     }
 
     private BudgetItemOutput mapItem(BudgetItemEntity i) {

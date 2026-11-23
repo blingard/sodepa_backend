@@ -1,5 +1,6 @@
 package com.sodepa.erp.configuration.ratelimit;
 
+import com.sodepa.erp.share.CurrentUserAuthenticationToken;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
@@ -104,34 +105,42 @@ public class EndpointRateLimitInterceptor implements HandlerInterceptor {
             }
         }
 
+        if (requestPath != null && requestPath.startsWith("/api/auth/")) {
+            String ipKey = getClientIp(request);
+            return rule.isIncludePathInKey() ? ipKey + "_" + endpoint : ipKey;
+        }
+
         String clientKey = getClientIp(request) + "_" + sanitize(request.getHeader("User-Agent"));
         return rule.isIncludePathInKey() ? clientKey + "_" + endpoint : clientKey;
     }
 
     private String getAuthenticatedUserIdentifier() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!(authentication instanceof JwtAuthenticationToken)) {
-            return null;
+        if (authentication instanceof CurrentUserAuthenticationToken currentAuth) {
+            return currentAuth.getUserData()
+                    .map(ud -> hasText(ud.userId()) ? ud.userId() : ud.username())
+                    .orElse(currentAuth.getName());
         }
-
-        Object principal = authentication.getPrincipal();
-        if (!(principal instanceof Jwt jwt)) {
-            return null;
+        if (authentication instanceof JwtAuthenticationToken) {
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof Jwt jwt) {
+                String username = jwt.getClaimAsString(PREFERRED_USERNAME);
+                if (hasText(username)) {
+                    return username;
+                }
+                return jwt.getSubject();
+            }
         }
-
-        String username = jwt.getClaimAsString(PREFERRED_USERNAME);
-        if (hasText(username)) {
-            return username;
+        if (authentication != null && authentication.isAuthenticated()
+                && !"anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return authentication.getName();
         }
-
-        return jwt.getSubject();
+        return null;
     }
 
     private String getClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (hasText(forwardedFor)) {
-            return sanitize(forwardedFor.split(",")[0].trim());
-        }
+        // S'appuie sur remoteAddr (résolu par Tomcat via server.forward-headers-strategy=native pour les proxies de confiance)
+        // afin d'empêcher tout contournement de rate-limiting par spoofing de l'en-tête X-Forwarded-For.
         return sanitize(request.getRemoteAddr());
     }
 
