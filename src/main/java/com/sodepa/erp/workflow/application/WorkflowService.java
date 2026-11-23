@@ -58,6 +58,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -90,6 +93,9 @@ public class WorkflowService {
 
     /** Référentiel des requêtes Maker-Checker de transition / portage direct. */
     private final MakerCheckerRequestJpaRepo makerCheckerRequestRepo;
+
+    /** Pour marquer une demande expirée hors de la transaction de l'appelant (voir {@link #validate}). */
+    private final PlatformTransactionManager transactionManager;
 
     /** Mapper Maker-Checker pour les réponses DTO. */
     private final MakerCheckerMapper makerCheckerMapper;
@@ -1904,7 +1910,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
 
     public MakerCheckerOutput findById(UUID id) {
         MakerCheckerRequestEntity entity = makerCheckerRequestRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("MakerChecker Request data not found: " + id));
+                .orElseThrow(() -> new RessourceIntrouvableException("Demande de validation introuvable : " + id));
         return this.mappingMakerChecker(entity);
     }
 
@@ -1915,7 +1921,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
     @Transactional
     public void update(UUID id, MakerCheckerStatus status, String note, String checkerId) {
         MakerCheckerRequestEntity entity = makerCheckerRequestRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("MakerChecker Request data not found: " + id));
+                .orElseThrow(() -> new RessourceIntrouvableException("Demande de validation introuvable : " + id));
         entity.setStatus(status);
         entity.setNotes(note);
         entity.setDecidedAt(Instant.now());
@@ -1926,24 +1932,36 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         publishMakerCheckerEvent(entity, entity.getMakerId(), checkerId);
     }
 
+    /**
+     * Refuse une demande hors de sa période de validité, et la marque expirée.
+     *
+     * <p>
+     * Le marquage passe par une transaction séparée. Auparavant, il était fait
+     * dans la transaction de l'appelant, puis une {@code RuntimeException}
+     * l'annulait : la demande restait {@code PENDING}, et le client recevait
+     * un 500 au lieu d'un refus lisible. L'exception levée est désormais un
+     * {@link ConflitMetierException} : 409, code {@code DEMANDE_EXPIREE}.
+     * </p>
+     */
     public void validate(UUID id, Instant createdAt, Instant expireAt) {
         Instant now = Instant.now();
-        try {
-            if (createdAt == null || expireAt == null) {
-                throw new RuntimeException("Request creation or expiration date is missing");
-            }
-
-            if (now.isBefore(createdAt)) {
-                throw new RuntimeException("Request is not yet valid: current date is before the creation date");
-            }
-
-            if (now.isAfter(expireAt)) {
-                throw new RuntimeException("Request has expired: current date is after the expiration date");
-            }
-        } catch (Exception ex) {
-            update(id, MakerCheckerStatus.EXPIRED, ex.getMessage(), "SYSTEM");
-            throw new RuntimeException(ex.getMessage());
+        String motif;
+        if (createdAt == null || expireAt == null) {
+            motif = "Request creation or expiration date is missing";
+        } else if (now.isBefore(createdAt)) {
+            motif = "Request is not yet valid: current date is before the creation date";
+        } else if (now.isAfter(expireAt)) {
+            motif = "Request has expired: current date is after the expiration date";
+        } else {
+            return;
         }
+
+        TransactionTemplate transactionSeparee = new TransactionTemplate(transactionManager);
+        transactionSeparee.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        transactionSeparee.executeWithoutResult(statut -> update(id, MakerCheckerStatus.EXPIRED, motif, "SYSTEM"));
+
+        throw new ConflitMetierException("DEMANDE_EXPIREE",
+                "Cette demande n'est plus valable (délai de validation dépassé) : elle doit être soumise à nouveau.");
     }
 
     private MakerCheckerOutput mappingMakerChecker(MakerCheckerRequestEntity entity) {
