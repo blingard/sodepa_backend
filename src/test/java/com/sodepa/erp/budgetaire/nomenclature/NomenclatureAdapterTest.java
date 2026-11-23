@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.nomenclature;
 
+import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.nomenclature.application.UsageNomenclature;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
@@ -10,7 +11,6 @@ import com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter.Nomenclatur
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.ElementProgrammatiqueEntity;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.NiveauProgrammatique;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.DemandeNomenclatureEvent;
-import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.OperationNomenclature;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.repo.ElementProgrammatiqueRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
 import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
@@ -517,7 +517,7 @@ class NomenclatureAdapterTest {
         void valideUneDesactivation() {
             ElementProgrammatiqueEntity a01 = element("P01-A01", NiveauProgrammatique.ACTION, UUID.randomUUID(), true);
             MakerCheckerRequestEntity demande = demande(CHEF_BUDGET, MakerCheckerStatus.PENDING, a01.getId(),
-                    DemandeNomenclatureEvent.changementEtat(OperationNomenclature.DESACTIVER, "Action fusionnée"));
+                    DemandeNomenclatureEvent.changementEtat(OperationReferentiel.DESACTIVER, "Action fusionnée"));
             when(demandeRepository.findById(demande.getId())).thenReturn(Optional.of(demande));
             connecte(VALIDATEUR);
             when(elementRepository.findById(a01.getId())).thenReturn(Optional.of(a01));
@@ -539,7 +539,7 @@ class NomenclatureAdapterTest {
             ElementProgrammatiqueEntity p01 = programme("P01", false);
             p01.setMotifDesactivation("Programme suspendu");
             MakerCheckerRequestEntity demande = demande(CHEF_BUDGET, MakerCheckerStatus.PENDING, p01.getId(),
-                    DemandeNomenclatureEvent.changementEtat(OperationNomenclature.REACTIVER, null));
+                    DemandeNomenclatureEvent.changementEtat(OperationReferentiel.REACTIVER, null));
             when(demandeRepository.findById(demande.getId())).thenReturn(Optional.of(demande));
             connecte(VALIDATEUR);
             when(elementRepository.findById(p01.getId())).thenReturn(Optional.of(p01));

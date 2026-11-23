@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.nomenclature.presentation.rest;
 
+import com.sodepa.erp.budgetaire.commun.ChangerEtatRequest;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
@@ -15,7 +16,6 @@ import com.sodepa.erp.budgetaire.nomenclature.application.usecase.DesactiverElem
 import com.sodepa.erp.budgetaire.nomenclature.application.usecase.ListerDemandesNomenclatureEnAttenteUseCase;
 import com.sodepa.erp.budgetaire.nomenclature.application.usecase.ModifierElementUseCase;
 import com.sodepa.erp.budgetaire.nomenclature.application.usecase.ReactiverElementUseCase;
-import com.sodepa.erp.budgetaire.nomenclature.presentation.requests.ChangerEtatElementRequest;
 import com.sodepa.erp.budgetaire.nomenclature.presentation.requests.CreerElementRequest;
 import com.sodepa.erp.budgetaire.nomenclature.presentation.requests.ModifierElementRequest;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
@@ -88,7 +88,7 @@ public class NomenclatureRestController {
     @Operation(summary = "Soumettre la désactivation d'un élément")
     @PostMapping("/{id}/init_deactivate")
     public ResponseEntity<SubmissionOutput> initDesactiver(@PathVariable UUID id,
-                                                           @Valid @RequestBody ChangerEtatElementRequest request) {
+                                                           @Valid @RequestBody ChangerEtatRequest request) {
         return ResponseEntity.accepted().body(
                 desactiverElementUseCase.execute(new ChangerEtatElementInput(id, request.motif())));
     }
@@ -97,7 +97,7 @@ public class NomenclatureRestController {
     @Operation(summary = "Soumettre la réactivation d'un élément")
     @PostMapping("/{id}/init_reactivate")
     public ResponseEntity<SubmissionOutput> initReactiver(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ChangerEtatElementRequest request) {
+            @PathVariable UUID id, @Valid @RequestBody(required = false) ChangerEtatRequest request) {
         return ResponseEntity.accepted().body(reactiverElementUseCase.execute(
                 new ChangerEtatElementInput(id, request == null ? null : request.motif())));
     }
