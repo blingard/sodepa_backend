@@ -36,7 +36,7 @@ public class TiersRestController {
     private final TiersValidateOrRejectUseCase tiersValidateOrRejectUseCase;
 
     @PostMapping("/init_create")
-    public void createTiers(@Valid @RequestBody CreateTiersRequest request) {
+    public com.sodepa.erp.share.SubmissionOutput createTiers(@Valid @RequestBody CreateTiersRequest request) {
         CreateTiersInput input = new CreateTiersInput(
                 request.code(),
                 request.raisonSociale(),
@@ -46,7 +46,7 @@ public class TiersRestController {
                 request.typeTiers(),
                 request.compteCollectifCode()
         );
-        createTiersUseCase.execute(input);
+        return createTiersUseCase.execute(input);
     }
 
     @GetMapping("/active_by_id/{id}")

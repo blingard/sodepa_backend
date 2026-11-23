@@ -278,9 +278,8 @@ public class ReportingAnalytiqueUseCase {
     @Transactional(readOnly = true)
     public List<GrandLivreAnalytiqueSection> genererGrandLivreAnalytique(LocalDate debut, LocalDate fin) {
         List<SectionAnalytiqueEntity> sections = sectionAnalytiqueRepository.findAll();
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getStatut() == StatutEcriture.VALIDE && !e.getDateComptable().isBefore(debut) && !e.getDateComptable().isAfter(fin))
-                .collect(Collectors.toList());
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
+                StatutEcriture.VALIDE, debut, fin);
 
         List<GrandLivreAnalytiqueSection> result = new ArrayList<>();
 
@@ -343,9 +342,8 @@ public class ReportingAnalytiqueUseCase {
     @Transactional(readOnly = true)
     public List<BalanceAnalytiqueLine> genererBalanceAnalytique(LocalDate debut, LocalDate fin) {
         List<SectionAnalytiqueEntity> sections = sectionAnalytiqueRepository.findAll();
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getStatut() == StatutEcriture.VALIDE && !e.getDateComptable().isBefore(debut) && !e.getDateComptable().isAfter(fin))
-                .collect(Collectors.toList());
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
+                StatutEcriture.VALIDE, debut, fin);
 
         List<BalanceAnalytiqueLine> balance = new ArrayList<>();
 
@@ -395,9 +393,8 @@ public class ReportingAnalytiqueUseCase {
         SectionAnalytiqueEntity section = sectionAnalytiqueRepository.findById(sectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Section analytique introuvable avec l'ID: " + sectionId));
 
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getStatut() == StatutEcriture.VALIDE && e.getDateComptable().getYear() == annee)
-                .collect(Collectors.toList());
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
+                StatutEcriture.VALIDE, LocalDate.of(annee, 1, 1), LocalDate.of(annee, 12, 31));
 
         Map<String, BigDecimal> cumulCharges = new HashMap<>();
         Map<String, BigDecimal> cumulProduits = new HashMap<>();
@@ -472,9 +469,8 @@ public class ReportingAnalytiqueUseCase {
 
         List<BudgetEntity> budgets = budgetRepository.findByAnneeAndSectionId(annee, sectionId);
 
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getStatut() == StatutEcriture.VALIDE && e.getDateComptable().getYear() == annee)
-                .collect(Collectors.toList());
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
+                StatutEcriture.VALIDE, LocalDate.of(annee, 1, 1), LocalDate.of(annee, 12, 31));
 
         List<SuiviBudgetaireLine> lignesReport = new ArrayList<>();
         BigDecimal totalBudgetCumul = BigDecimal.ZERO;

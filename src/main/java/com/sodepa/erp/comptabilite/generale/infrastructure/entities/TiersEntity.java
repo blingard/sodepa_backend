@@ -176,4 +176,9 @@ public class TiersEntity {
     @Column(nullable = false)
     @Builder.Default
     private Boolean actif = true;
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

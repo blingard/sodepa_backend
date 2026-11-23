@@ -180,7 +180,23 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
     }
 
     /**
-     * Supprime une session spécifique.
+     * Supprime une session spécifique après vérification qu'elle appartient bien à l'utilisateur appelant.
+     */
+    public void deleteSessionForUser(String iamId, String sessionId) {
+        if (iamId == null || iamId.isBlank() || sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("Identifiant utilisateur ou session manquant.");
+        }
+        boolean ownsSession = listSessions(iamId).stream()
+                .anyMatch(s -> sessionId.equals(s.id()));
+        if (!ownsSession) {
+            throw new com.sodepa.erp.share.erreurs.AccesRefuseException(
+                    "Vous ne pouvez révoquer que vos propres sessions actives.");
+        }
+        keycloak.realm(realm).deleteSession(sessionId, false);
+    }
+
+    /**
+     * Supprime une session spécifique (usage interne).
      * @param sessionId l'identifiant de la session
      */
     public void deleteSession(String sessionId) {
@@ -259,6 +275,19 @@ public class AuthenticationAdapter implements KeycloakProvisioningPort {
             throw new RuntimeException(GlobalConstants.ERROR_KEYCLOAK_USER_NOT_FOUND);
         }
         return UUID.fromString(trouves.get(0).getId());
+    }
+
+    public void changePasswordWithCurrentCheck(String userId, String username, String currentPassword, String newPassword) {
+        changePasswordWithVerification(userId, username, currentPassword, newPassword);
+    }
+
+    public void changePasswordWithVerification(String userId, String username, String currentPassword, String newPassword) {
+        try {
+            login(new LoginInput(username, currentPassword));
+        } catch (ResponseStatusException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Le mot de passe actuel est incorrect.");
+        }
+        changePassword(userId, newPassword);
     }
 
     @Override

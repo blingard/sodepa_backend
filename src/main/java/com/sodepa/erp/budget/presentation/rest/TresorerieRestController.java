@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -55,6 +56,7 @@ public class TresorerieRestController {
      * @return la liste des encaissements et decaissements attendus
      */
     @GetMapping("/previsions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'LIST_RELEVE_BANCAIRE', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Lister les échéances prévisionnelles de trésorerie sur une période")
     public List<PrevisionTresorerieOutput> listerPrevisions(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate debut,
@@ -70,6 +72,7 @@ public class TresorerieRestController {
      * @return la prevision de tresorerie creee
      */
     @PostMapping("/previsions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'CREATE_BUDGET_PLAN', 'CREATE_APPROVISIONNEMENT', 'CREATE_BANK')")
     @Operation(summary = "Ajouter une prévision d'encaissement ou de décaissement")
     public PrevisionTresorerieOutput ajouterPrevision(@Valid @RequestBody CreerPrevisionRequest request) {
         return ajouterPrevisionUseCase.execute(
@@ -88,6 +91,7 @@ public class TresorerieRestController {
      * @return le tableau mensuel des soldes de cash-flow
      */
     @GetMapping("/cash-flow")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'LIST_RELEVE_BANCAIRE', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Générer le plan de cash-flow prévisionnel mensuel")
     public List<CashFlowMensuelOutput> genererCashFlow(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate debut,
@@ -105,6 +109,7 @@ public class TresorerieRestController {
      * @return le rapport d'analyse du BFR
      */
     @GetMapping("/bfr")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'LIST_RELEVE_BANCAIRE', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Calculer le Besoin en Fonds de Roulement (BFR) prévisionnel")
     public BfrReportOutput calculerBfr(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -119,6 +124,7 @@ public class TresorerieRestController {
      * @return la liste des alertes de tension ou de depassement de decouvert en cours
      */
     @GetMapping("/decouverts/alertes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'LIST_RELEVE_BANCAIRE', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Vérifier les seuils de découverts et récupérer les alertes de liquidité")
     public List<OverdraftAlertOutput> verifierAlertesDecouvert() {
         return verifierSeuilsDecouvertUseCase.execute(null);
@@ -136,6 +142,7 @@ public class TresorerieRestController {
      * @return la projection de resultat d'exploitation simulee
      */
     @GetMapping("/simulations/what-if")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'CREATE_BUDGET_PLAN', 'VALIDATE_BUDGET_PLAN')")
     @Operation(summary = "Exécuter une simulation financière prospective What-If")
     public SimulationResultOutput simuler(
             @RequestParam BigDecimal croissance,

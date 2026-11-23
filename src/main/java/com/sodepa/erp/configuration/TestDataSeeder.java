@@ -56,7 +56,10 @@ import java.util.*;
  * et propose un repli robuste en cas d'absence de connectivité (Keycloak, MinIO).
  */
 @Component
-//@Profile("test")
+@Profile("test")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "sodepa.seed.enabled", havingValue = "true", matchIfMissing = false
+)
 /**
  * Composant applicatif `TestDataSeeder` du système ERP SODEPA.
  */
@@ -72,6 +75,8 @@ public class TestDataSeeder implements CommandLineRunner {
     private final UserAdapter userAdapter;
     private final ImmobilisationAdapter immobilisationAdapter;
     private final CompteAdapter compteAdapter;
+    private final EcritureAdapter ecritureAdapter;
+    private final com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter budgetPlanAdapter;
 
     // ── Usecases ──
     private final SaisirEcritureUseCase saisirEcritureUseCase;
@@ -132,7 +137,7 @@ public class TestDataSeeder implements CommandLineRunner {
         } catch (Exception e) {
             log.error("Erreur lors de l'exécution du seeder de test : ", e);
         } finally {
-            //SecurityContextHolder.clearContext();
+            SecurityContextHolder.clearContext();
         }
     }
 
@@ -171,6 +176,8 @@ public class TestDataSeeder implements CommandLineRunner {
                     ((ImmobilisationAdapter) adapter).validateOrReject(validationInput);
                 } else if (adapter instanceof UserAdapter) {
                     ((UserAdapter) adapter).validateOrReject(validationInput);
+                } else if (adapter instanceof com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter) {
+                    ((com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter) adapter).validateOrRejectBudgetPlan(validationInput);
                 }
             } catch (Exception e) {
                 log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
@@ -322,7 +329,8 @@ public class TestDataSeeder implements CommandLineRunner {
                 try {
                     authenticate("admin_maker", MAKER_ID);
                     creerBudgetPlanUseCase.execute(new CreerBudgetPlanInput(annee, "Budget Annuel SODEPA " + annee, MAKER_ID));
-                    
+                    approvePendingRequests(MakerCheckerEntityName.BUDGET_PLAN, budgetPlanAdapter);
+
                     BudgetPlanEntity plan = budgetPlanRepository.findByAnnee(annee).get(0);
                     UUID planId = plan.getId();
 
@@ -370,7 +378,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     );
 
                     String numPiece = String.format("HA-%d-%02d", finalAnnee, month);
-                    saisirEcritureUseCase.execute(new SaisieEcritureInput(
+                    ecritureAdapter.saisirEcritureDirectePourSeeder(new SaisieEcritureInput(
                             journalHAId, numPiece, "Facture d'achat mensuelle M" + month,
                             LocalDate.of(finalAnnee, month, 10), Devise.XAF, BigDecimal.ONE, lignes
                     ));
@@ -414,7 +422,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     );
 
                     String numPiece = String.format("VT-%d-%02d", finalAnnee, month);
-                    saisirEcritureUseCase.execute(new SaisieEcritureInput(
+                    ecritureAdapter.saisirEcritureDirectePourSeeder(new SaisieEcritureInput(
                             journalVTId, numPiece, "Facture de vente mensuelle M" + month,
                             LocalDate.of(finalAnnee, month, 15), Devise.XAF, BigDecimal.ONE, lignes
                     ));
@@ -453,7 +461,7 @@ public class TestDataSeeder implements CommandLineRunner {
                     );
 
                     String numPiece = String.format("BQ-%d-%02d", finalAnnee, month);
-                    saisirEcritureUseCase.execute(new SaisieEcritureInput(
+                    ecritureAdapter.saisirEcritureDirectePourSeeder(new SaisieEcritureInput(
                             journalBQId, numPiece, "Paiement salaires mensuels M" + month,
                             LocalDate.of(finalAnnee, month, 25), Devise.XAF, BigDecimal.ONE, lignes
                     ));

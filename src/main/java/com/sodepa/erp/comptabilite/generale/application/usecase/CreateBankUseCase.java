@@ -2,6 +2,7 @@ package com.sodepa.erp.comptabilite.generale.application.usecase;
 
 import com.sodepa.erp.comptabilite.generale.application.inputs.CreateBankInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.BankAdapter;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.UseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,13 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 @Transactional
-public class CreateBankUseCase implements UseCase<CreateBankInput, Void> {
+public class CreateBankUseCase implements UseCase<CreateBankInput, SubmissionOutput> {
 
     private final BankAdapter bankAdapter;
     @Override
-    public Void execute(CreateBankInput input) {
+    public SubmissionOutput execute(CreateBankInput input) {
         log.info("Init Bank Creation.");
-        bankAdapter.initCreateBank(input);
-        return null;
+        return bankAdapter.initCreateBank(input);
     }
 }

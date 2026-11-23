@@ -99,6 +99,14 @@ public class WorkflowCompletionOrchestrator {
             return;
         }
 
+        if (event.finalData() != null && !event.finalData().isEmpty()) {
+            java.util.Map<String, Object> consolidated = new java.util.LinkedHashMap<>();
+            if (req.getPayload() != null) {
+                consolidated.putAll(req.getPayload());
+            }
+            consolidated.putAll(event.finalData());
+            req.setPayload(consolidated);
+        }
         executeMakerCheckerDecision(
                 req,
                 MakerCheckerStatus.ACCEPTED,
@@ -197,6 +205,7 @@ public class WorkflowCompletionOrchestrator {
                     case COMPTE -> compteAdapter.validateOrReject(input);
                     case IMMOBILISATION -> immobilisationAdapter.validateOrReject(input);
                     case JOURNAL -> journalAdapter.validateOrReject(input);
+                    case ECRITURE -> ecritureAdapter.validateOrReject(input);
                     case USER -> userAdapter.validateOrReject(input);
                     case FOURNISSEUR -> achatsService.validateOrRejectFournisseur(input);
                     case EXPRESSION_BESOIN -> achatsService.validateOrRejectExpressionBesoin(input);
@@ -291,6 +300,9 @@ public class WorkflowCompletionOrchestrator {
                 yield true;
             }
             case "ECRITURE" -> {
+                if (resolveMakerCheckerRequest(null, entityName, entityId).isPresent()) {
+                    yield false;
+                }
                 runWithElevatedSecurityContext(effectiveCheckerId, () -> {
                     try {
                         if (approved) {

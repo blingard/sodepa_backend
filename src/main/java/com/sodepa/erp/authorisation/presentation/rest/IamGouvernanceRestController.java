@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -37,6 +38,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping({"/api/iam", "/api/v1/iam"})
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INIT_CREATE_USER', 'INIT_UPDATE_USER', 'GET_FULL_USER_INFO', 'VALIDATE_OR_REJECT_USER')")
 @Tag(name = "Gouvernance IAM, Profils Fonctionnels & Matrice SoD (REF-06)",
      description = "Administration des profils métiers SODEPA, affectations par périmètre, contrôle SoD bloquant et désactivation automatique sur sortie RH")
 public class IamGouvernanceRestController {
@@ -66,7 +68,8 @@ public class IamGouvernanceRestController {
      * @return le profil fonctionnel sauvegarde
      */
     @PostMapping("/profils")
-    @Operation(summary = "Créer ou mettre à jour un profil fonctionnel (avec propagation automatique)")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INIT_CREATE_USER', 'INIT_UPDATE_USER')")
+    @Operation(summary = "Créer ou mettre à jour un profil fonctionnel (résolution dynamique)")
     public ResponseEntity<ProfilFonctionnelEntity> creerOuModifierProfil(@Valid @RequestBody ProfilFonctionnelEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(iamService.creerOuMettreAJourProfil(request));
     }
@@ -86,6 +89,7 @@ public class IamGouvernanceRestController {
      * @return l'affectation formalisee
      */
     @PostMapping("/utilisateurs/{utilisateurId}/affecter-profil")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INIT_UPDATE_USER', 'VALIDATE_OR_REJECT_USER')")
     @Operation(summary = "Attribuer un profil fonctionnel avec périmètre et vérification SoD bloquante")
     public ResponseEntity<AffectationProfilUtilisateurEntity> affecterProfil(
             @PathVariable UUID utilisateurId,
@@ -133,6 +137,7 @@ public class IamGouvernanceRestController {
      * @return la regle SoD enregistree
      */
     @PostMapping("/sod/regles")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('INIT_UPDATE_USER')")
     @Operation(summary = "Ajouter une règle d'incompatibilité dans la matrice SoD")
     public ResponseEntity<RegleSodEntity> creerRegleSod(@Valid @RequestBody RegleSodEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(iamService.creerRegleSod(request));
@@ -163,6 +168,7 @@ public class IamGouvernanceRestController {
      * @return le bilan de la revue automatique (nombre de comptes controles, desactives ou suspendus)
      */
     @PostMapping("/comptes/executer-desactivation-rh")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INIT_UPDATE_USER', 'DELETE_EMPLOYE')")
     @Operation(summary = "Exécuter la désactivation automatique des comptes d'agents sortis du personnel RH")
     public ResponseEntity<Map<String, Object>> executerDesactivationRh() {
         return ResponseEntity.ok(iamService.executerRevueAutomatiqueComptesEtSortiesRh());

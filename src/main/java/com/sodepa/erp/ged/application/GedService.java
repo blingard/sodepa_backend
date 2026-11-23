@@ -3,14 +3,19 @@ package com.sodepa.erp.ged.application;
 import com.sodepa.erp.ged.infrastructure.entities.DocumentGedEntity;
 import com.sodepa.erp.ged.infrastructure.repo.DocumentGedRepository;
 import com.sodepa.erp.share.MinioService;
+import com.sodepa.erp.share.UtilsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -43,6 +48,56 @@ public class GedService {
     @Value("${minio.bucket-name:sodepa-erp-ged}")
     private String defaultBucket;
 
+    @Value("${sodepa.ged.hmac-secret:}")
+    private String hmacSecret;
+
+    @Autowired(required = false)
+    private org.springframework.core.env.Environment environment;
+
+    private volatile String ephemeralDevSecret;
+
+    @Autowired(required = false)
+    private UtilsService utilsService;
+
+    private String resolveHmacKey() {
+        if (hmacSecret != null && !hmacSecret.isBlank()) {
+            return hmacSecret;
+        }
+        boolean isProd = environment != null && java.util.Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> "prod".equalsIgnoreCase(p) || "production".equalsIgnoreCase(p));
+        if (isProd) {
+            throw new IllegalStateException("Propriété obligatoire manquante en production : sodepa.ged.hmac-secret");
+        }
+        if (ephemeralDevSecret == null) {
+            byte[] randomBytes = new byte[32];
+            new java.security.SecureRandom().nextBytes(randomBytes);
+            ephemeralDevSecret = java.util.Base64.getEncoder().encodeToString(randomBytes);
+            log.warn("⚠️ sodepa.ged.hmac-secret absent hors production : clé HMAC éphémère générée en mémoire.");
+        }
+        return ephemeralDevSecret;
+    }
+
+    private String resolveActorOrFallback(String fallback) {
+        if (utilsService != null) {
+            try {
+                var ud = utilsService.getCurrentUserData();
+                if (ud != null && ud.username() != null && !ud.username().isBlank()) {
+                    return ud.username();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return (fallback != null && !fallback.isBlank()) ? fallback : "SYSTEM";
+    }
+
+    private String sanitizeFilename(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
+            return "document-" + UUID.randomUUID() + ".pdf";
+        }
+        String fileName = Paths.get(rawName.replace("\\", "/")).getFileName().toString();
+        return fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
     /**
      * Archive un document dans la GED avec gestion automatique des versions et de la durée de conservation
      * (CA-REF-031-01 & CA-REF-031-02).
@@ -60,9 +115,8 @@ public class GedService {
 
         try {
             byte[] bytes = file != null ? file.getBytes() : new byte[0];
-            String originalName = (file != null && file.getOriginalFilename() != null)
-                    ? file.getOriginalFilename()
-                    : "document-" + UUID.randomUUID() + ".pdf";
+            String originalName = sanitizeFilename(file != null ? file.getOriginalFilename() : null);
+            String actorName = resolveActorOrFallback(uploadPar);
             String contentType = (file != null && file.getContentType() != null)
                     ? file.getContentType()
                     : "application/pdf";
@@ -91,7 +145,7 @@ public class GedService {
             }
 
             int anneesConservation = (dureeConservationAnnees != null && dureeConservationAnnees > 0)
-                    ? dureeConservationAnnees
+                    ? Math.max(dureeConservationAnnees, 1)
                     : 10;
 
             DocumentGedEntity doc = DocumentGedEntity.builder()
@@ -113,7 +167,7 @@ public class GedService {
                     .statutCycleVie("ARCHIVE")
                     .signeElectroniquement(false)
                     .dateUpload(LocalDateTime.now())
-                    .uploadPar(uploadPar != null ? uploadPar : "SYSTEM")
+                    .uploadPar(actorName)
                     .build();
 
             return documentGedRepository.save(doc);
@@ -126,44 +180,51 @@ public class GedService {
      * Permet d'enregistrer les métadonnées et le contenu texte/binaire d'un document généré par l'ERP (CT-REF-06).
      */
     @Transactional
-    public DocumentGedEntity archiverDocumentJson(DocumentGedEntity requete) {
-        if (requete.getHashSha256() == null || requete.getHashSha256().isBlank()) {
-            String seed = requete.getNomFichier() + "|" + requete.getTypeEntite() + "|" + requete.getEntiteId() + "|" + requete.getDescription();
-            requete.setHashSha256(calculerSha256(seed.getBytes(StandardCharsets.UTF_8)));
-        }
+    public DocumentGedEntity archiverDocumentJson(DocumentGedEntity input) {
+        String sanitizedName = sanitizeFilename(input.getNomFichier());
+        int annees = (input.getDureeConservationAnnees() != null && input.getDureeConservationAnnees() > 0)
+                ? input.getDureeConservationAnnees()
+                : 10;
+
         List<DocumentGedEntity> existants = documentGedRepository
                 .findByTypeEntiteIgnoreCaseAndEntiteIdAndNomFichierIgnoreCaseOrderByNumeroVersionDesc(
-                        requete.getTypeEntite(), requete.getEntiteId(), requete.getNomFichier());
+                        input.getTypeEntite(), input.getEntiteId(), sanitizedName);
+        int numeroVersion = 1;
+        UUID parentId = null;
         if (!existants.isEmpty()) {
             DocumentGedEntity precedent = existants.get(0);
-            requete.setNumeroVersion((precedent.getNumeroVersion() != null ? precedent.getNumeroVersion() : 1) + 1);
-            requete.setDocumentParentId(precedent.getId());
-        } else if (requete.getNumeroVersion() == null) {
-            requete.setNumeroVersion(1);
+            numeroVersion = (precedent.getNumeroVersion() != null ? precedent.getNumeroVersion() : 1) + 1;
+            parentId = precedent.getId();
         }
-        int annees = (requete.getDureeConservationAnnees() != null && requete.getDureeConservationAnnees() > 0)
-                ? requete.getDureeConservationAnnees()
-                : 10;
-        requete.setDureeConservationAnnees(annees);
-        if (requete.getDateFinConservation() == null) {
-            requete.setDateFinConservation(LocalDate.now().plusYears(annees));
-        }
-        if (requete.getS3Bucket() == null) {
-            requete.setS3Bucket(defaultBucket);
-        }
-        if (requete.getS3Cle() == null) {
-            requete.setS3Cle("ged/" + requete.getTypeEntite().toLowerCase() + "/" + requete.getEntiteId() + "/v" + requete.getNumeroVersion() + "_" + requete.getNomFichier());
-        }
-        if (requete.getTailleOctets() == null) {
-            requete.setTailleOctets(1024L);
-        }
-        if (requete.getContentType() == null) {
-            requete.setContentType("application/pdf");
-        }
-        if (requete.getUploadPar() == null) {
-            requete.setUploadPar("SYSTEM");
-        }
-        return documentGedRepository.save(requete);
+
+        String sha256 = (input.getHashSha256() != null && !input.getHashSha256().isBlank())
+                ? input.getHashSha256().trim()
+                : calculerSha256((sanitizedName + "|" + input.getTypeEntite() + "|" + input.getEntiteId() + "|" + input.getDescription())
+                        .getBytes(StandardCharsets.UTF_8));
+
+        // Isolation anti Mass-Assignment : aucun champ de signature, id ou conservation raccourcie accepté du client
+        DocumentGedEntity entity = DocumentGedEntity.builder()
+                .nomFichier(sanitizedName)
+                .tailleOctets(input.getTailleOctets() != null && input.getTailleOctets() > 0 ? input.getTailleOctets() : 1024L)
+                .contentType(input.getContentType() != null && !input.getContentType().isBlank() ? input.getContentType() : "application/pdf")
+                .hashSha256(sha256)
+                .s3Bucket(defaultBucket)
+                .s3Cle("ged/" + input.getTypeEntite().toLowerCase() + "/" + input.getEntiteId() + "/v" + numeroVersion + "_" + sanitizedName)
+                .typeEntite(input.getTypeEntite().toUpperCase())
+                .entiteId(input.getEntiteId())
+                .categorieDocumentaire(input.getCategorieDocumentaire() != null ? input.getCategorieDocumentaire() : "PIECE_JUSTIFICATIVE")
+                .description(input.getDescription())
+                .motsClesIndexation(input.getMotsClesIndexation())
+                .numeroVersion(numeroVersion)
+                .documentParentId(parentId)
+                .dureeConservationAnnees(annees)
+                .dateFinConservation(LocalDate.now().plusYears(annees))
+                .statutCycleVie("ARCHIVE")
+                .signeElectroniquement(false)
+                .dateUpload(LocalDateTime.now())
+                .uploadPar(resolveActorOrFallback(input.getUploadPar()))
+                .build();
+        return documentGedRepository.save(entity);
     }
 
     /**
@@ -196,12 +257,13 @@ public class GedService {
     public DocumentGedEntity signerDocumentElectroniquement(UUID documentId, String signataireNom) {
         DocumentGedEntity doc = documentGedRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Document GED introuvable : " + documentId));
+        String effectiveSignataire = resolveActorOrFallback(signataireNom);
         LocalDateTime horodatage = LocalDateTime.now();
-        String scellement = doc.getHashSha256() + "|SIGNE_PAR:" + signataireNom + "|DATE:" + horodatage;
+        String scellement = doc.getId() + "|" + doc.getHashSha256() + "|SIGNE_PAR:" + effectiveSignataire + "|DATE:" + horodatage;
         doc.setSigneElectroniquement(true);
-        doc.setSignataireNom(signataireNom);
+        doc.setSignataireNom(effectiveSignataire);
         doc.setDateSignature(horodatage);
-        doc.setEmpreinteSignature(calculerSha256(scellement.getBytes(StandardCharsets.UTF_8)));
+        doc.setEmpreinteSignature(calculerHmacSha256(scellement));
         doc.setStatutCycleVie("VALIDE");
         return documentGedRepository.save(doc);
     }
@@ -220,10 +282,13 @@ public class GedService {
 
         boolean cachetValide = true;
         if (Boolean.TRUE.equals(doc.getSigneElectroniquement())) {
-            String attendu = calculerSha256(
+            String attenduHmac = calculerHmacSha256(
+                    doc.getId() + "|" + doc.getHashSha256() + "|SIGNE_PAR:" + doc.getSignataireNom() + "|DATE:" + doc.getDateSignature());
+            String attenduLegacy = calculerSha256(
                     (doc.getHashSha256() + "|SIGNE_PAR:" + doc.getSignataireNom() + "|DATE:" + doc.getDateSignature())
                             .getBytes(StandardCharsets.UTF_8));
-            cachetValide = attendu.equalsIgnoreCase(doc.getEmpreinteSignature()) && hashIdentique;
+            cachetValide = (attenduHmac.equalsIgnoreCase(doc.getEmpreinteSignature())
+                    || attenduLegacy.equalsIgnoreCase(doc.getEmpreinteSignature())) && hashIdentique;
         }
 
         boolean integriteValide = hashIdentique && cachetValide;
@@ -263,19 +328,36 @@ public class GedService {
         documentGedRepository.delete(doc);
     }
 
+    private String calculerHmacSha256(String data) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            String key = resolveHmacKey();
+            mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] raw = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(raw);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur de calcul HMAC-SHA256", e);
+        }
+    }
+
     private String calculerSha256(byte[] data) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(data);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) sb.append('0');
-                sb.append(hex);
-            }
-            return sb.toString();
+            return bytesToHex(md.digest(data));
         } catch (Exception e) {
             throw new RuntimeException("Erreur de calcul SHA-256", e);
         }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) sb.append('0');
+            sb.append(hex);
+        }
+        return sb.toString();
     }
 }

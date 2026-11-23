@@ -10,6 +10,7 @@ import com.sodepa.erp.pastoral.infrastructure.repo.*;
 import com.sodepa.erp.pastoral.presentation.requests.*;
 import com.sodepa.erp.pastoral.presentation.responses.*;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.share.CodeSequenceService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
@@ -50,6 +51,9 @@ public class CheptelService {
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
 
     public boolean canValidate(Permissions permission) {
         try {
@@ -139,7 +143,7 @@ public class CheptelService {
                 .orElseThrow(() -> new IllegalStateException("Catégorie VEAUX introuvable dans le référentiel"));
 
         int annee = request.getDateNaissance().getYear();
-        long count = bovinRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_bovin", bovinRepository::count);
         String codeRanch = ranch.getCode().replace("RANCH_", "");
         String masque = configService.getString("pastoral.matricule_masque", "SDP-%s-%d-%04d");
         String matricule = String.format(masque, codeRanch, annee, count);
@@ -163,19 +167,6 @@ public class CheptelService {
                 "ranch", ranch.getNom(),
                 "ticket", uuid.toString()
         ));
-
-        if (canValidate(Permissions.VALIDATE_BOVIN)) {
-            try {
-                validateOrRejectBovin(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto naissance bovin: {}", e.getMessage());
-            }
-        }
 
         return bovinRepository.findById(id)
                 .map(PastoralBovinResponse::fromEntity)
@@ -232,7 +223,7 @@ public class CheptelService {
 
         PastoralBovinEntity savedBovin = bovinRepository.save(bovin);
 
-        long mvtCount = mouvementRepository.count() + 1;
+        long mvtCount = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_cheptel_mvt", mouvementRepository::count);
         String cptDebitNaissance = configService.getString("pastoral.compte_debit_naissance", "2191");
         String cptCreditNaissance = configService.getString("pastoral.compte_credit_naissance", "7217");
 
@@ -301,6 +292,7 @@ public class CheptelService {
 
     @Transactional
     public PastoralBovinResponse enregistrerPesee(EnregistrerPeseeRequest request) {
+        utilsService.hasPermission(Permissions.UPDATE_BOVIN);
         PastoralBovinEntity bovin = getBovinOrThrow(request.getBovinId());
         LocalDate date = request.getDatePesee() != null ? request.getDatePesee() : LocalDate.now();
 
@@ -312,7 +304,7 @@ public class CheptelService {
 
         PastoralBovinEntity saved = bovinRepository.save(bovin);
 
-        long mvtCount = mouvementRepository.count() + 1;
+        long mvtCount = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_cheptel_mvt", mouvementRepository::count);
         PastoralMouvementCheptelEntity mvt = PastoralMouvementCheptelEntity.builder()
                 .id(UUID.randomUUID())
                 .numeroMouvement(String.format("PESEE-%d-%05d", date.getYear(), mvtCount))
@@ -332,6 +324,7 @@ public class CheptelService {
 
     @Transactional
     public PastoralBovinResponse enregistrerChangementCategorie(EnregistrerChangementCategorieRequest request) {
+        utilsService.hasPermission(Permissions.CREATE_MOUVEMENT_CHEPTEL);
         PastoralBovinEntity bovin = getBovinOrThrow(request.getBovinId());
         String ancienneCat = bovin.getCategorieCode();
         String nouvelleCat = request.getNouvelleCategorieCode();
@@ -366,7 +359,7 @@ public class CheptelService {
         bovin.setValeurComptableActuelle(nouvelleValeur);
         PastoralBovinEntity saved = bovinRepository.save(bovin);
 
-        long mvtCount = mouvementRepository.count() + 1;
+        long mvtCount = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_cheptel_mvt", mouvementRepository::count);
         PastoralMouvementCheptelEntity mvt = PastoralMouvementCheptelEntity.builder()
                 .id(UUID.randomUUID())
                 .numeroMouvement(String.format("CHG-CAT-%d-%05d", date.getYear(), mvtCount))
@@ -392,6 +385,7 @@ public class CheptelService {
 
     @Transactional
     public PastoralBovinResponse enregistrerTransfertRanch(EnregistrerTransfertRanchRequest request) {
+        utilsService.hasPermission(Permissions.CREATE_MOUVEMENT_CHEPTEL);
         PastoralBovinEntity bovin = getBovinOrThrow(request.getBovinId());
         PastoralRanchEntity ranchSource = bovin.getRanch();
         PastoralRanchEntity ranchDest = ranchRepository.findById(request.getRanchDestinationId())
@@ -402,7 +396,7 @@ public class CheptelService {
         bovin.setRanch(ranchDest);
         PastoralBovinEntity saved = bovinRepository.save(bovin);
 
-        long mvtCount = mouvementRepository.count() + 1;
+        long mvtCount = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_cheptel_mvt", mouvementRepository::count);
         PastoralMouvementCheptelEntity mvt = PastoralMouvementCheptelEntity.builder()
                 .id(UUID.randomUUID())
                 .numeroMouvement(String.format("TRF-%d-%05d", date.getYear(), mvtCount))
@@ -426,6 +420,7 @@ public class CheptelService {
 
     @Transactional
     public PastoralBovinResponse enregistrerSortie(EnregistrerSortieCheptelRequest request) {
+        utilsService.hasPermission(Permissions.CREATE_SORTIE_CHEPTEL);
         PastoralBovinEntity bovin = getBovinOrThrow(request.getBovinId());
         LocalDate date = request.getDateSortie() != null ? request.getDateSortie() : LocalDate.now();
 
@@ -453,7 +448,7 @@ public class CheptelService {
         bovin.setDateSortie(date);
         PastoralBovinEntity saved = bovinRepository.save(bovin);
 
-        long mvtCount = mouvementRepository.count() + 1;
+        long mvtCount = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_cheptel_mvt", mouvementRepository::count);
         PastoralMouvementCheptelEntity mvt = PastoralMouvementCheptelEntity.builder()
                 .id(UUID.randomUUID())
                 .numeroMouvement(String.format("SORTIE-%d-%05d", date.getYear(), mvtCount))
@@ -523,19 +518,6 @@ public class CheptelService {
                 "annee", an,
                 "ticket", uuid.toString()
         ));
-
-        if (canValidate(Permissions.VALIDATE_HERD_COMPOSITION)) {
-            try {
-                validateOrRejectHerdComposition(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto herd composition: {}", e.getMessage());
-            }
-        }
 
         return herdCompositionRepository.findByRanchIdAndAnneeExercice(ranchId, an)
                 .map(PastoralHerdCompositionResponse::fromEntity)
@@ -638,25 +620,43 @@ public class CheptelService {
         long decedesTotal = bovinRepository.countByStatut(StatutBovin.DECEDE);
         long abattusTotal = bovinRepository.countByStatut(StatutBovin.ABATTU) + bovinRepository.countByStatut(StatutBovin.VENDU);
 
-        List<PastoralBovinEntity> tousVivants = bovinRepository.findAll().stream()
-                .filter(b -> b.getStatut() == StatutBovin.VIVANT_AU_RANCH)
-                .toList();
-
-        BigDecimal valeurTotale = tousVivants.stream()
-                .map(PastoralBovinEntity::getValeurComptableActuelle)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal valeurTotale = bovinRepository.sumValeurComptableByStatut(StatutBovin.VIVANT_AU_RANCH);
+        if (valeurTotale == null) {
+            valeurTotale = BigDecimal.ZERO;
+        }
 
         Map<String, Long> parCat = new HashMap<>();
-        parCat.put("VEAUX", tousVivants.stream().filter(b -> "VEAUX".equals(b.getCategorieCode())).count());
-        parCat.put("GENISSES_TAURILLONS", tousVivants.stream().filter(b -> "GENISSES_TAURILLONS".equals(b.getCategorieCode())).count());
-        parCat.put("REPRODUCTEURS", tousVivants.stream().filter(b -> "REPRODUCTEURS".equals(b.getCategorieCode())).count());
-        parCat.put("EMBOUCHE_REFORME", tousVivants.stream().filter(b -> "EMBOUCHE_REFORME".equals(b.getCategorieCode())).count());
+        parCat.put("VEAUX", 0L);
+        parCat.put("GENISSES_TAURILLONS", 0L);
+        parCat.put("REPRODUCTEURS", 0L);
+        parCat.put("EMBOUCHE_REFORME", 0L);
+        for (Object[] row : bovinRepository.countGroupedByCategorieAndStatut(StatutBovin.VIVANT_AU_RANCH)) {
+            String cat = row[0] != null ? row[0].toString() : null;
+            long cnt = row[1] instanceof Number n ? n.longValue() : 0L;
+            if (cat != null) {
+                parCat.put(cat, cnt);
+            }
+        }
+
+        Map<UUID, Long> effectifParRanch = new HashMap<>();
+        for (Object[] row : bovinRepository.countGroupedByRanchAndStatut(StatutBovin.VIVANT_AU_RANCH)) {
+            if (row[0] instanceof UUID rid && row[1] instanceof Number n) {
+                effectifParRanch.put(rid, n.longValue());
+            }
+        }
+
+        int anneeCourante = LocalDate.now().getYear();
+        long naissancesExercice = bovinRepository.countNaissancesByStatutAndPeriode(
+                StatutBovin.VIVANT_AU_RANCH,
+                LocalDate.of(anneeCourante, 1, 1),
+                LocalDate.of(anneeCourante, 12, 31)
+        );
 
         List<PastoralRanchEntity> ranches = ranchRepository.findAll();
         List<PastoralTableauBordResponse.RanchStatResponse> stats = new ArrayList<>();
 
         for (PastoralRanchEntity r : ranches) {
-            long eff = bovinRepository.countByRanchIdAndStatut(r.getId(), StatutBovin.VIVANT_AU_RANCH);
+            long eff = effectifParRanch.getOrDefault(r.getId(), 0L);
             int cap = r.getCapaciteTetes() != null && r.getCapaciteTetes() > 0 ? r.getCapaciteTetes() : 10000;
             BigDecimal taux = BigDecimal.valueOf(eff)
                     .multiply(BigDecimal.valueOf(100))
@@ -675,7 +675,7 @@ public class CheptelService {
         return PastoralTableauBordResponse.builder()
                 .totalTetesVivantes(vivantsTotal)
                 .valeurEstimeeTotaleCheptel(valeurTotale)
-                .totalNaissancesExercice(tousVivants.stream().filter(b -> b.getDateNaissance().getYear() == LocalDate.now().getYear()).count())
+                .totalNaissancesExercice(naissancesExercice)
                 .totalMortalitesExercice(decedesTotal)
                 .totalVentesAbattagesExercice(abattusTotal)
                 .ranchesStats(stats)

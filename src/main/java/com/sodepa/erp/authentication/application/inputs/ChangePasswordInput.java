@@ -5,5 +5,11 @@ package com.sodepa.erp.authentication.application.inputs;
  */
 public record ChangePasswordInput(
     String userId,
-    String newPassword
-) {}
+    String newPassword,
+    String username,
+    String currentPassword
+) {
+    public ChangePasswordInput(String userId, String newPassword) {
+        this(userId, newPassword, null, null);
+    }
+}

@@ -171,4 +171,9 @@ public class MarcheDossierEntity {
     @OneToMany(mappedBy = "dossier", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<MarcheReceptionPvEntity> procesVerbaux = new ArrayList<>();
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

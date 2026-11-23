@@ -48,7 +48,8 @@ public class RhWorkflowEventListener {
                 rhService.finaliserApprobationRecrutementDg(
                         employeId,
                         event.commentaireFinal(),
-                        event.dernierActeurId()
+                        event.dernierActeurId(),
+                        event.finalData()
                 );
             } catch (Exception e) {
                 log.error("Erreur lors de la finalisation RH suite à l'approbation du workflow {}", event.instanceId(), e);

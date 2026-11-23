@@ -4,6 +4,9 @@ import com.sodepa.erp.budget.infrastructure.entities.StatutBudget;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,5 +30,28 @@ public record BudgetPlanSmartOutput(
     LocalDateTime creeLe,
     UUID creePar,
     LocalDateTime modifieLe,
-    UUID modifiePar
-) {}
+    UUID modifiePar,
+    boolean enCoursDeModification,
+    boolean workflowEnCours,
+    UUID workflowInstanceId,
+    String workflowStatut,
+    String workflowOperationType,
+    List<Map<String, Object>> piecesJointesWorkflow
+) {
+    public BudgetPlanSmartOutput(
+            UUID id,
+            int annee,
+            String intitule,
+            int version,
+            StatutBudget statut,
+            BigDecimal totalBudget,
+            int nombreItems,
+            LocalDateTime creeLe,
+            UUID creePar,
+            LocalDateTime modifieLe,
+            UUID modifiePar
+    ) {
+        this(id, annee, intitule, version, statut, totalBudget, nombreItems, creeLe, creePar, modifieLe, modifiePar,
+                false, false, null, null, null, Collections.emptyList());
+    }
+}

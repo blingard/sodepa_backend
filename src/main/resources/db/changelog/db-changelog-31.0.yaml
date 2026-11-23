@@ -1,0 +1,262 @@
+databaseChangeLog:
+  - changeSet:
+      id: notif-31-01-evolve-sys-notifications
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: sys_notifications
+        - not:
+            - columnExists:
+                tableName: sys_notifications
+                columnName: group_id
+      changes:
+        - addColumn:
+            tableName: sys_notifications
+            columns:
+              - column: { name: group_id, type: UUID }
+              - column: { name: parent_notification_id, type: UUID }
+              - column: { name: idempotency_key, type: VARCHAR(160) }
+              - column: { name: provider_name, type: VARCHAR(60) }
+              - column: { name: provider_message_id, type: VARCHAR(160) }
+              - column: { name: fallback_used, type: BOOLEAN, defaultValueBoolean: false, constraints: { nullable: false } }
+              - column: { name: retry_count, type: INT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: next_retry_at, type: TIMESTAMP }
+              - column: { name: message_html, type: TEXT }
+              - column: { name: destinataire_whatsapp, type: VARCHAR(40) }
+              - column: { name: template_code, type: VARCHAR(80) }
+              - column: { name: metadata_json, type: TEXT }
+        - addUniqueConstraint:
+            tableName: sys_notifications
+            columnNames: idempotency_key
+            constraintName: uk_sys_notifications_idempotency_key
+        - createIndex:
+            indexName: idx_sys_notif_user_canal_statut
+            tableName: sys_notifications
+            columns:
+              - column: { name: destinataire_utilisateur_id }
+              - column: { name: canal }
+              - column: { name: statut }
+              - column: { name: date_envoi }
+        - createIndex:
+            indexName: idx_sys_notif_group_id
+            tableName: sys_notifications
+            columns:
+              - column: { name: group_id }
+        - createIndex:
+            indexName: idx_sys_notif_parent_id
+            tableName: sys_notifications
+            columns:
+              - column: { name: parent_notification_id }
+
+  - changeSet:
+      id: notif-31-02-normalize-legacy-statuts
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: sys_notifications
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE public.sys_notifications SET statut = 'SENT' WHERE statut IN ('SEND', 'ENVOYEE');
+              UPDATE public.sys_notifications SET statut = 'READ' WHERE statut = 'LUE';
+              ALTER TABLE public.sys_notifications ALTER COLUMN statut SET DEFAULT 'PENDING';
+
+  - changeSet:
+      id: notif-31-03-create-outbox
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: sys_notification_outbox
+      changes:
+        - createTable:
+            tableName: sys_notification_outbox
+            columns:
+              - column: { name: id, type: UUID, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: notification_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: group_id, type: UUID }
+              - column: { name: canal, type: VARCHAR(30), constraints: { nullable: false } }
+              - column: { name: type_evenement, type: VARCHAR(60), constraints: { nullable: false } }
+              - column: { name: payload_json, type: TEXT, constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(30), defaultValue: "PENDING", constraints: { nullable: false } }
+              - column: { name: retry_count, type: INT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: next_retry_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: last_error, type: VARCHAR(500) }
+              - column: { name: created_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: published_at, type: TIMESTAMP }
+              - column: { name: processed_at, type: TIMESTAMP }
+        - addUniqueConstraint:
+            tableName: sys_notification_outbox
+            columnNames: notification_id
+            constraintName: uk_notif_outbox_notification_id
+        - addForeignKeyConstraint:
+            baseTableName: sys_notification_outbox
+            baseColumnNames: notification_id
+            constraintName: fk_notif_outbox_notification
+            referencedTableName: sys_notifications
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - createIndex:
+            indexName: idx_notif_outbox_pending
+            tableName: sys_notification_outbox
+            columns:
+              - column: { name: status }
+              - column: { name: next_retry_at }
+              - column: { name: created_at }
+
+  - changeSet:
+      id: notif-31-04-create-rules-prefs-templates
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS public.sys_notification_rules (
+                id UUID PRIMARY KEY,
+                type_evenement VARCHAR(60) NOT NULL,
+                canal VARCHAR(30) NOT NULL,
+                actif BOOLEAN NOT NULL DEFAULT TRUE,
+                critique BOOLEAN NOT NULL DEFAULT FALSE,
+                ordre_priorite INT NOT NULL DEFAULT 10,
+                fallback_canal VARCHAR(30),
+                description VARCHAR(255),
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by VARCHAR(100),
+                CONSTRAINT uk_notif_rule_event_canal UNIQUE (type_evenement, canal)
+              );
+
+              CREATE TABLE IF NOT EXISTS public.sys_notification_user_prefs (
+                id UUID PRIMARY KEY,
+                utilisateur_id UUID NOT NULL,
+                email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                sms_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                whatsapp_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                whatsapp_phone VARCHAR(40),
+                langue VARCHAR(10) NOT NULL DEFAULT 'fr',
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT uk_notif_user_prefs_user UNIQUE (utilisateur_id)
+              );
+
+              CREATE TABLE IF NOT EXISTS public.sys_notification_templates (
+                id UUID PRIMARY KEY,
+                code VARCHAR(80) NOT NULL,
+                type_evenement VARCHAR(60) NOT NULL,
+                langue VARCHAR(10) NOT NULL DEFAULT 'fr',
+                sujet_template VARCHAR(250) NOT NULL,
+                body_text_template TEXT NOT NULL,
+                body_html_template TEXT,
+                whatsapp_template_name VARCHAR(120),
+                whatsapp_param_order VARCHAR(500),
+                allowed_placeholders VARCHAR(500),
+                actif BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by VARCHAR(100),
+                CONSTRAINT uk_notif_templates_code UNIQUE (code),
+                CONSTRAINT uk_notif_templates_event_lang UNIQUE (type_evenement, langue)
+              );
+
+  - changeSet:
+      id: notif-31-05-seed-default-rules-and-templates
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: sys_notification_rules
+        - tableExists:
+            tableName: sys_notification_templates
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              INSERT INTO public.sys_notification_rules (id, type_evenement, canal, actif, critique, ordre_priorite, fallback_canal, description, updated_by)
+              VALUES
+                ('a1000001-0000-4000-8000-000000000001', 'WORKFLOW_ASSIGNATION_ETAPE', 'EMAIL', TRUE, TRUE, 10, NULL, 'Assignation d''étape workflow (critique)', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000002', 'WORKFLOW_ASSIGNATION_ETAPE', 'IN_APP', TRUE, TRUE, 10, NULL, 'Cloche UI assignation étape workflow (critique)', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000003', 'WORKFLOW_ASSIGNATION_ETAPE', 'SMS', TRUE, TRUE, 20, NULL, 'SMS assignation étape workflow', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000004', 'WORKFLOW_ASSIGNATION_ETAPE', 'WHATSAPP', FALSE, FALSE, 15, 'SMS', 'WhatsApp assignation étape avec repli SMS', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000011', 'WORKFLOW_REJET_DOSSIER', 'EMAIL', TRUE, TRUE, 10, NULL, 'Notification critique de rejet de dossier workflow', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000012', 'WORKFLOW_REJET_DOSSIER', 'IN_APP', TRUE, TRUE, 10, NULL, 'Cloche UI rejet de dossier workflow', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000013', 'WORKFLOW_REJET_DOSSIER', 'SMS', TRUE, TRUE, 20, NULL, 'SMS critique de rejet de dossier workflow', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000014', 'WORKFLOW_REJET_DOSSIER', 'WHATSAPP', FALSE, FALSE, 15, 'SMS', 'WhatsApp rejet dossier avec repli SMS', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000021', 'WORKFLOW_CLOTURE_APPROUVEE', 'EMAIL', TRUE, FALSE, 10, NULL, 'Email clôture approuvée', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000022', 'WORKFLOW_CLOTURE_APPROUVEE', 'IN_APP', TRUE, FALSE, 10, NULL, 'Cloche UI clôture approuvée', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000023', 'WORKFLOW_CLOTURE_APPROUVEE', 'SMS', FALSE, FALSE, 20, NULL, 'SMS optionnel clôture approuvée', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000024', 'WORKFLOW_CLOTURE_APPROUVEE', 'WHATSAPP', FALSE, FALSE, 15, 'SMS', 'WhatsApp optionnel clôture approuvée', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000031', 'WORKFLOW_RELANCE_SLA', 'EMAIL', TRUE, TRUE, 10, NULL, 'Relance SLA critique par Email', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000032', 'WORKFLOW_RELANCE_SLA', 'IN_APP', TRUE, TRUE, 10, NULL, 'Relance SLA critique In-App', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000033', 'WORKFLOW_RELANCE_SLA', 'SMS', TRUE, TRUE, 20, NULL, 'Relance SLA critique par SMS', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000034', 'WORKFLOW_RELANCE_SLA', 'WHATSAPP', FALSE, FALSE, 15, 'SMS', 'Relance SLA WhatsApp avec repli SMS', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000041', 'IAM_DESACTIVATION_AUTOMATIQUE', 'EMAIL', TRUE, TRUE, 10, NULL, 'Alerte sécurité IAM non désactivable par Email', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000042', 'IAM_DESACTIVATION_AUTOMATIQUE', 'SMS', TRUE, TRUE, 20, NULL, 'Alerte sécurité IAM non désactivable par SMS', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000043', 'IAM_DESACTIVATION_AUTOMATIQUE', 'IN_APP', TRUE, TRUE, 10, NULL, 'Alerte sécurité IAM In-App', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000051', 'TIERS_PIECE_EXPIRATION_J15', 'EMAIL', TRUE, FALSE, 10, NULL, 'Rappel J-15 expiration pièce tiers', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000052', 'TIERS_PIECE_EXPIRATION_J15', 'SMS', TRUE, FALSE, 20, NULL, 'SMS J-15 expiration pièce tiers', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000053', 'TIERS_PIECE_EXPIRATION_J15', 'IN_APP', TRUE, FALSE, 10, NULL, 'Cloche UI J-15 expiration pièce tiers', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000054', 'TIERS_PIECE_EXPIRATION_J15', 'WHATSAPP', FALSE, FALSE, 15, 'SMS', 'WhatsApp J-15 expiration pièce tiers avec repli SMS', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000061', 'MDM_FICHE_APPROUVEE', 'EMAIL', TRUE, FALSE, 10, NULL, 'Email approbation fiche MDM', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000062', 'MDM_FICHE_APPROUVEE', 'IN_APP', TRUE, FALSE, 10, NULL, 'In-App approbation fiche MDM', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000071', 'MDM_FICHE_REJETEE', 'EMAIL', TRUE, TRUE, 10, NULL, 'Email critique rejet fiche MDM', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000072', 'MDM_FICHE_REJETEE', 'IN_APP', TRUE, TRUE, 10, NULL, 'In-App critique rejet fiche MDM', 'liquibase-seed'),
+
+                ('a1000001-0000-4000-8000-000000000081', 'NOTIFICATION_EMAIL', 'EMAIL', TRUE, FALSE, 10, NULL, 'Envoi unitaire Email', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000082', 'NOTIFICATION_SMS', 'SMS', TRUE, FALSE, 10, NULL, 'Envoi unitaire SMS', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000083', 'NOTIFICATION_WHATSAPP', 'WHATSAPP', TRUE, FALSE, 10, 'SMS', 'Envoi unitaire WhatsApp avec repli SMS', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000084', 'NOTIFICATION_GENERALE', 'EMAIL', TRUE, FALSE, 10, NULL, 'Notification générale par défaut (Email)', 'liquibase-seed'),
+                ('a1000001-0000-4000-8000-000000000085', 'NOTIFICATION_GENERALE', 'IN_APP', TRUE, FALSE, 10, NULL, 'Notification générale par défaut (In-App)', 'liquibase-seed')
+              ON CONFLICT (type_evenement, canal) DO NOTHING;
+
+              INSERT INTO public.sys_notification_templates (id, code, type_evenement, langue, sujet_template, body_text_template, body_html_template, whatsapp_template_name, whatsapp_param_order, allowed_placeholders, actif, updated_by)
+              VALUES
+                ('b1000001-0000-4000-8000-000000000001', 'WORKFLOW_ASSIGNATION_ETAPE_FR', 'WORKFLOW_ASSIGNATION_ETAPE', 'fr',
+                 '[ERP SODEPA] Action requise - Étape {{etapeCode}} ({{entityName}})',
+                 'Bonjour {{destinataireNom}}, le dossier {{entityName}} ({{entityId}}) attend votre action sur l''étape {{etapeCode}}. {{message}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;"><div style="background:#0f5132;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Action Workflow Requise</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Le dossier <strong>{{entityName}}</strong> (référence <code>{{entityId}}</code>) est en attente de votre validation sur l''étape <strong>{{etapeCode}}</strong>.</p><p>{{message}}</p></div><div style="background:#f8fafc;padding:12px 20px;font-size:12px;color:#64748b;">Notification automatique ERP SODEPA — Ne pas répondre à ce message.</div></div>',
+                 'sodepa_wf_assignation_etape', 'destinataireNom,entityName,entityId,etapeCode', 'destinataireNom,entityName,entityId,etapeCode,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000002', 'WORKFLOW_REJET_DOSSIER_FR', 'WORKFLOW_REJET_DOSSIER', 'fr',
+                 '[ERP SODEPA] Dossier rejeté - Étape {{etapeCode}} ({{entityName}})',
+                 'Bonjour {{destinataireNom}}, votre dossier {{entityName}} ({{entityId}}) a été rejeté à l''étape {{etapeCode}}. Motif : {{motif}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #fecaca;border-radius:8px;overflow:hidden;"><div style="background:#991b1b;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Dossier Rejeté</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Le dossier <strong>{{entityName}}</strong> (référence <code>{{entityId}}</code>) a été rejeté à l''étape <strong>{{etapeCode}}</strong>.</p><p><strong>Motif :</strong> {{motif}}</p></div><div style="background:#fef2f2;padding:12px 20px;font-size:12px;color:#7f1d1d;">Notification critique ERP SODEPA.</div></div>',
+                 'sodepa_wf_rejet_dossier', 'destinataireNom,entityName,etapeCode,motif', 'destinataireNom,entityName,entityId,etapeCode,motif,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000003', 'WORKFLOW_CLOTURE_APPROUVEE_FR', 'WORKFLOW_CLOTURE_APPROUVEE', 'fr',
+                 '[ERP SODEPA] Dossier approuvé et clôturé ({{entityName}})',
+                 'Bonjour {{destinataireNom}}, le dossier {{entityName}} ({{entityId}}) a terminé le circuit de validation et a été approuvé.',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #bbf7d0;border-radius:8px;overflow:hidden;"><div style="background:#166534;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Dossier Approuvé</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Le dossier <strong>{{entityName}}</strong> (référence <code>{{entityId}}</code>) a été intégralement validé et clôturé.</p></div><div style="background:#f0fdf4;padding:12px 20px;font-size:12px;color:#166534;">Notification automatique ERP SODEPA.</div></div>',
+                 'sodepa_wf_cloture_approuvee', 'destinataireNom,entityName,entityId', 'destinataireNom,entityName,entityId,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000004', 'WORKFLOW_RELANCE_SLA_FR', 'WORKFLOW_RELANCE_SLA', 'fr',
+                 '[ERP SODEPA - RELANCE SLA] Dossier en attente sur {{etapeCode}}',
+                 'Bonjour {{destinataireNom}}, relance SLA pour le dossier {{entityName}} ({{entityId}}) à l''étape {{etapeCode}}. {{message}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #fde68a;border-radius:8px;overflow:hidden;"><div style="background:#b45309;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Relance SLA</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Une échéance SLA approche ou est dépassée pour le dossier <strong>{{entityName}}</strong> (<code>{{entityId}}</code>) sur l''étape <strong>{{etapeCode}}</strong>.</p><p>{{message}}</p></div><div style="background:#fffbeb;padding:12px 20px;font-size:12px;color:#92400e;">Relance automatique ERP SODEPA.</div></div>',
+                 'sodepa_wf_relance_sla', 'destinataireNom,entityName,entityId,etapeCode', 'destinataireNom,entityName,entityId,etapeCode,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000005', 'TIERS_PIECE_EXPIRATION_J15_FR', 'TIERS_PIECE_EXPIRATION_J15', 'fr',
+                 '[ERP SODEPA] Expiration proche de pièce justificative ({{typePiece}})',
+                 'Bonjour {{destinataireNom}}, votre pièce {{typePiece}} expire le {{dateExpiration}} (J-{{joursRestants}}). {{message}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;"><div style="background:#0f5132;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Conformité Tiers</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Votre pièce justificative <strong>{{typePiece}}</strong> arrive à échéance le <strong>{{dateExpiration}}</strong> (dans <strong>{{joursRestants}}</strong> jour(s)).</p><p>{{message}}</p></div><div style="background:#f8fafc;padding:12px 20px;font-size:12px;color:#64748b;">Direction Financière &amp; Conformité SODEPA.</div></div>',
+                 'sodepa_tiers_expiration_piece', 'destinataireNom,typePiece,dateExpiration,joursRestants', 'destinataireNom,typePiece,dateExpiration,joursRestants,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000006', 'IAM_DESACTIVATION_AUTOMATIQUE_FR', 'IAM_DESACTIVATION_AUTOMATIQUE', 'fr',
+                 '[ERP SODEPA - Sécurité IAM] Désactivation automatique du compte {{username}}',
+                 'Le compte {{username}} a été automatiquement désactivé. Motif : {{motif}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #fecaca;border-radius:8px;overflow:hidden;"><div style="background:#7f1d1d;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">ERP SODEPA - Alerte Sécurité IAM</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>Le compte utilisateur <code>{{username}}</code> a été désactivé conformément à la politique de sécurité IAM (RG-REF-024).</p><p><strong>Motif :</strong> {{motif}}</p></div><div style="background:#fef2f2;padding:12px 20px;font-size:12px;color:#7f1d1d;">Sécurité Systèmes d''Information SODEPA.</div></div>',
+                 'sodepa_iam_desactivation', 'destinataireNom,username,motif', 'destinataireNom,username,motif,message,sujet', TRUE, 'liquibase-seed'),
+
+                ('b1000001-0000-4000-8000-000000000007', 'NOTIFICATION_GENERALE_FR', 'NOTIFICATION_GENERALE', 'fr',
+                 '{{sujet}}',
+                 '{{message}}',
+                 '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;"><div style="background:#0f5132;color:#ffffff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">{{sujet}}</h2></div><div style="padding:20px;color:#1e293b;line-height:1.5;"><p>Bonjour <strong>{{destinataireNom}}</strong>,</p><p>{{message}}</p></div><div style="background:#f8fafc;padding:12px 20px;font-size:12px;color:#64748b;">ERP SODEPA — Système d''information intégré.</div></div>',
+                 'sodepa_notification_generale', 'destinataireNom,sujet,message', 'destinataireNom,sujet,message,entityName,entityId,etapeCode,motif', TRUE, 'liquibase-seed')
+              ON CONFLICT (type_evenement, langue) DO NOTHING;

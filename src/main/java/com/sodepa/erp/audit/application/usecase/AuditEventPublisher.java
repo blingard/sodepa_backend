@@ -1,13 +1,17 @@
 package com.sodepa.erp.audit.application.usecase;
 
 import com.sodepa.erp.audit.application.inputs.MakerCheckerMessageInput;
+import com.sodepa.erp.audit.infrastructure.repo.DuckDbAuditManager;
 import com.sodepa.erp.configuration.RabbitMqConfig;
 import com.sodepa.erp.configuration.RequestTrackingEvent;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -18,11 +22,15 @@ import java.util.UUID;
 /**
  * Service de publication des événements d'audit et de transactions vers les files d'attente RabbitMQ.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuditEventPublisher {
 
     private final RabbitTemplate rabbitTemplate;
+
+    @Autowired(required = false)
+    private DuckDbAuditManager duckDbAuditManager;
 
     /**
      * DTO représentant le message d'une transaction comptable répliquée.
@@ -64,24 +72,55 @@ public class AuditEventPublisher {
      * @param msg la transaction comptable à publier
      */
     public void publishTransaction(TransactionMessage msg) {
-        rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_TRANSACTION, msg);
+        try {
+            rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_TRANSACTION, msg);
+        } catch (AmqpException e) {
+            log.warn("RabbitMQ indisponible — publication transaction différée ignorée pour {} : {}",
+                    msg != null ? msg.getId() : null, e.getMessage());
+        }
     }
 
     /**
-     * Publie une activité ou trace d'audit utilisateur vers RabbitMQ.
-     * 
+     * Publie une activité ou trace d'audit utilisateur vers RabbitMQ, avec repli non bloquant vers DuckDB.
+     *
      * @param msg l'activité à publier
      */
     public void publishActivity(RequestTrackingEvent msg) {
-        rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_ACTIVITY, msg);
+        try {
+            rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_ACTIVITY, msg);
+        } catch (AmqpException e) {
+            log.warn("RabbitMQ indisponible — bascule de l'audit HTTP {} {} vers DuckDB : {}",
+                    msg != null ? msg.httpMethod() : null, msg != null ? msg.uri() : null, e.getMessage());
+            if (duckDbAuditManager != null && msg != null) {
+                try {
+                    duckDbAuditManager.saveUserActivity(
+                            msg.userId(),
+                            msg.username(),
+                            msg.sessionId(),
+                            "HTTP_" + msg.responseStatus(),
+                            msg.httpMethod(),
+                            msg.uri(),
+                            msg.correlationId(),
+                            msg.remoteIp()
+                    );
+                } catch (Exception duckEx) {
+                    log.debug("Échec repli DuckDB ignoré : {}", duckEx.getMessage());
+                }
+            }
+        }
     }
 
     /**
      * Publie un événement Maker-Checker vers RabbitMQ.
-     * 
+     *
      * @param msg l'événement Maker-Checker à publier
      */
     public void publishMakerChecker(MakerCheckerMessageInput msg) {
-        rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_MAKER_CHECKER, msg);
+        try {
+            rabbitTemplate.convertAndSend(RabbitMqConfig.AUDIT_EXCHANGE, RabbitMqConfig.ROUTING_MAKER_CHECKER, msg);
+        } catch (AmqpException e) {
+            log.warn("RabbitMQ indisponible — événement Maker-Checker ignoré pour {} ({}) : {}",
+                    msg != null ? msg.entityName() : null, msg != null ? msg.entityPk() : null, e.getMessage());
+        }
     }
 }

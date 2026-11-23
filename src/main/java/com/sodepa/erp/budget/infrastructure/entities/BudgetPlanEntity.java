@@ -39,7 +39,6 @@ public class BudgetPlanEntity {
      * Identifiant unique du plan budgétaire.
      */
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
     /**

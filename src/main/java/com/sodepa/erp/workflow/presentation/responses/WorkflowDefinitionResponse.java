@@ -84,6 +84,9 @@ public class WorkflowDefinitionResponse {
         /** Intitulé lisible affiché à l'utilisateur. */
         private String intitule;
 
+        /** Consignes ou description détaillée de l'étape. */
+        private String description;
+
         /** Typologie d'étape (VALIDATION_HUMAINE, SIGNATURE_ELECTRONIQUE, etc.). */
         private String typeEtape;
 
@@ -98,6 +101,9 @@ public class WorkflowDefinitionResponse {
 
         /** Délai limite de traitement alloué en heures (SLA). */
         private Integer delaiSlaHeures;
+
+        /** Mesure corrective automatique en cas de dépassement SLA. */
+        private String actionDepassementSla;
         /** Mode d'action exigé ou permis pour la validation. */
         private String modeActionValidation;
 
@@ -159,6 +165,15 @@ public class WorkflowDefinitionResponse {
 
         /** Nom de l'unité organisationnelle exigée. */
         private String uniteOrganisationnelleNom;
+
+        /** Identifiant du poste cible s'il est configuré. */
+        private UUID posteId;
+
+        /** Code du poste cible s'il est configuré. */
+        private String posteCode;
+
+        /** Intitulé du poste cible s'il est configuré. */
+        private String posteIntitule;
 
         /** Stratégie d'assignation dynamique. */
         private String strategieAssignation;

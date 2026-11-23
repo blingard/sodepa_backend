@@ -40,10 +40,18 @@ public class BanqueRestController {
     private final BankValidateOrRejectUseCase bankValidateOrRejectUseCase;
 
 
-    @PostMapping("init_create")
-    public void createBank(@Valid @RequestBody CreateBankRequest request, @RequestPart(name = "file")MultipartFile logo) {
+    @PostMapping(value = "init_create", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.sodepa.erp.share.SubmissionOutput createBank(
+            @Valid @RequestPart("request") CreateBankRequest request,
+            @RequestPart(name = "file", required = false) MultipartFile logo) {
         CreateBankInput input = new CreateBankInput(request.code(), request.name(), request.accountAccountingCode(), logo);
-        createBankUseCase.execute(input);
+        return createBankUseCase.execute(input);
+    }
+
+    @PostMapping(value = "init_create", consumes = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    public com.sodepa.erp.share.SubmissionOutput createBankJson(@Valid @RequestBody CreateBankRequest request) {
+        CreateBankInput input = new CreateBankInput(request.code(), request.name(), request.accountAccountingCode(), null);
+        return createBankUseCase.execute(input);
     }
 
     @GetMapping("active_by_id/{id}")

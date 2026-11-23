@@ -36,13 +36,13 @@ public class JournalRestController {
     private final JournalValidateOrRejectUseCase journalValidateOrRejectUseCase;
 
     @PostMapping("/init_create")
-    public void initCreate(@Valid @RequestBody CreateJournalRequest request) {
+    public com.sodepa.erp.share.SubmissionOutput initCreate(@Valid @RequestBody CreateJournalRequest request) {
         CreateJournalInput input = CreateJournalInput.builder()
                 .code(request.code())
                 .intitule(request.intitule())
                 .typeJournal(request.typeJournal())
                 .build();
-        createJournalUseCase.execute(input);
+        return createJournalUseCase.execute(input);
     }
 
     @GetMapping("/active_by_id/{id}")

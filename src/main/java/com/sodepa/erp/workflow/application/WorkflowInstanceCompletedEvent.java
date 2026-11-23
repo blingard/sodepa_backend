@@ -27,5 +27,18 @@ public record WorkflowInstanceCompletedEvent(
         String entityId,
         String derniereEtapeCode,
         UUID dernierActeurId,
-        String commentaireFinal
-) {}
+        String commentaireFinal,
+        java.util.Map<String, Object> finalData
+) {
+    public WorkflowInstanceCompletedEvent(
+            UUID instanceId,
+            String workflowCode,
+            String entityName,
+            String entityId,
+            String derniereEtapeCode,
+            UUID dernierActeurId,
+            String commentaireFinal
+    ) {
+        this(instanceId, workflowCode, entityName, entityId, derniereEtapeCode, dernierActeurId, commentaireFinal, java.util.Collections.emptyMap());
+    }
+}

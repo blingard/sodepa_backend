@@ -154,8 +154,6 @@ class OrganigrammeAdapterTest {
     @DisplayName("Création d'une unité racine : chemin matérialisé '/CODE/'")
     void testCreerUniteRacine() {
         when(uniteRepository.existsByCode("DG")).thenReturn(false);
-        when(uniteRepository.save(any(UniteOrganisationnelleEntity.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
 
         CreerUniteInput input = CreerUniteInput.builder()
                 .code("DG")
@@ -170,6 +168,7 @@ class OrganigrammeAdapterTest {
         assertNotNull(output);
         assertEquals("/DG/", output.materializedPath());
         assertEquals("DG", output.code());
+        verify(workflowService).submitChange(eq(com.sodepa.erp.utils.MakerCheckerEntityName.UNITE_ORGANISATIONNELLE), anyString(), anyMap(), eq(com.sodepa.erp.utils.MakerCheckerOperationType.CREATE));
     }
 
     @Test
@@ -177,8 +176,6 @@ class OrganigrammeAdapterTest {
     void testCreerUniteEnfant() {
         when(uniteRepository.existsByCode("RNCH-FARO")).thenReturn(false);
         when(uniteRepository.findById(directionGenerale.getId())).thenReturn(Optional.of(directionGenerale));
-        when(uniteRepository.save(any(UniteOrganisationnelleEntity.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
 
         CreerUniteInput input = CreerUniteInput.builder()
                 .code("RNCH-FARO")
@@ -193,6 +190,7 @@ class OrganigrammeAdapterTest {
         assertNotNull(output);
         assertEquals("/DG/RNCH-FARO/", output.materializedPath());
         assertEquals("RNCH-FARO", output.code());
+        verify(workflowService).submitChange(eq(com.sodepa.erp.utils.MakerCheckerEntityName.UNITE_ORGANISATIONNELLE), anyString(), anyMap(), eq(com.sodepa.erp.utils.MakerCheckerOperationType.CREATE));
     }
 
     @Test

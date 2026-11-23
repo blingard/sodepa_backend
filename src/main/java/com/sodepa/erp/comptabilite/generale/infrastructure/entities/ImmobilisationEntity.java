@@ -105,4 +105,9 @@ public class ImmobilisationEntity {
     @Column(nullable = false, precision = 15, scale = 2)
     @Builder.Default
     private BigDecimal amortissementCumule = BigDecimal.ZERO;
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

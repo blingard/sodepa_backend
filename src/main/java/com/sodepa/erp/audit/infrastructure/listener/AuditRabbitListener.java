@@ -3,10 +3,12 @@ package com.sodepa.erp.audit.infrastructure.listener;
 import com.sodepa.erp.audit.application.inputs.MakerCheckerMessageInput;
 import com.sodepa.erp.audit.application.usecase.AuditEventPublisher;
 import com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager;
+import com.sodepa.erp.audit.infrastructure.repo.DuckDbAuditManager;
 import com.sodepa.erp.configuration.RabbitMqConfig;
 import com.sodepa.erp.configuration.RequestTrackingEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,6 +19,9 @@ import org.springframework.stereotype.Component;
 public class AuditRabbitListener {
 
     private final ClickHouseManager clickHouseManager;
+
+    @Autowired(required = false)
+    private DuckDbAuditManager duckDbAuditManager;
 
     /**
      * Consomme les événements de transactions comptables validées et les enregistre dans ClickHouse.
@@ -43,6 +48,18 @@ public class AuditRabbitListener {
      */
     @RabbitListener(queues = RabbitMqConfig.ACTIVITIES_QUEUE)
     public void consumeActivity(RequestTrackingEvent msg) {
+        if (duckDbAuditManager != null && msg != null) {
+            duckDbAuditManager.saveUserActivity(
+                    msg.userId(),
+                    msg.username(),
+                    msg.sessionId(),
+                    "HTTP_" + msg.responseStatus(),
+                    msg.httpMethod(),
+                    msg.uri(),
+                    msg.correlationId(),
+                    msg.remoteIp()
+            );
+        }
         clickHouseManager.saveActivity(msg);
     }
 

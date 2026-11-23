@@ -12,10 +12,14 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.event.BankEventInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.BanqueRepository;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
 import com.sodepa.erp.share.FileStorageService;
-import com.sodepa.erp.workflow.application.WorkflowService;
 import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
+import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -39,7 +43,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class BankAdapter {
+    private static final List<String> BANK_WORKFLOW_ENTITY_NAMES = List.of("BANQUE", "BanqueEntity");
+
     private final WorkflowService workflowService;
+    private final WorkflowStateService workflowStateService;
     private final FileStorageService fileStorageService;
     private final BanqueRepository banqueRepository;
     private final CompteRepository compteRepository;
@@ -56,7 +63,7 @@ public class BankAdapter {
      * @throws IllegalArgumentException si le code existe déjà ou si le compte n'est pas présent dans le plan.
      */
     @Transactional
-    public void initCreateBank(CreateBankInput request) {
+    public SubmissionOutput initCreateBank(CreateBankInput request) {
         utilsService.hasPermission(Permissions.INIT_CREATE_BANK);
         if (banqueRepository.findByCode(request.code()).isPresent()) {
             throw new IllegalArgumentException("Le code banque " + request.code() + " est déjà utilisé.");
@@ -65,13 +72,16 @@ public class BankAdapter {
             throw new IllegalArgumentException("Le compte de banque " + request.accountAccountingCode() + " n'existe pas dans le plan comptable.");
         }
         UUID entityPk = UUID.randomUUID();
-        String logoPath = fileStorageService.storeFileImage(request.logo(), FILE_PATH);
-        Map<String, Object> payload = toPayload(request, entityPk, logoPath, false);
-        workflowService.submitChange(
+        String logoPath = (request.logo() != null && !request.logo().isEmpty())
+                ? fileStorageService.storeFileImage(request.logo(), FILE_PATH)
+                : "";
+        Map<String, Object> payload = toPayload(request, entityPk, logoPath, true);
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.BANQUE,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
         );
+        return new SubmissionOutput(requestId, entityPk);
     }
 
     /**
@@ -80,14 +90,62 @@ public class BankAdapter {
      * @param id l'identifiant de la banque.
      * @return la banque correspondante.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public BankOutput getBankById(UUID id) {
         utilsService.hasPermission(Permissions.GET_FULL_BANK_INFO);
-        BanqueEntity banqueEntity = banqueRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Banque introuvable avec l'ID: " + id));
+        Optional<BanqueEntity> opt = banqueRepository.findById(id);
+        Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(BANK_WORKFLOW_ENTITY_NAMES, id);
 
-        return new BankOutput(banqueEntity.getId(), banqueEntity.getCode(), banqueEntity.getNom(),
-                banqueEntity.getCompteComptableCode(), banqueEntity.getLogo(), banqueEntity.isStatus());
+        if (opt.isPresent()) {
+            BanqueEntity b = opt.get();
+            if (activeWfOpt.isPresent()) {
+                WorkflowInstanceEntity wf = activeWfOpt.get();
+                WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                return new BankOutput(
+                        b.getId(),
+                        data.get("code") != null ? data.get("code").toString() : b.getCode(),
+                        data.get("nom") != null ? data.get("nom").toString() : b.getNom(),
+                        data.get("compteComptableCode") != null ? data.get("compteComptableCode").toString() : b.getCompteComptableCode(),
+                        data.get("logo") != null ? data.get("logo").toString() : b.getLogo(),
+                        data.get("status") != null ? Boolean.parseBoolean(data.get("status").toString()) : b.isStatus(),
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "UPDATE",
+                        attachments
+                );
+            }
+            return new BankOutput(b.getId(), b.getCode(), b.getNom(),
+                    b.getCompteComptableCode(), b.getLogo(), b.isStatus());
+        }
+
+        if (activeWfOpt.isPresent()) {
+            WorkflowInstanceEntity wf = activeWfOpt.get();
+            WorkflowCurrentDataResponse current = workflowStateService.getCurrentData(wf);
+            Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+            List<String> attachments = current.getAttachments() == null ? List.of()
+                    : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+            return new BankOutput(
+                    id,
+                    data.get("code") != null ? data.get("code").toString() : "",
+                    data.get("nom") != null ? data.get("nom").toString() : "",
+                    data.get("compteComptableCode") != null ? data.get("compteComptableCode").toString() : "",
+                    data.get("logo") != null ? data.get("logo").toString() : "",
+                    data.get("status") == null || Boolean.parseBoolean(data.get("status").toString()),
+                    true,
+                    true,
+                    wf.getId(),
+                    wf.getStatut() != null ? wf.getStatut().name() : null,
+                    current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                    attachments
+            );
+        }
+
+        throw new IllegalArgumentException("Banque introuvable avec l'ID: " + id);
     }
 
     /**
@@ -175,7 +233,7 @@ public class BankAdapter {
      *
      * @return la liste des banques.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<BankSmartOutput> getBankByPage(Pageable pageable) {
 
         utilsService.hasPermission(Permissions.GET_FULL_BANK_INFO);
@@ -186,15 +244,68 @@ public class BankAdapter {
                     pageable.getSort()
             );
         Page<BanqueEntity> banqueEntityPage = banqueRepository.findAll(pageable);
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(BANK_WORKFLOW_ENTITY_NAMES);
+        Set<UUID> materializedIds = new HashSet<>();
+        List<BankSmartOutput> items = new ArrayList<>();
+
+        for (BanqueEntity b : banqueEntityPage.getContent()) {
+            materializedIds.add(b.getId());
+            WorkflowInstanceEntity wf = activeById.get(b.getId());
+            if (wf != null) {
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                items.add(new BankSmartOutput(
+                        b.getId(),
+                        data.get("code") != null ? data.get("code").toString() : b.getCode(),
+                        data.get("nom") != null ? data.get("nom").toString() : b.getNom(),
+                        data.get("logo") != null ? data.get("logo").toString() : b.getLogo(),
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "UPDATE",
+                        attachments
+                ));
+            } else {
+                items.add(this.map(b));
+            }
+        }
+
+        if (pageable.getPageNumber() == 0) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey()) || banqueRepository.existsById(entry.getKey())) {
+                    continue;
+                }
+                WorkflowInstanceEntity wf = entry.getValue();
+                WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+                Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+                List<String> attachments = current.getAttachments() == null ? List.of()
+                        : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+                items.add(new BankSmartOutput(
+                        entry.getKey(),
+                        data.get("code") != null ? data.get("code").toString() : "",
+                        data.get("nom") != null ? data.get("nom").toString() : "",
+                        data.get("logo") != null ? data.get("logo").toString() : "",
+                        true,
+                        true,
+                        wf.getId(),
+                        wf.getStatut() != null ? wf.getStatut().name() : null,
+                        current.getOperationType() != null ? current.getOperationType() : "CREATE",
+                        attachments
+                ));
+            }
+        }
 
         boolean paged = banqueEntityPage.getPageable().isPaged();
         return new PageRecord<>(
-                banqueEntityPage.getContent().stream().map(this::map).toList(),
-                banqueEntityPage.isEmpty(),
+                items,
+                items.isEmpty(),
                 banqueEntityPage.isFirst(),
                 banqueEntityPage.isLast(),
                 banqueEntityPage.getNumber(),
-                banqueEntityPage.getNumberOfElements(),
+                items.size(),
                 PageableRecord.builder()
                         .offset(paged ? banqueEntityPage.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? banqueEntityPage.getPageable().getPageNumber() : 0L)
@@ -257,10 +368,12 @@ public class BankAdapter {
 
     private void validation(MakerCheckerOutput request) {
         workflowService.validate(request.id(), request.createdAt(), request.expiredAt());
-        BanqueEntity banqueEntity = getNullableBank(request.id());
+        BanqueEntity banqueEntity = getNullableBank(UUID.fromString(request.entityPk()));
         if ((request.checkerOperationType() == MakerCheckerOperationType.CREATE) && (Objects.nonNull(banqueEntity))) {
             throw new RuntimeException("You cannot create a Bank who already exist");
-        } else if ((request.checkerOperationType() == MakerCheckerOperationType.UPDATE) && (Objects.isNull(banqueEntity))) {
+        } else if ((request.checkerOperationType() == MakerCheckerOperationType.UPDATE
+                || request.checkerOperationType() == MakerCheckerOperationType.UPDATE_IMAGE)
+                && (Objects.isNull(banqueEntity))) {
             throw new RuntimeException("You cannot update a bank who not exist");
         }
     }
