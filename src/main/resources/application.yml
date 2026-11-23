@@ -218,6 +218,45 @@ app:
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
+      # ── Gestion budgétaire reconstruite : natures et sources de financement (US-BUD-108) ──
+      - name: sodepa-budget-natures-write
+        path-patterns:
+          - /api/budget/natures/**
+        methods:
+          - POST
+        limit: 30
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-natures-read
+        path-patterns:
+          - /api/budget/natures
+          - /api/budget/natures/**
+        methods:
+          - GET
+        limit: 120
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-sources-financement-write
+        path-patterns:
+          - /api/budget/sources-financement/**
+        methods:
+          - POST
+        limit: 20
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-sources-financement-read
+        path-patterns:
+          - /api/budget/sources-financement
+          - /api/budget/sources-financement/**
+        methods:
+          - GET
+        limit: 120
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
       # ── Budget / Engagements / Collaboratif (write operations) ──
       - name: sodepa-budget-write
         path-patterns:

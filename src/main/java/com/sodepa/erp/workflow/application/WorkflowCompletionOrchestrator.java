@@ -2,10 +2,13 @@ package com.sodepa.erp.workflow.application;
 
 import com.sodepa.erp.achats.application.AchatsService;
 import com.sodepa.erp.budget.application.inputs.RejeterInput;
+import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
+import com.sodepa.erp.budgetaire.nature.infrastructure.adapter.NatureBudgetaireAdapter;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter.NomenclatureAdapter;
+import com.sodepa.erp.budgetaire.source.infrastructure.adapter.SourceFinancementAdapter;
 import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
 import com.sodepa.erp.budgetaire.structure.infrastructure.adapter.StructureBudgetaireAdapter;
 import com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter;
@@ -59,6 +62,8 @@ public class WorkflowCompletionOrchestrator {
     @Autowired @Lazy private ExerciceBudgetaireAdapter exerciceBudgetaireAdapter;
     @Autowired @Lazy private NomenclatureAdapter nomenclatureAdapter;
     @Autowired @Lazy private StructureBudgetaireAdapter structureBudgetaireAdapter;
+    @Autowired @Lazy private NatureBudgetaireAdapter natureBudgetaireAdapter;
+    @Autowired @Lazy private SourceFinancementAdapter sourceFinancementAdapter;
     @Autowired @Lazy private RapprochementAdapter budgetRapprochementAdapter;
     @Autowired @Lazy private BudgetEngagementRepository budgetEngagementRepository;
     @Autowired @Lazy private BankAdapter bankAdapter;
@@ -220,6 +225,10 @@ public class WorkflowCompletionOrchestrator {
                             new DeciderDemandeNomenclatureInput(req.getId(), decision, notes));
                     case BUDGET_STRUCTURE -> structureBudgetaireAdapter.decider(
                             new DeciderDemandeStructureInput(req.getId(), decision, notes));
+                    case BUDGET_NATURE -> natureBudgetaireAdapter.decider(
+                            new DeciderDemandeInput(req.getId(), decision, notes));
+                    case BUDGET_SOURCE_FINANCEMENT -> sourceFinancementAdapter.decider(
+                            new DeciderDemandeInput(req.getId(), decision, notes));
                     case UNITE_ORGANISATIONNELLE -> organigrammeAdapter.validateOrRejectUnite(input);
                     case POSTE -> organigrammeAdapter.validateOrRejectPoste(input);
                     case AFFECTATION_POSTE -> organigrammeAdapter.validateOrRejectAffectation(input);

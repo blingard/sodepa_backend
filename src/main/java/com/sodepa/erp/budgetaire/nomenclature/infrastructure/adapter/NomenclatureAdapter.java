@@ -1,6 +1,7 @@
 package com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.CodeReferentiel;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
@@ -42,11 +43,9 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -69,14 +68,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class NomenclatureAdapter {
-
-    /**
-     * Caractères admis dans un code. Ce n'est pas un masque de codification :
-     * le plan réel de la SODEPA n'est pas encore connu (Q-01, H-01). On écarte
-     * seulement ce qui casserait un export ou une recherche (espaces, accents,
-     * barres obliques).
-     */
-    private static final Pattern FORME_CODE = Pattern.compile("[A-Z0-9][A-Z0-9._-]{0,29}");
 
     private final ElementProgrammatiqueRepository elementRepository;
     private final CircuitReferentielBudgetaire circuit;
@@ -366,18 +357,9 @@ public class NomenclatureAdapter {
         return niveau;
     }
 
-    /** Code en majuscules, sans espaces autour, dans les caractères admis. */
+    /** Code en majuscules, sans espaces autour, dans les caractères admis (voir {@link CodeReferentiel}). */
     static String codeValide(String code) {
-        if (code == null || code.isBlank()) {
-            throw new RequeteInvalideException("CODE_OBLIGATOIRE", "Indiquez le code de l'élément.");
-        }
-        String normalise = code.strip().toUpperCase(Locale.ROOT);
-        if (!FORME_CODE.matcher(normalise).matches()) {
-            throw new RequeteInvalideException("CODE_INVALIDE",
-                    "Le code ne doit contenir que des lettres sans accent, des chiffres et les séparateurs "
-                            + "« - », « . » ou « _ », sans espace, et 30 caractères au plus.");
-        }
-        return normalise;
+        return CodeReferentiel.valide(code);
     }
 
     private static String libelleValide(String libelle) {
