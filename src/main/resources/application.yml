@@ -154,6 +154,28 @@ app:
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
+      # ── Gestion budgétaire reconstruite : exercices (US-BUD-101) ──
+      # Écriture rare (un exercice par an) : la limite basse suffit et freine
+      # les soumissions en rafale.
+      - name: sodepa-budget-exercices-write
+        path-patterns:
+          - /api/budget/exercices/**
+        methods:
+          - POST
+        limit: 10
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-exercices-read
+        path-patterns:
+          - /api/budget/exercices
+          - /api/budget/exercices/**
+        methods:
+          - GET
+        limit: 60
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
       # ── Budget / Engagements / Collaboratif (write operations) ──
       - name: sodepa-budget-write
         path-patterns:

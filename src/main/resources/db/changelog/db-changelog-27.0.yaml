@@ -1,0 +1,36 @@
+# Changelog 27.0 — exercice budgétaire (US-BUD-101, ticket #42).
+#
+# Premier objet du module de gestion budgétaire reconstruit (paquet
+# com.sodepa.erp.budgetaire). Il ne remplace pas compta_exercices : l'exercice
+# comptable découpe l'année en périodes ouvertes ou closes, l'exercice
+# budgétaire suit le cycle de la procédure budgétaire (en préparation →
+# approuvé CA → exécutoire → clos).
+databaseChangeLog:
+  - changeSet:
+      id: 27.0-01-budget-exercice
+      author: sodepa-erp
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: budget_exercice
+      changes:
+        - createTable:
+            tableName: budget_exercice
+            remarks: Exercice budgétaire de la SODEPA, une ligne par année
+            columns:
+              - column: { name: id, type: uuid, constraints: { primaryKey: true, primaryKeyName: pk_budget_exercice, nullable: false } }
+              # Une seule ligne par année : c'est la contrainte qui tranche si deux
+              # demandes de création de la même année sont validées en même temps.
+              - column: { name: annee, type: int, constraints: { nullable: false, unique: true, uniqueConstraintName: uk_budget_exercice_annee } }
+              # Pas de contrainte CHECK sur l'état : elle figerait les valeurs de
+              # l'énumération (voir le changelog 26.0 pour maker_checker_requests).
+              - column: { name: etat, type: varchar(30), constraints: { nullable: false } }
+              - column: { name: date_debut, type: date, constraints: { nullable: false } }
+              - column: { name: date_fin, type: date, constraints: { nullable: false } }
+              - column: { name: demande_creation_id, type: uuid }
+              - column: { name: cree_par, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: cree_le, type: timestamp with time zone, constraints: { nullable: false } }
+              - column: { name: valide_par, type: varchar(100), constraints: { nullable: false } }
+              - column: { name: valide_le, type: timestamp with time zone, constraints: { nullable: false } }
+              - column: { name: version, type: bigint, defaultValueNumeric: 0, constraints: { nullable: false } }

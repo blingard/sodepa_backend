@@ -14,4 +14,15 @@ public class ConflitMetierException extends ApiException {
     public ConflitMetierException(String message) {
         super(HttpStatus.CONFLICT, "CONFLIT_METIER", message);
     }
+
+    /**
+     * Conflit dont le client doit pouvoir distinguer la cause sans lire le
+     * message, qui s'adresse à l'utilisateur et peut changer de formulation.
+     *
+     * @param code    code stable, en majuscules (par exemple {@code EXERCICE_EXISTANT})
+     * @param message message en français destiné à l'utilisateur
+     */
+    public ConflitMetierException(String code, String message) {
+        super(HttpStatus.CONFLICT, code, message);
+    }
 }
