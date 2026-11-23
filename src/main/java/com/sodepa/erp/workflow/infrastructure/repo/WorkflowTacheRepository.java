@@ -55,7 +55,13 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTaskEntit
      * @param pageable   Options de pagination et de tri.
      * @return Une page de tâches pour l'utilisateur.
      */
-    Page<WorkflowTaskEntity> findByAssigneAIdAndStatut(UUID assigneAId, StatutWorkflowTache statut, Pageable pageable);
+    @org.springframework.data.jpa.repository.Query(
+            value = "SELECT t FROM WorkflowTaskEntity t WHERE t.assigneUser.id = :assigneAId AND t.statut = :statut",
+            countQuery = "SELECT COUNT(t) FROM WorkflowTaskEntity t WHERE t.assigneUser.id = :assigneAId AND t.statut = :statut")
+    Page<WorkflowTaskEntity> findByAssigneAIdAndStatut(
+            @org.springframework.data.repository.query.Param("assigneAId") UUID assigneAId,
+            @org.springframework.data.repository.query.Param("statut") StatutWorkflowTache statut,
+            Pageable pageable);
 
     /**
      * Dénombre le total de tâches ayant un certain statut pour un utilisateur donné
@@ -65,7 +71,10 @@ public interface WorkflowTacheRepository extends JpaRepository<WorkflowTaskEntit
      * @param statut     Statut ciblé (ex: EN_ATTENTE).
      * @return Nombre total de tâches correspondant au filtre.
      */
-    long countByAssigneAIdAndStatut(UUID assigneAId, StatutWorkflowTache statut);
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM WorkflowTaskEntity t WHERE t.assigneUser.id = :assigneAId AND t.statut = :statut")
+    long countByAssigneAIdAndStatut(
+            @org.springframework.data.repository.query.Param("assigneAId") UUID assigneAId,
+            @org.springframework.data.repository.query.Param("statut") StatutWorkflowTache statut);
 
     /**
      * Recherche les tâches dont l'échéance SLA est dépassée et qui sont toujours en attente d'approbation.

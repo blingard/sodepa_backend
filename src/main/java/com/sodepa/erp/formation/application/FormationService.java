@@ -9,11 +9,17 @@ import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.rh.infrastructure.entities.GrilleSalarialeEntity;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
 import com.sodepa.erp.rh.infrastructure.repo.GrilleSalarialeRepository;
+import com.sodepa.erp.share.CodeSequenceService;
+import com.sodepa.erp.share.UserData;
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.utils.Permissions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +49,25 @@ public class FormationService {
     private final GrilleSalarialeRepository grilleSalarialeRepository;
     private final ParametreConfigurationService configService;
 
+    @Autowired(required = false)
+    private UtilsService utilsService;
+
+    @Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
+
+    private void requireFormationAccess(boolean allowDaf, boolean allowDg, Permissions... required) {
+        if (utilsService == null || SecurityContextHolder.getContext().getAuthentication() == null) {
+            return;
+        }
+        UserData actor = utilsService.getCurrentUserData();
+        if (actor.isAdmin() || (allowDaf && actor.isDaf()) || (allowDg && actor.isDg())) {
+            return;
+        }
+        if (required != null && required.length > 0) {
+            utilsService.hasAnyPermission(required);
+        }
+    }
+
     // ==========================================
     // 1. PLANS ANNUELS DE FORMATION N+1
     // ==========================================
@@ -64,6 +89,7 @@ public class FormationService {
 
     @Transactional
     public FormationPlanResponse creerPlan(CreerPlanFormationRequest request) {
+        requireFormationAccess(false, true, Permissions.CREATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
         if (planRepository.findByAnneeExercice(request.getAnneeExercice()).isPresent()) {
             throw new IllegalArgumentException("Un plan de formation existe déjà pour l'exercice " + request.getAnneeExercice());
         }
@@ -86,10 +112,11 @@ public class FormationService {
 
     @Transactional
     public FormationActionResponse ajouterAction(CreerActionFormationRequest request) {
+        requireFormationAccess(false, true, Permissions.CREATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
         FormationPlanEntity plan = planRepository.findById(request.getPlanId())
                 .orElseThrow(() -> new IllegalArgumentException("Plan de formation introuvable: " + request.getPlanId()));
 
-        long count = actionRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_formation_action", actionRepository::count);
         String code = String.format("ACT-FORM-%d-%03d", plan.getAnneeExercice(), count);
 
         FormationActionEntity action = FormationActionEntity.builder()
@@ -123,6 +150,7 @@ public class FormationService {
 
     @Transactional
     public FormationPlanResponse viserSdrh(UUID planId) {
+        requireFormationAccess(false, true, Permissions.VALIDATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
         FormationPlanEntity plan = getPlanOrThrow(planId);
         plan.setVisaSdrh(true);
         plan.setStatut(StatutPlanFormation.SOUMIS_DAF);
@@ -131,6 +159,7 @@ public class FormationService {
 
     @Transactional
     public FormationPlanResponse viserDaf(UUID planId) {
+        requireFormationAccess(true, true, Permissions.VALIDATE_BUDGET_PLAN, Permissions.VALIDATE_EMPLOYE);
         FormationPlanEntity plan = getPlanOrThrow(planId);
         plan.setVisaDaf(true);
         return FormationPlanResponse.fromEntity(planRepository.save(plan));
@@ -138,6 +167,7 @@ public class FormationService {
 
     @Transactional
     public FormationPlanResponse approuverDg(UUID planId) {
+        requireFormationAccess(false, true, Permissions.VALIDATE_EMPLOYE);
         FormationPlanEntity plan = getPlanOrThrow(planId);
         plan.setApprobationDg(true);
         plan.setDateApprobationDg(LocalDate.now());
@@ -151,6 +181,7 @@ public class FormationService {
 
     @Transactional
     public void inscrireEmploye(InscrireEmployeFormationRequest request) {
+        requireFormationAccess(false, true, Permissions.CREATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
         FormationActionEntity action = actionRepository.findById(request.getActionId())
                 .orElseThrow(() -> new IllegalArgumentException("Action de formation introuvable: " + request.getActionId()));
 
@@ -183,7 +214,8 @@ public class FormationService {
 
     @Transactional
     public StageResponse enregistrerStagiaire(EnregistrerStagiaireRequest request) {
-        long count = stageRepository.count() + 1;
+        requireFormationAccess(false, true, Permissions.CREATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_stage", stageRepository::count);
         int annee = request.getDateDebut().getYear();
         String code = String.format("STG-%d-%04d", annee, count);
 
@@ -208,6 +240,7 @@ public class FormationService {
 
     @Transactional
     public StageResponse demanderRallongeStage(DemanderRallongeStageRequest request) {
+        requireFormationAccess(false, true, Permissions.CREATE_EMPLOYE, Permissions.UPDATE_EMPLOYE);
         StageEntity stage = stageRepository.findById(request.getStageId())
                 .orElseThrow(() -> new IllegalArgumentException("Stage introuvable: " + request.getStageId()));
 
@@ -232,6 +265,7 @@ public class FormationService {
 
     @Transactional
     public StageResponse validerRallonge(UUID stageId, boolean accord, LocalDate nouvelleDateFin) {
+        requireFormationAccess(false, true, Permissions.VALIDATE_EMPLOYE);
         StageEntity stage = stageRepository.findById(stageId)
                 .orElseThrow(() -> new IllegalArgumentException("Stage introuvable: " + stageId));
 
@@ -251,6 +285,7 @@ public class FormationService {
 
     @Transactional
     public StageResponse cloturerStage(UUID stageId) {
+        requireFormationAccess(false, true, Permissions.UPDATE_EMPLOYE, Permissions.VALIDATE_EMPLOYE);
         StageEntity stage = stageRepository.findById(stageId)
                 .orElseThrow(() -> new IllegalArgumentException("Stage introuvable: " + stageId));
 
@@ -272,6 +307,7 @@ public class FormationService {
 
     @Transactional
     public FormationReclassementResponse proposerReclassement(ProposerReclassementRequest request) {
+        requireFormationAccess(false, true, Permissions.UPDATE_EMPLOYE, Permissions.CREATE_EMPLOYE);
         EmployeEntity employe = employeRepository.findById(request.getEmployeId())
                 .orElseThrow(() -> new IllegalArgumentException("Employé introuvable: " + request.getEmployeId()));
 
@@ -316,6 +352,7 @@ public class FormationService {
 
     @Transactional
     public FormationReclassementResponse validerReclassementDg(UUID reclassementId) {
+        requireFormationAccess(false, true, Permissions.VALIDATE_EMPLOYE);
         FormationReclassementEntity reclassement = reclassementRepository.findById(reclassementId)
                 .orElseThrow(() -> new IllegalArgumentException("Dossier de reclassement introuvable: " + reclassementId));
 

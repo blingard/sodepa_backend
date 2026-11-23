@@ -24,9 +24,15 @@ public class ContentCachingFilter implements Filter {
         if (request instanceof HttpServletRequest && response instanceof HttpServletResponse) {
             HttpServletRequest httpRequest = (HttpServletRequest) request;
             String path = httpRequest.getRequestURI();
+            String contentType = httpRequest.getContentType();
 
-            // Skip caching for swagger/actuator to save memory
-            if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs") || path.startsWith("/api-docs") || path.startsWith("/actuator")) {
+            // Skip caching for swagger/actuator, multipart uploads, and binary/large exports to save memory
+            if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs")
+                    || path.startsWith("/api-docs") || path.startsWith("/actuator")
+                    || path.contains("/export") || path.contains("/fec")
+                    || path.contains("/download") || path.contains("/telecharger")
+                    || path.endsWith(".pdf") || path.endsWith(".xlsx") || path.endsWith(".csv")
+                    || (contentType != null && contentType.toLowerCase().startsWith("multipart/"))) {
                 chain.doFilter(request, response);
                 return;
             }

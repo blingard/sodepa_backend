@@ -31,9 +31,12 @@ import com.sodepa.erp.organigramme.infrastructure.repo.DelegationPouvoirReposito
 import com.sodepa.erp.organigramme.infrastructure.entities.StatutDelegation;
 import com.sodepa.erp.organigramme.infrastructure.entities.DelegationPouvoirEntity;
 import com.sodepa.erp.notification.application.SendNotificationInput;
+import com.sodepa.erp.organigramme.infrastructure.entities.PosteEntity;
 import com.sodepa.erp.organigramme.infrastructure.entities.UniteOrganisationnelleEntity;
+import com.sodepa.erp.organigramme.infrastructure.repo.PosteRepository;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
+import com.sodepa.erp.share.CodeSequenceService;
 import com.sodepa.erp.share.UserData;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
@@ -101,6 +104,9 @@ public class WorkflowService {
     @org.springframework.context.annotation.Lazy
     private com.sodepa.erp.comptabilite.generale.infrastructure.adapter.user.UserAdapterInterface userAdapterInterface;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
+
     @Value("${app.duration:30}")
     private Long makerCheckerDurationDays;
 
@@ -140,6 +146,9 @@ public class WorkflowService {
     /** Référentiel des unités organisationnelles SODEPA. */
     private final UniteOrganisationnelleRepository uniteRepository;
 
+    /** Référentiel des postes organisationnels SODEPA. */
+    private final PosteRepository posteRepository;
+
     /** Gestionnaire d'audit analytique ClickHouse (OLAP). */
     private final ClickHouseManager clickHouseManager;
 
@@ -152,6 +161,35 @@ public class WorkflowService {
     private final DelegationPouvoirRepository delegationPouvoirRepository;
 
     private final WorkflowEntityHandlerRegistry entityHandlerRegistry;
+
+    private final WorkflowStateService workflowStateService;
+
+    private final WorkflowSnapshotMerger workflowSnapshotMerger;
+
+    private String resolveActorPoste(EmployeEntity emp, WorkflowTaskEntity task) {
+        if (emp != null && emp.getPoste() != null) {
+            return emp.getPoste().getCodePoste() != null ? emp.getPoste().getCodePoste() : emp.getPoste().getIntitule();
+        }
+        if (task != null && task.getAssignePoste() != null) {
+            return task.getAssignePoste().getCodePoste() != null ? task.getAssignePoste().getCodePoste() : task.getAssignePoste().getIntitule();
+        }
+        return null;
+    }
+
+    private void initierEtatWorkflow(
+            WorkflowInstanceEntity instance,
+            MakerCheckerOperationType explicitOpType,
+            Map<String, Object> initialPayload,
+            UtilisateurEntity userInitiateur,
+            EmployeEntity empInitiateur
+    ) {
+        String opType = explicitOpType != null ? explicitOpType.name() : "WORKFLOW";
+        String userId = userInitiateur != null ? userInitiateur.getId().toString() : null;
+        String username = userInitiateur != null ? userInitiateur.getUsername() : null;
+        String poste = resolveActorPoste(empInitiateur, null);
+        workflowStateService.recordInitiation(instance, opType, initialPayload, userId, username, poste);
+        workflowInstanceRepository.save(instance);
+    }
 
     private void auditClickHouseAsync(WorkflowEventMessageInput input) {
         if (clickHouseManager == null) return;
@@ -178,25 +216,25 @@ public class WorkflowService {
     public WorkflowInstanceResponse demarrerWorkflowMetier(DemarrerWorkflowMetierRequest request) {
         // 1. Résolution de l'employé initiateur
         EmployeEntity employe = employeRepository.findById(request.getEmployeId())
-                .orElseThrow(() -> new IllegalArgumentException("Employé initiateur introuvable avec l'ID: " + request.getEmployeId()));
+                .orElseThrow(() -> new RessourceIntrouvableException("Employé initiateur introuvable avec l'ID: " + request.getEmployeId()));
 
         UniteOrganisationnelleEntity unite = employe.getUniteOrganisationnelle();
         if (unite == null) {
-            throw new IllegalStateException("L'employé " + employe.getMatricule() + " n'est rattaché à aucune unité organisationnelle");
+            throw new ConflitMetierException("L'employé " + employe.getMatricule() + " n'est rattaché à aucune unité organisationnelle");
         }
 
         // 2. Résolution de l'opération métier
         WorkflowMetierEntity metier = workflowMetierRepository.findByCode(request.getCodeMetier().trim())
-                .orElseThrow(() -> new IllegalArgumentException("Opération métier introuvable avec le code: " + request.getCodeMetier()));
+                .orElseThrow(() -> new RessourceIntrouvableException("Opération métier introuvable avec le code: " + request.getCodeMetier()));
 
         if (!metier.isActive()) {
-            throw new IllegalStateException("L'opération métier [" + metier.getTitle() + "] est actuellement désactivée");
+            throw new ConflitMetierException("L'opération métier [" + metier.getTitle() + "] est actuellement désactivée");
         }
 
         // 3. Vérification d'exclusivité métier (si non transversal)
         if (!metier.isTransversal() && metier.getAuthorizedUnit() != null) {
             if (!unite.getId().equals(metier.getAuthorizedUnit().getId())) {
-                throw new SecurityException("L'opération métier [" + metier.getTitle()
+                throw new AccesRefuseException("L'opération métier [" + metier.getTitle()
                         + "] est strictement réservée à l'unité [" + metier.getAuthorizedUnit().getIntitule()
                         + "]. Votre unité actuelle est [" + unite.getIntitule() + "].");
             }
@@ -206,21 +244,28 @@ public class WorkflowService {
         WorkflowDefinitionEntity def = workflowDefinitionRepository
                 .findByMetierIdAndUniteOrganisationnelleIdAndActifTrue(metier.getId(), unite.getId())
                 .or(() -> workflowDefinitionRepository.findByMetierCodeAndUniteId(metier.getCode(), unite.getId()))
-                .orElseThrow(() -> new IllegalStateException("Aucun circuit de validation n'est configuré pour l'opération ["
+                .orElseThrow(() -> new ConflitMetierException("Aucun circuit de validation n'est configuré pour l'opération ["
                         + metier.getTitle() + "] dans l'unité [" + unite.getIntitule()
                         + "]. Veuillez paramétrer le workflow de votre unité avant de continuer."));
 
         // 5. Contrôle d'éligibilité du Maker
-        UtilisateurEntity userInitiateur = employe.getUtilisateur() != null ? employe.getUtilisateur() : userRepository.findAll().stream().findFirst().orElse(null);
+        UtilisateurEntity userInitiateur = employe.getUtilisateur();
+        if (userInitiateur == null) {
+            throw new ConflitMetierException("L'employé initiateur " + employe.getMatricule() + " ne possède pas de compte utilisateur.");
+        }
         verifierEligibiliteMaker(def.getCode());
 
-        // 6. Extraction de la première étape
+        // 6. Extraction de la première étape active
         WorkflowEtapeDefinitionEntity premiereEtape = workflowEtapeRepository
-                .findFirstByWorkflowDefinitionIdOrderByOrdreAsc(def.getId())
-                .orElseThrow(() -> new IllegalStateException("Le circuit de validation [" + def.getCode() + "] ne possède aucune étape configurée"));
+                .findByWorkflowDefinitionIdOrderByOrdreAsc(def.getId()).stream()
+                .filter(WorkflowEtapeDefinitionEntity::isActif)
+                .findFirst()
+                .orElseThrow(() -> new ConflitMetierException("Le circuit de validation [" + def.getCode() + "] ne possède aucune étape active configurée"));
 
-        // 7. Sérialisation du contexte en JSON
-        String contexteJson = convertToString(request.getContexte());
+        // 7. Sérialisation du contexte / snapshot initial en JSON
+        Map<String, Object> initialPayload = workflowSnapshotMerger.combineInitialPayload(
+                request.getContexte(), request.getInitialData());
+        String contexteJson = workflowSnapshotMerger.toJson(initialPayload);
 
         // 8. Création de l'instance liée à l'employé et à son unité
         WorkflowInstanceEntity instance = WorkflowInstanceEntity.builder()
@@ -238,6 +283,7 @@ public class WorkflowService {
                 .build();
 
         instance = workflowInstanceRepository.save(instance);
+        initierEtatWorkflow(instance, request.getOperationType(), initialPayload, userInitiateur, employe);
 
         // 9. Génération en parallèle des tâches pour les acteurs de la première étape
         createNextStepTask(instance, premiereEtape);
@@ -289,14 +335,37 @@ public class WorkflowService {
             Map<String, Object> contexte,
             UUID makerCheckerRequestId
     ) {
+        return demarrerWorkflowPourEntite(entityName, entityId, contexte, makerCheckerRequestId, null);
+    }
+
+    @Transactional
+    public WorkflowInstanceEntity demarrerWorkflowPourEntite(
+            String entityName,
+            String entityId,
+            Map<String, Object> contexte,
+            UUID makerCheckerRequestId,
+            MakerCheckerOperationType operationType
+    ) {
+        return demarrerWorkflowPourEntite(entityName, entityId, contexte, makerCheckerRequestId, operationType, null);
+    }
+
+    @Transactional
+    public WorkflowInstanceEntity demarrerWorkflowPourEntite(
+            String entityName,
+            String entityId,
+            Map<String, Object> contexte,
+            UUID makerCheckerRequestId,
+            MakerCheckerOperationType operationType,
+            String preferredDefinitionCode
+    ) {
         UserData userData = utilsService.getCurrentUserData();
         UUID currentUserId = UUID.fromString(userData.userId());
         UtilisateurEntity userInitiateur = userRepository.findById(currentUserId).orElse(null);
         EmployeEntity empInitiateur = employeRepository.findByUtilisateurId(currentUserId).orElse(null);
         UniteOrganisationnelleEntity unite = empInitiateur != null ? empInitiateur.getUniteOrganisationnelle() : null;
 
-        // 1. Résolution du circuit adéquat (spécifique ou standard universel)
-        WorkflowDefinitionEntity def = resoudreCircuitPourEntite(entityName, unite);
+        // 1. Résolution du circuit adéquat (explicite, spécifique ou standard universel)
+        WorkflowDefinitionEntity def = resoudreCircuitPourEntite(entityName, unite, preferredDefinitionCode);
 
         // 2. Première étape obligatoire
         WorkflowEtapeDefinitionEntity premiereEtape = workflowEtapeRepository
@@ -304,11 +373,11 @@ public class WorkflowService {
                 .orElseThrow(() -> new IllegalStateException("Le circuit [" + def.getCode() + "] ne possède aucune étape configurée"));
 
         // 3. Contexte JSON
-        Map<String, Object> ctx = contexte != null ? new HashMap<>(contexte) : new HashMap<>();
+        Map<String, Object> ctx = contexte != null ? new LinkedHashMap<>(contexte) : new LinkedHashMap<>();
         if (makerCheckerRequestId != null) {
             ctx.put("makerCheckerRequestId", makerCheckerRequestId.toString());
         }
-        String contexteJson = convertToString(ctx);
+        String contexteJson = workflowSnapshotMerger.toJson(ctx);
 
         // 4. Instanciation du workflow
         WorkflowInstanceEntity instance = WorkflowInstanceEntity.builder()
@@ -326,6 +395,7 @@ public class WorkflowService {
                 .build();
 
         instance = workflowInstanceRepository.save(instance);
+        initierEtatWorkflow(instance, operationType, ctx, userInitiateur, empInitiateur);
 
         // 5. Création des tâches de validation
         createNextStepTask(instance, premiereEtape);
@@ -341,6 +411,17 @@ public class WorkflowService {
     }
 
     private WorkflowDefinitionEntity resoudreCircuitPourEntite(String entityName, UniteOrganisationnelleEntity unite) {
+        return resoudreCircuitPourEntite(entityName, unite, null);
+    }
+
+    private WorkflowDefinitionEntity resoudreCircuitPourEntite(
+            String entityName, UniteOrganisationnelleEntity unite, String preferredDefinitionCode) {
+        if (preferredDefinitionCode != null && !preferredDefinitionCode.isBlank()) {
+            Optional<WorkflowDefinitionEntity> preferred = workflowDefinitionRepository.findByCode(preferredDefinitionCode.trim());
+            if (preferred.isPresent() && preferred.get().isActif()) {
+                return preferred.get();
+            }
+        }
         String cleanName = entityName != null ? entityName.trim().toUpperCase() : "";
 
         // a. Recherche par code direct
@@ -350,6 +431,10 @@ public class WorkflowService {
 
         if (specific.isPresent() && specific.get().isActif()) {
             return specific.get();
+        }
+
+        if ("EXPRESSION_BESOIN".equalsIgnoreCase(cleanName)) {
+            return ensureMultiStepCircuitExpressionBesoin();
         }
 
         // b. Recherche par métier lié
@@ -418,6 +503,142 @@ public class WorkflowService {
         return workflowDefinitionRepository.save(def);
     }
 
+    private WorkflowDefinitionEntity ensureMultiStepCircuitExpressionBesoin() {
+        Optional<WorkflowDefinitionEntity> existing = workflowDefinitionRepository.findByCode("WF-EXPRESSION_BESOIN");
+        if (existing.isPresent() && existing.get().isActif()) {
+            return existing.get();
+        }
+        WorkflowDefinitionEntity def = WorkflowDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .code("WF-EXPRESSION_BESOIN")
+                .intitule("Circuit Multi-Postes de Validation des Expressions de Besoin SODEPA")
+                .description("Étape 1 : Visa Budget (SET_ATTRIBUTE) + Conformité Marchés -> Étape 2 : Visa Financier DAF -> Étape 3 : Approbation Finale DG")
+                .domaine(WorkflowDomaine.ACHATS)
+                .version(1)
+                .actif(true)
+                .dateCreation(Instant.now())
+                .etapes(new ArrayList<>())
+                .build();
+
+        WorkflowEtapeDefinitionEntity e1 = WorkflowEtapeDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .workflowDefinition(def)
+                .ordre(1)
+                .codeEtape("WF-EXPRESSION_BESOIN-E1")
+                .intitule("Instruction Budgétaire & Conformité Marchés")
+                .typeEtape(TypeEtapeWorkflow.VALIDATION_HUMAINE)
+                .politiqueValidation(PolitiqueValidation.EVERY_BODY_CAN_VALIDATE)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .actif(true)
+                .acteurs(new ArrayList<>())
+                .build();
+
+        PosteEntity posteBudget = posteRepository.findByCodePoste("POSTE_CHEF_BUDGET").orElse(null);
+        WorkflowEtapeActeurDefinitionEntity a1Budget = WorkflowEtapeActeurDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .etapeDefinition(e1)
+                .intituleAction("Visa Imputation Budgétaire")
+                .poste(posteBudget)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .valeurAssignation("POSTE_CHEF_BUDGET")
+                .modeActionValidation(ValidationStepActionMode.SET_ATTRIBUTE)
+                .donnees(Map.of("ligneBudgetaireImputation", "string", "montantEstimeTotal", "number"))
+                .obligatoire(true)
+                .actif(true)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .build();
+        e1.addActeur(a1Budget);
+
+        PosteEntity posteMarches = posteRepository.findByCodePoste("POSTE_CHEF_MARCHES").orElse(null);
+        WorkflowEtapeActeurDefinitionEntity a1Marches = WorkflowEtapeActeurDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .etapeDefinition(e1)
+                .intituleAction("Contrôle Conformité Marchés")
+                .poste(posteMarches)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .valeurAssignation("POSTE_CHEF_MARCHES")
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .obligatoire(true)
+                .actif(true)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .build();
+        e1.addActeur(a1Marches);
+        def.addEtape(e1);
+
+        WorkflowEtapeDefinitionEntity e2 = WorkflowEtapeDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .workflowDefinition(def)
+                .ordre(2)
+                .codeEtape("WF-EXPRESSION_BESOIN-E2")
+                .intitule("Visa Financier Direction DAF")
+                .typeEtape(TypeEtapeWorkflow.VALIDATION_HUMAINE)
+                .politiqueValidation(PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .actif(true)
+                .acteurs(new ArrayList<>())
+                .build();
+
+        PosteEntity posteDaf = posteRepository.findByCodePoste("POSTE_DIRECTEUR_DAF").orElse(null);
+        WorkflowEtapeActeurDefinitionEntity a2Daf = WorkflowEtapeActeurDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .etapeDefinition(e2)
+                .intituleAction("Visa Financier DAF")
+                .poste(posteDaf)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .valeurAssignation("POSTE_DIRECTEUR_DAF")
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .obligatoire(true)
+                .actif(true)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .build();
+        e2.addActeur(a2Daf);
+        def.addEtape(e2);
+
+        WorkflowEtapeDefinitionEntity e3 = WorkflowEtapeDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .workflowDefinition(def)
+                .ordre(3)
+                .codeEtape("WF-EXPRESSION_BESOIN-E3")
+                .intitule("Approbation Finale Direction Générale")
+                .typeEtape(TypeEtapeWorkflow.VALIDATION_HUMAINE)
+                .politiqueValidation(PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .actif(true)
+                .acteurs(new ArrayList<>())
+                .build();
+
+        PosteEntity posteDg = posteRepository.findByCodePoste("POSTE_DG").orElse(null);
+        WorkflowEtapeActeurDefinitionEntity a3Dg = WorkflowEtapeActeurDefinitionEntity.builder()
+                .id(UUID.randomUUID())
+                .etapeDefinition(e3)
+                .intituleAction("Approbation Finale DG")
+                .poste(posteDg)
+                .strategieAssignation(StrategieAssignation.POSTE_SPECIFIQUE)
+                .valeurAssignation("POSTE_DG")
+                .modeActionValidation(ValidationStepActionMode.DO_NOTHING)
+                .obligatoire(true)
+                .actif(true)
+                .delaiSlaHeures(24)
+                .actionDepassementSla(ActionDepassementSla.RELANCE_EMAIL)
+                .build();
+        e3.addActeur(a3Dg);
+        def.addEtape(e3);
+
+        return workflowDefinitionRepository.save(def);
+    }
+
     /**
      * Vérifie si un circuit actif existe et si l'utilisateur est habilité à l'initier en tant que Maker.
      */
@@ -428,10 +649,10 @@ public class WorkflowService {
         }
 
         WorkflowDefinitionEntity def = workflowDefinitionRepository.findByCode(workflowCode.trim())
-                .orElseThrow(() -> new IllegalArgumentException("Aucun circuit de validation configuré pour le code : " + workflowCode));
+                .orElseThrow(() -> new RessourceIntrouvableException("Aucun circuit de validation configuré pour le code : " + workflowCode));
 
         if (!def.isActif()) {
-            throw new IllegalStateException("Le circuit de validation [" + workflowCode + "] est actuellement désactivé");
+            throw new ConflitMetierException("Le circuit de validation [" + workflowCode + "] est actuellement désactivé");
         }
 
         UserData userData = utilsService.getCurrentUserData();
@@ -443,10 +664,10 @@ public class WorkflowService {
         }
 
         UtilisateurEntity utilisateur = userRepository.findById(UUID.fromString(userData.userId()))
-                .orElseThrow(() -> new IllegalArgumentException("Utilisateur non trouvé : " + userData.userId()));
+                .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé : " + userData.userId()));
 
         if (!utilisateur.isActif()) {
-            throw new SecurityException("Le compte utilisateur " + utilisateur.getUsername() + " est inactif");
+            throw new AccesRefuseException("Le compte utilisateur " + utilisateur.getUsername() + " est inactif");
         }
 
         boolean hasRolesRestriction = def.getRolesInitiateurs() != null && !def.getRolesInitiateurs().isBlank();
@@ -486,7 +707,7 @@ public class WorkflowService {
         }
 
         if (!roleAutorise && !posteAutorise) {
-            throw new SecurityException("L'employé / utilisateur " + utilisateur.getUsername()
+            throw new AccesRefuseException("L'employé / utilisateur " + utilisateur.getUsername()
                     + " n'est pas habilité à initier le circuit [" + workflowCode + "]. Rôles/postes requis : "
                     + (hasRolesRestriction ? def.getRolesInitiateurs() : "") + " "
                     + (hasPostesRestriction ? def.getPostesInitiateurs() : ""));
@@ -531,28 +752,30 @@ public class WorkflowService {
 
 
     @Transactional(readOnly = true)
-    public Page<WorkflowDefinitionResponse> listerPageDefinitions(Pageable pageable, boolean active) {
-        if(utilsService.isAdmin()){
-            Page<WorkflowDefinitionEntity> page = workflowDefinitionRepository.findAll(pageable);
+    public Page<WorkflowDefinitionResponse> listerPageDefinitions(Pageable pageable, Boolean active) {
+        if (utilsService.isAdmin()) {
+            Page<WorkflowDefinitionEntity> page = (active == null)
+                    ? workflowDefinitionRepository.findAll(pageable)
+                    : workflowDefinitionRepository.findAllByActif(active, pageable);
             return new PageImpl<>(
                     page.getContent().stream().map(this::mapToDefinitionResponse).collect(Collectors.toList()),
                     pageable,
                     page.getTotalElements()
             );
-        }else {
+        } else {
+            boolean enableFilter = active == null || active;
             UserData userData = utilsService.getCurrentUserData();
             List<UUID> posteIdList = userData.posteData().stream().map(p -> UUID.fromString(p.id())).collect(Collectors.toList());
-            Page<WorkflowDefinitionEntity> pageIds = workflowDefinitionRepository.findPageByPoste(posteIdList, true, pageable);
+            Page<WorkflowDefinitionEntity> pageIds = workflowDefinitionRepository.findPageByPoste(posteIdList, enableFilter, pageable);
             if (pageIds.isEmpty()) {
                 return new PageImpl<>(Collections.emptyList(), pageable, 0);
             }
             List<UUID> idList = pageIds.getContent().stream().map(WorkflowDefinitionEntity::getId).toList();
-            Map<UUID, WorkflowDefinitionEntity> byId = workflowDefinitionRepository.findDetailsByIds(idList, posteIdList, true).stream()
+            Map<UUID, WorkflowDefinitionEntity> byId = workflowDefinitionRepository.findDetailsByIds(idList, posteIdList, enableFilter).stream()
                     .collect(Collectors.toMap(WorkflowDefinitionEntity::getId, Function.identity()));
             List<WorkflowDefinitionResponse> ordered = idList.stream()
                     .map(byId::get).filter(Objects::nonNull).map(this::mapToDefinitionResponse).toList();
             return new PageImpl<>(ordered, pageable, pageIds.getTotalElements());
-
         }
     }
 
@@ -564,33 +787,52 @@ public class WorkflowService {
         WorkflowDefinitionEntity def;
         if (request.getWorkflowDefinitionId() != null) {
             def = workflowDefinitionRepository.findById(request.getWorkflowDefinitionId())
-                    .orElseThrow(() -> new IllegalArgumentException("Définition introuvable avec l'ID: " + request.getWorkflowDefinitionId()));
-        } else if (request.getWorkflowDefinitionCode() != null) {
+                    .orElseThrow(() -> new RessourceIntrouvableException("Définition introuvable avec l'ID: " + request.getWorkflowDefinitionId()));
+        } else if (request.getWorkflowDefinitionCode() != null && !request.getWorkflowDefinitionCode().isBlank()) {
             def = workflowDefinitionRepository.findByCode(request.getWorkflowDefinitionCode())
-                    .orElseThrow(() -> new IllegalArgumentException("Définition introuvable avec le code: " + request.getWorkflowDefinitionCode()));
+                    .orElseThrow(() -> new RessourceIntrouvableException("Définition introuvable avec le code: " + request.getWorkflowDefinitionCode()));
         } else {
-            throw new IllegalArgumentException("L'identifiant ou le code du circuit est obligatoire");
+            throw new RequeteInvalideException("L'identifiant ou le code du circuit est obligatoire");
         }
 
         verifierEligibiliteMaker(def.getCode());
 
-        UtilisateurEntity initiateur = userRepository.findById(request.getInitiateurId())
-                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable: " + request.getInitiateurId()));
-
-        EmployeEntity employeInitiateur = employeRepository.findByUtilisateurId(request.getInitiateurId()).orElse(null);
-
-        WorkflowEtapeDefinitionEntity premiereEtape = workflowEtapeRepository
-                .findFirstByWorkflowDefinitionIdOrderByOrdreAsc(def.getId())
-                .orElseThrow(() -> new IllegalStateException("Le circuit ne possède aucune étape"));
-
-        String contexteJson = null;
-        if (request.getContexte() != null) {
-            try {
-                contexteJson = objectMapper.writeValueAsString(request.getContexte());
-            } catch (JsonProcessingException e) {
-                log.warn("Erreur sérialisation contexte", e);
+        UUID requestedInitiateurId = request.getInitiateurId();
+        UUID currentUserId = utilsService != null ? utilsService.getCurrentUserIdOrNull() : null;
+        if (currentUserId != null) {
+            UserData ud = utilsService.getCurrentUserData();
+            EmployeEntity currentEmp = employeRepository.findByUtilisateurId(currentUserId).orElse(null);
+            if (!utilsService.isSuperviseurOuAdmin(currentEmp, ud)) {
+                requestedInitiateurId = currentUserId;
             }
         }
+        final UUID effectiveInitiateurId = requestedInitiateurId;
+        if (effectiveInitiateurId == null) {
+            throw new RequeteInvalideException("L'identifiant de l'initiateur est obligatoire");
+        }
+
+        UtilisateurEntity initiateur = userRepository.findById(effectiveInitiateurId).orElse(null);
+        EmployeEntity employeInitiateur;
+        if (initiateur != null) {
+            employeInitiateur = employeRepository.findByUtilisateurId(initiateur.getId()).orElse(null);
+        } else {
+            employeInitiateur = employeRepository.findById(effectiveInitiateurId)
+                    .orElseThrow(() -> new RessourceIntrouvableException("Initiateur introuvable: " + effectiveInitiateurId));
+            initiateur = employeInitiateur.getUtilisateur();
+            if (initiateur == null) {
+                throw new ConflitMetierException("L'employé initiateur " + employeInitiateur.getMatricule() + " ne possède pas de compte utilisateur.");
+            }
+        }
+
+        WorkflowEtapeDefinitionEntity premiereEtape = workflowEtapeRepository
+                .findByWorkflowDefinitionIdOrderByOrdreAsc(def.getId()).stream()
+                .filter(WorkflowEtapeDefinitionEntity::isActif)
+                .findFirst()
+                .orElseThrow(() -> new ConflitMetierException("Le circuit ne possède aucune étape active"));
+
+        Map<String, Object> initialPayload = workflowSnapshotMerger.combineInitialPayload(
+                request.getContexte(), request.getInitialData());
+        String contexteJson = initialPayload.isEmpty() ? null : workflowSnapshotMerger.toJson(initialPayload);
 
         WorkflowInstanceEntity instance = WorkflowInstanceEntity.builder()
                 .id(UUID.randomUUID())
@@ -607,6 +849,7 @@ public class WorkflowService {
                 .build();
 
         instance = workflowInstanceRepository.save(instance);
+        initierEtatWorkflow(instance, request.getOperationType(), initialPayload, initiateur, employeInitiateur);
         createNextStepTask(instance, premiereEtape);
         sendNotificationToNextStep(Collections.singleton(premiereEtape), instance);
         enregistrerAudit(instance, premiereEtape.getCodeEtape(), initiateur.getId(), ActionWorkflowAudit.INITIATION, null, "Initiation du circuit");
@@ -614,15 +857,35 @@ public class WorkflowService {
         return mapToInstanceResponse(instance);
     }
 
+    private boolean isRevisionTask(WorkflowTaskEntity tache) {
+        return tache != null
+                && tache.getIntituleAction() != null
+                && tache.getIntituleAction().toLowerCase(Locale.ROOT).contains("révision");
+    }
+
+    private boolean isInitiateurRevisionTask(WorkflowTaskEntity tache, UserData userData) {
+        if (!isRevisionTask(tache) || userData == null || userData.userId() == null) {
+            return false;
+        }
+        UUID connectedUserId = UUID.fromString(userData.userId());
+        WorkflowInstanceEntity inst = tache.getWorkflowInstance();
+        return (inst != null && inst.getInitiateur() != null && connectedUserId.equals(inst.getInitiateur().getId()))
+                || (tache.getAssigneA() != null && connectedUserId.equals(tache.getAssigneA().getId()));
+    }
+
     /**
      * Traite une tâche de validation avec vérification d'assignation étanche (Verrou 1 anti-usurpation).
      */
     @Transactional
     public void traiterTache(TraitTaskWorkflowRequest request) {
-        utilsService.hasPermission(Permissions.WORKFLOW_DECISION);
         UserData userData = utilsService.getCurrentUserData();
-        WorkflowTaskEntity tache = workflowTacheRepository.findById(request.getWorkflowTaskId())
-                .orElseThrow(() -> new RessourceIntrouvableException("La tâche de workflow spécifiée est introuvable : " + request.getWorkflowTaskId()));
+        WorkflowTaskEntity tache = workflowTacheRepository.findById(request.getWorkflowTaskId()).orElse(null);
+        if (tache == null || !isInitiateurRevisionTask(tache, userData)) {
+            utilsService.hasPermission(Permissions.WORKFLOW_DECISION);
+        }
+        if (tache == null) {
+            throw new RessourceIntrouvableException("La tâche de workflow spécifiée est introuvable : " + request.getWorkflowTaskId());
+        }
 
         if (tache.getStatut() != StatutWorkflowTache.PENDING) {
             throw new ConflitMetierException("Cette tâche a déjà été traitée ou n'est plus active (statut: " + tache.getStatut() + ").");
@@ -630,6 +893,10 @@ public class WorkflowService {
 
         if (request.getDecision() == null || request.getDecision() == WorkflowDecision.PENDING) {
             throw new RequeteInvalideException("Une décision explicite (APPROUVED, REJETE, ou ASK_REVISION) est requise pour traiter une tâche.");
+        }
+        if ((request.getDecision() == WorkflowDecision.REJETE || request.getDecision() == WorkflowDecision.ASK_REVISION)
+                && (request.getCommentaire() == null || request.getCommentaire().isBlank())) {
+            throw new RequeteInvalideException("Un motif ou commentaire justificatif est obligatoire en cas de rejet ou de demande de révision.");
         }
         if (tache.getEtapeDefinition() == null) {
             throw new RessourceIntrouvableException("Définition d'étape introuvable pour cette tâche.");
@@ -645,31 +912,44 @@ public class WorkflowService {
         switch (tache.getEtapeDefinition().getTypeEtape()) {
             case VALIDATION_HUMAINE -> processHumanValidation(tache, request, userData, empActeur);
             case CONTROLE_AUTO -> processAutoValidation(tache, request);
-            case SIGNATURE_ELECTRONIQUE -> processElectronicSign(tache, request, userData);
+            case SIGNATURE_ELECTRONIQUE -> {
+                processHumanValidation(tache, request, userData, empActeur);
+                processElectronicSign(tache, request, userData);
+            }
             default -> throw new IllegalStateException("WORKFLOW_STEP_TYPE_NOT_SUPPORTED");
         }
 
         WorkflowInstanceEntity instance = tache.getWorkflowInstance();
 
         // 2. Téléversement MinIO ou rattachement direct de fichier
-        if (request.getFile() != null && !request.getFile().isEmpty() && (Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.FILE_AND_ATTRIBUTE) || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.ADD_FILE) || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE))) {
+        String uploadedFileUrl = null;
+        boolean fileAllowed = Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.FILE_AND_ATTRIBUTE)
+                || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.ADD_FILE)
+                || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE);
+        boolean fieldsAllowed = Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.FILE_AND_ATTRIBUTE)
+                || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.SET_ATTRIBUTE)
+                || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE);
+
+        if (request.getFile() != null && !request.getFile().isEmpty() && fileAllowed) {
             try {
                 String subFolder = "workflows/" + instance.getId() + "/etapes/" + tache.getEtapeDefinition().getCodeEtape();
                 String fileName = "justif_" + System.currentTimeMillis() + "_" + request.getFile().getOriginalFilename();
-                String fileUrl = minioService.uploadFile(request.getFile(), subFolder + "/" + fileName);
-                tache.getCurrentData().put("fileUrl", fileUrl);
+                uploadedFileUrl = minioService.uploadFile(request.getFile(), subFolder + "/" + fileName);
+                ensureCurrentData(tache).put("fileUrl", uploadedFileUrl);
             } catch (Exception e) {
                 log.error("Échec de l'upload vers MinIO pour la tâche {}: {}", tache.getId(), e.getMessage());
                 throw new RuntimeException("Erreur de téléversement MinIO: " + e.getMessage(), e);
             }
         }
 
-        if(request.getChampsModifiesJson() != null && !request.getChampsModifiesJson().isEmpty() && (Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.FILE_AND_ATTRIBUTE) || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.SET_ATTRIBUTE) || Objects.equals(tache.getModeActionValidation(), ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE))) {
-            tache.getCurrentData().put(tache.getId().toString() ,convertToString(request.getChampsModifiesJson()));
+        if (request.getChampsModifiesJson() != null && !request.getChampsModifiesJson().isEmpty() && fieldsAllowed) {
+            ensureCurrentData(tache).put(tache.getId().toString(), convertToString(request.getChampsModifiesJson()));
         }
 
         // 3. Contrôle de conformité de l'action requise par le validateur à cette étape
-        if (request.getDecision() == WorkflowDecision.APPROUVED && tache.getModeActionValidation() != ValidationStepActionMode.DO_NOTHING) {
+        if (request.getDecision() == WorkflowDecision.APPROUVED
+                && tache.getModeActionValidation() != null
+                && tache.getModeActionValidation() != ValidationStepActionMode.DO_NOTHING) {
             ValidationStepActionMode mode = tache.getModeActionValidation();
             boolean provideFile = request.getFile() != null && !request.getFile().isEmpty();
             boolean provideFields = request.getChampsModifiesJson() != null && !request.getChampsModifiesJson().isEmpty();
@@ -698,8 +978,25 @@ public class WorkflowService {
         }
         workflowTacheRepository.save(tache);
 
-        // 5. Déclenchement des Strategy Handlers pour les mutations métiers d'étape (Support multi-modules)
+        // 5. Fusion incrémentale de l'état dans ClickHouse (ou Outbox PostgreSQL) et déclenchement des Strategy Handlers
         if (request.getDecision() == WorkflowDecision.APPROUVED) {
+            Map<String, Object> allowedPatch = fieldsAllowed ? request.getChampsModifiesJson() : null;
+            String stateEventType = isRevisionTask(tache)
+                    ? WorkflowStateService.EVENT_REVISION_PATCHED
+                    : WorkflowStateService.EVENT_STEP_PATCHED;
+            workflowStateService.recordStepDecision(
+                    instance,
+                    tache,
+                    stateEventType,
+                    allowedPatch,
+                    uploadedFileUrl,
+                    connectedUserId.toString(),
+                    userData.username(),
+                    resolveActorPoste(empActeur, tache),
+                    request.getCommentaire()
+            );
+            workflowInstanceRepository.save(instance);
+
             String targetEntity = (tache.getEntityPackageReference() != null && !tache.getEntityPackageReference().isBlank())
                     ? tache.getEntityPackageReference()
                     : instance.getEntityName();
@@ -751,44 +1048,13 @@ public class WorkflowService {
                 .decision(request.getDecision().name())
                 .commentaire(request.getCommentaire())
                 .timestamp(java.time.LocalDateTime.now())
-                .payload(convertToString(tache))
+                .payload(convertToString(mapToTacheResponse(tache)))
                 .build());
 
         // 7. Traitement du cycle de vie selon la décision
         if (request.getDecision() == WorkflowDecision.REJETE) {
             if (tache.isObligatoire()) {
-                instance.setStatut(StatutWorkflowInstance.REJETE);
-                instance.setDateCloture(Instant.now());
-                workflowInstanceRepository.save(instance);
-                log.info("Workflow instance {} REJETÉE (décision d'un validateur obligatoire à l'étape {})",
-                        instance.getId(), tache.getEtapeDefinition().getCodeEtape());
-
-                for (WorkflowEntityHandler h : entityHandlerRegistry.getHandlers(instance.getEntityName())) {
-                    try {
-                        h.onWorkflowRejected(instance, request.getCommentaire());
-                    } catch (Exception e) {
-                        log.error("Erreur dans le handler {} lors de onWorkflowRejected: {}", h.getClass().getSimpleName(), e.getMessage(), e);
-                    }
-                }
-
-                eventPublisher.publishEvent(new WorkflowInstanceRejectedEvent(
-                        instance.getId(),
-                        instance.getWorkflowDefinition() != null ? instance.getWorkflowDefinition().getCode() : null,
-                        instance.getEntityName(),
-                        instance.getEntityId(),
-                        tache.getEtapeDefinition().getCodeEtape(),
-                        connectedUserId,
-                        request.getCommentaire()
-                ));
-
-                notificationService.notifierRejetDossierWorkflow(
-                        instance.getInitiateur(),
-                        instance.getInitiateurEmploye(),
-                        tache.getEtapeDefinition().getCodeEtape(),
-                        instance.getEntityName(),
-                        instance.getEntityId(),
-                        request.getCommentaire()
-                );
+                cloturerInstanceRejetee(instance, tache.getEtapeDefinition(), connectedUserId, request.getCommentaire());
             } else {
                 evaluerProgressionEtape(instance, tache.getEtapeDefinition(), connectedUserId, request.getCommentaire());
             }
@@ -820,8 +1086,7 @@ public class WorkflowService {
             log.info("Workflow instance {} : Demande de révision formulée à l'étape {}, tâche assignée à l'initiateur",
                     instance.getId(), tache.getEtapeDefinition().getCodeEtape());
         } else if (request.getDecision() == WorkflowDecision.APPROUVED) {
-            boolean isTacheRevision = tache.getIntituleAction() != null && tache.getIntituleAction().toLowerCase().contains("révision");
-            if (isTacheRevision) {
+            if (isRevisionTask(tache)) {
                 // D5: L'initiateur a soumis ses corrections : réactivation du circuit et de l'étape courante
                 instance.setStatut(StatutWorkflowInstance.EN_COURS);
                 workflowInstanceRepository.save(instance);
@@ -841,7 +1106,7 @@ public class WorkflowService {
         UUID connectedUserId = UUID.fromString(userData.userId());
         WorkflowInstanceEntity instance = tache.getWorkflowInstance();
 
-        boolean isTacheRevision = tache.getIntituleAction() != null && tache.getIntituleAction().toLowerCase().contains("révision");
+        boolean isTacheRevision = isRevisionTask(tache);
 
         // Règle d'or Maker-Checker 4-yeux (D4) :
         // L'initiateur du dossier ne peut en aucun cas valider ou approuver une étape de son propre dossier,
@@ -933,16 +1198,16 @@ public class WorkflowService {
                 : 48;
         Instant echeance = Instant.now().plus(delaiHeures, ChronoUnit.HOURS);
 
-        // Suspension/expiration des autres tâches en cours de cette étape
-        List<WorkflowTaskEntity> tachesEnAttente = workflowTacheRepository
+        // Expiration du cycle en cours (PENDING et éventuelles approbations/rejets antérieurs sur cette étape) avant nouvelle boucle
+        List<WorkflowTaskEntity> tachesCycleCourant = workflowTacheRepository
                 .findByWorkflowInstanceIdAndEtapeDefinitionId(instance.getId(), etapeCourante.getId())
                 .stream()
-                .filter(t -> t.getStatut() == StatutWorkflowTache.PENDING)
+                .filter(t -> t.getStatut() != StatutWorkflowTache.EXPIRED)
                 .toList();
 
-        for (WorkflowTaskEntity t : tachesEnAttente) {
+        for (WorkflowTaskEntity t : tachesCycleCourant) {
             t.setStatut(StatutWorkflowTache.EXPIRED);
-            t.setCommentaire("Tâche suspendue : dossier renvoyé pour révision à l'initiateur.");
+            t.setCommentaire("Tâche clôturée : dossier renvoyé pour révision à l'initiateur.");
             workflowTacheRepository.save(t);
         }
 
@@ -1014,7 +1279,69 @@ public class WorkflowService {
         }
     }
 
-private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etapeCourante, UUID dernierActeurId, String commentaire) {
+    private void expirerTachesEnAttente(List<WorkflowTaskEntity> taches, String motif) {
+        for (WorkflowTaskEntity t : taches) {
+            if (t.getStatut() == StatutWorkflowTache.PENDING) {
+                t.setStatut(StatutWorkflowTache.EXPIRED);
+                t.setCommentaire(motif);
+                workflowTacheRepository.save(t);
+            }
+        }
+    }
+
+    private void cloturerInstanceRejetee(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etape, UUID acteurId, String commentaire) {
+        instance.setStatut(StatutWorkflowInstance.REJETE);
+        instance.setDateCloture(Instant.now());
+        workflowInstanceRepository.save(instance);
+
+        expirerTachesEnAttente(
+                workflowTacheRepository.findByWorkflowInstanceIdAndStatut(instance.getId(), StatutWorkflowTache.PENDING),
+                "Tâche annulée suite au rejet définitif de l'instance : " + commentaire
+        );
+
+        log.info("Workflow instance {} REJETÉE à l'étape {}", instance.getId(), etape.getCodeEtape());
+
+        eventPublisher.publishEvent(new WorkflowInstanceRejectedEvent(
+                instance.getId(),
+                instance.getWorkflowDefinition() != null ? instance.getWorkflowDefinition().getCode() : null,
+                instance.getEntityName(),
+                instance.getEntityId(),
+                etape.getCodeEtape(),
+                acteurId,
+                commentaire
+        ));
+
+        for (WorkflowEntityHandler h : entityHandlerRegistry.getHandlers(instance.getEntityName())) {
+            try {
+                h.onWorkflowRejected(instance, commentaire);
+            } catch (Exception e) {
+                log.error("Erreur dans le handler {} lors de onWorkflowRejected: {}", h.getClass().getSimpleName(), e.getMessage(), e);
+            }
+        }
+
+        workflowStateService.recordTerminalEvent(
+                instance,
+                WorkflowStateService.EVENT_REJECTED,
+                etape != null ? etape.getOrdre() : null,
+                etape != null ? etape.getCodeEtape() : null,
+                acteurId != null ? acteurId.toString() : null,
+                resolveActorUsername(acteurId),
+                resolveActorPoste(acteurId),
+                commentaire
+        );
+        workflowInstanceRepository.save(instance);
+
+        notificationService.notifierRejetDossierWorkflow(
+                instance.getInitiateur(),
+                instance.getInitiateurEmploye(),
+                etape.getCodeEtape(),
+                instance.getEntityName(),
+                instance.getEntityId(),
+                commentaire
+        );
+    }
+
+    private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etapeCourante, UUID dernierActeurId, String commentaire) {
         List<WorkflowTaskEntity> tachesEtape = workflowTacheRepository
                 .findByWorkflowInstanceIdAndEtapeDefinitionId(instance.getId(), etapeCourante.getId());
 
@@ -1025,7 +1352,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         // D5: Exclure les anciennes tâches expirées/suspendues ainsi que la tâche de révision de l'initiateur
         List<WorkflowTaskEntity> tachesActives = tachesEtape.stream()
                 .filter(t -> t.getStatut() != StatutWorkflowTache.EXPIRED)
-                .filter(t -> t.getIntituleAction() == null || !t.getIntituleAction().toLowerCase().contains("révision"))
+                .filter(t -> !isRevisionTask(t))
                 .collect(Collectors.toList());
 
         if (tachesActives.isEmpty()) {
@@ -1039,28 +1366,46 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         boolean toutesObligatoiresValidees = tachesObligatoires.stream()
                 .allMatch(t -> t.getStatut() == StatutWorkflowTache.APPROUVED);
 
-        if (!toutesObligatoiresValidees) {
-            log.info("Étape {} : En attente de validation des acteurs obligatoires restants", etapeCourante.getCodeEtape());
-            return;
-        }
-
         List<WorkflowTaskEntity> tachesOptionnelles = tachesActives.stream()
                 .filter(t -> !t.isObligatoire())
                 .collect(Collectors.toList());
 
         boolean optionnelsSatisfaits = true;
+        boolean peutEncoreAtteindreQuorum = true;
         if (!tachesOptionnelles.isEmpty()) {
             long approuveesOpt = tachesOptionnelles.stream().filter(t -> t.getStatut() == StatutWorkflowTache.APPROUVED).count();
-            PolitiqueValidation pol = etapeCourante.getPolitiqueValidation() != null ? etapeCourante.getPolitiqueValidation() : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE;
+            long pendingOpt = tachesOptionnelles.stream().filter(t -> t.getStatut() == StatutWorkflowTache.PENDING).count();
+            long maxAtteignable = approuveesOpt + pendingOpt;
+            PolitiqueValidation pol = etapeCourante.getPolitiqueValidation() != null
+                    ? etapeCourante.getPolitiqueValidation()
+                    : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE;
 
             optionnelsSatisfaits = switch (pol) {
                 case ONLY_ONE_CAN_VALIDATE -> approuveesOpt >= 1;
                 case EVERY_BODY_CAN_VALIDATE -> approuveesOpt == tachesOptionnelles.size();
                 case MUST_HAVE_MAJORITY -> approuveesOpt > (tachesOptionnelles.size() / 2);
             };
+            peutEncoreAtteindreQuorum = switch (pol) {
+                case ONLY_ONE_CAN_VALIDATE -> maxAtteignable >= 1;
+                case EVERY_BODY_CAN_VALIDATE -> maxAtteignable == tachesOptionnelles.size();
+                case MUST_HAVE_MAJORITY -> maxAtteignable > (tachesOptionnelles.size() / 2);
+            };
         }
 
-        if (toutesObligatoiresValidees && optionnelsSatisfaits) {
+        if (!tachesOptionnelles.isEmpty() && !optionnelsSatisfaits && !peutEncoreAtteindreQuorum) {
+            cloturerInstanceRejetee(instance, etapeCourante, dernierActeurId,
+                    "Consensus / quorum devenu impossible à l'étape " + etapeCourante.getCodeEtape()
+                            + (commentaire != null ? " : " + commentaire : ""));
+            return;
+        }
+
+        if (!toutesObligatoiresValidees) {
+            log.info("Étape {} : En attente de validation des acteurs obligatoires restants", etapeCourante.getCodeEtape());
+            return;
+        }
+
+        if (optionnelsSatisfaits) {
+            expirerTachesEnAttente(tachesEtape, "Étape franchie : condition de validation atteinte");
             nextStep(instance, etapeCourante, dernierActeurId, commentaire);
         }
     }
@@ -1070,6 +1415,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .findByWorkflowDefinitionIdOrderByOrdreAsc(instance.getWorkflowDefinition().getId());
 
         Optional<WorkflowEtapeDefinitionEntity> suivanteOpt = etapes.stream()
+                .filter(WorkflowEtapeDefinitionEntity::isActif)
                 .filter(e -> e.getOrdre() > etapeCourante.getOrdre())
                 .findFirst();
 
@@ -1084,18 +1430,11 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         } else {
             instance.setStatut(StatutWorkflowInstance.APPROUVE);
             instance.setDateCloture(Instant.now());
+            Map<String, Object> finalData = workflowStateService.getLatestMergedDataMap(instance);
             workflowInstanceRepository.save(instance);
 
             enregistrerAudit(instance, etapeCourante.getCodeEtape(), acteurId, ActionWorkflowAudit.CLOTURE, WorkflowDecision.APPROUVED, "Circuit approuvé dans sa totalité : " + (commentaire != null ? commentaire : ""));
             log.info("Workflow instance {} TOTALEMENT APPROUVÉE !", instance.getId());
-
-            for (WorkflowEntityHandler h : entityHandlerRegistry.getHandlers(instance.getEntityName())) {
-                try {
-                    h.onWorkflowCompleted(instance);
-                } catch (Exception e) {
-                    log.error("Erreur dans le handler {} lors de onWorkflowCompleted: {}", h.getClass().getSimpleName(), e.getMessage(), e);
-                }
-            }
 
             eventPublisher.publishEvent(new WorkflowInstanceCompletedEvent(
                     instance.getId(),
@@ -1104,13 +1443,56 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                     instance.getEntityId(),
                     etapeCourante.getCodeEtape(),
                     acteurId,
-                    commentaire
+                    commentaire,
+                    finalData
             ));
+
+            for (WorkflowEntityHandler h : entityHandlerRegistry.getHandlers(instance.getEntityName())) {
+                try {
+                    h.onWorkflowCompleted(instance, finalData);
+                } catch (ConflitMetierException | RequeteInvalideException | AccesRefuseException e) {
+                    throw e;
+                } catch (Exception e) {
+                    log.error("Erreur dans le handler {} lors de onWorkflowCompleted: {}", h.getClass().getSimpleName(), e.getMessage(), e);
+                }
+            }
+
+            workflowStateService.recordTerminalEvent(
+                    instance,
+                    WorkflowStateService.EVENT_COMPLETED,
+                    etapeCourante.getOrdre(),
+                    etapeCourante.getCodeEtape(),
+                    acteurId != null ? acteurId.toString() : null,
+                    resolveActorUsername(acteurId),
+                    resolveActorPoste(acteurId),
+                    commentaire
+            );
+            workflowInstanceRepository.save(instance);
         }
     }
 
     /**
-     * Génère en parallèle les tâches pour les acteurs d'une étape en résolvant l'employé et l'utilisateur.
+     * Résout un employé actif titulaire/rattaché au poste cible (en excluant l'initiateur pour D4).
+     */
+    private EmployeEntity resoudreEmployeParPoste(WorkflowInstanceEntity instance, PosteEntity poste, UniteOrganisationnelleEntity restrictionUnite) {
+        if (poste == null) {
+            return null;
+        }
+        UUID initiateurEmpId = (instance != null && instance.getInitiateurEmploye() != null)
+                ? instance.getInitiateurEmploye().getId()
+                : null;
+        List<EmployeEntity> candidats = employeRepository.findByPosteId(poste.getId()).stream()
+                .filter(e -> initiateurEmpId == null || !e.getId().equals(initiateurEmpId))
+                .filter(e -> restrictionUnite == null || (e.getUniteOrganisationnelle() != null && e.getUniteOrganisationnelle().getId().equals(restrictionUnite.getId())))
+                .toList();
+        if (!candidats.isEmpty()) {
+            return candidats.get(0);
+        }
+        return resoudreEmployeAssigne(instance, poste.getCodePoste(), restrictionUnite);
+    }
+
+    /**
+     * Génère en parallèle les tâches pour les acteurs actifs d'une étape en résolvant l'employé, le poste et l'utilisateur.
      */
     private void createNextStepTask(WorkflowInstanceEntity instance, WorkflowEtapeDefinitionEntity etape) {
         List<WorkflowEtapeActeurDefinitionEntity> acteurs = workflowEtapeActeurRepository.findByEtapeDefinitionId(etape.getId());
@@ -1118,29 +1500,46 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
             acteurs = etape.getActeurs();
         }
 
-        if (!acteurs.isEmpty()) {
-            boolean isUniqueActeur = acteurs.size() == 1;
+        List<WorkflowEtapeActeurDefinitionEntity> acteursActifs = acteurs.stream()
+                .filter(WorkflowEtapeActeurDefinitionEntity::isActif)
+                .toList();
 
-            for (WorkflowEtapeActeurDefinitionEntity act : acteurs) {
+        if (!acteurs.isEmpty() && acteursActifs.isEmpty()) {
+            throw new ConflitMetierException("Aucun acteur actif n'est configuré sur l'étape '" + etape.getIntitule() + "'.");
+        }
+
+        if (!acteursActifs.isEmpty()) {
+            boolean isUniqueActeur = acteursActifs.size() == 1;
+
+            for (WorkflowEtapeActeurDefinitionEntity act : acteursActifs) {
                 EmployeEntity assigneEmploye = act.getEmploye();
                 UtilisateurEntity assigneUser = act.getUtilisateur();
+                PosteEntity ciblePoste = act.getPoste();
 
-                // Résolution dynamique si non fixé
+                // Résolution dynamique par poste ou valeur d'assignation si non fixé nommément
                 if (assigneEmploye == null && assigneUser == null) {
-                    assigneEmploye = resoudreEmployeAssigne(instance, act.getValeurAssignation(), act.getUniteOrganisationnelle());
+                    if (ciblePoste != null) {
+                        assigneEmploye = resoudreEmployeParPoste(instance, ciblePoste, act.getUniteOrganisationnelle());
+                    }
+                    if (assigneEmploye == null) {
+                        assigneEmploye = resoudreEmployeAssigne(instance, act.getValeurAssignation(), act.getUniteOrganisationnelle());
+                    }
                     if (assigneEmploye != null) {
                         assigneUser = assigneEmploye.getUtilisateur();
                     } else {
-                        assigneUser = resoudreUtilisateurAssigne(instance, act.getValeurAssignation());
+                        String fallbackVal = (act.getValeurAssignation() != null && !act.getValeurAssignation().isBlank())
+                                ? act.getValeurAssignation()
+                                : (ciblePoste != null ? ciblePoste.getCodePoste() : null);
+                        assigneUser = resoudreUtilisateurAssigne(instance, fallbackVal);
                     }
                 } else if (assigneEmploye != null && assigneUser == null) {
                     assigneUser = assigneEmploye.getUtilisateur();
                 }
 
-                // D4 : Refus formel d'auto-désigner l'initiateur comme validateur
+                // D4 : Refus formel d'auto-désigner l'initiateur par défaut ou absence de valideur résolu
                 if (assigneEmploye == null && assigneUser == null) {
                     log.error("Échec de résolution de validateur pour l'étape {} et l'acteur {}", etape.getCodeEtape(), act.getIntituleAction());
-                    throw new IllegalStateException("Impossible de résoudre un acteur/validateur pour l'étape '"
+                    throw new ConflitMetierException("Impossible de résoudre un acteur/validateur pour l'étape '"
                             + etape.getIntitule() + "' (règle: " + act.getStrategieAssignation() + ", valeur: " + act.getValeurAssignation()
                             + "). L'initiateur ne peut pas être désigné comme validateur par défaut.");
                 }
@@ -1148,6 +1547,12 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 Integer slaHeures = act.getDelaiSlaHeures() != null ? act.getDelaiSlaHeures() : etape.getDelaiSlaHeures();
                 Instant echeance = (slaHeures != null && slaHeures > 0) ? Instant.now().plus(slaHeures, ChronoUnit.HOURS) : null;
                 boolean obligatoire = isUniqueActeur || act.isObligatoire();
+                ValidationStepActionMode modeAction = act.getModeActionValidation() != null
+                        ? act.getModeActionValidation()
+                        : (etape.getModeActionValidation() != null ? etape.getModeActionValidation() : ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE);
+                PosteEntity posteAssigne = ciblePoste != null
+                        ? ciblePoste
+                        : (assigneEmploye != null ? assigneEmploye.getPoste() : null);
 
                 WorkflowTaskEntity tache = WorkflowTaskEntity.builder()
                         .id(UUID.randomUUID())
@@ -1159,7 +1564,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                         .isDelegated(false)
                         .assigneAEmploye(assigneEmploye)
                         .assigneUser(assigneUser)
-                        .assignePoste(assigneEmploye != null ? assigneEmploye.getPoste() : null)
+                        .assignePoste(posteAssigne)
                         .statut(StatutWorkflowTache.PENDING)
                         .dateCreation(Instant.now())
                         .decision(WorkflowDecision.PENDING)
@@ -1168,7 +1573,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                         .isFirstTaskOfStep(etape.isFirstTaskOfStep())
                         .currentData(new HashMap<>())
                         .entityPackageReference(etape.getEntityPackageReference())
-                        .modeActionValidation(etape.getModeActionValidation())
+                        .modeActionValidation(modeAction)
                         .build();
 
                 workflowTacheRepository.save(tache);
@@ -1176,25 +1581,95 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         }
     }
 
+    private java.util.Map<String, Object> ensureCurrentData(WorkflowTaskEntity tache) {
+        if (tache.getCurrentData() == null) {
+            tache.setCurrentData(new java.util.HashMap<>());
+        }
+        return tache.getCurrentData();
+    }
+
+    private String normaliserTexteRecherche(String valeur) {
+        if (valeur == null || valeur.isBlank()) {
+            return "";
+        }
+        String withoutAccents = java.text.Normalizer.normalize(valeur, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        return withoutAccents.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim();
+    }
+
+    private boolean tokenMatchesPoste(String token, String posteCombined, java.util.Set<String> posteWords) {
+        if (posteWords.contains(token)) {
+            return true;
+        }
+        return switch (token) {
+            case "rh" -> posteCombined.contains("ressources humaines");
+            case "sd" -> posteCombined.contains("sous directeur");
+            case "dg" -> posteCombined.contains("directeur general");
+            case "daf" -> posteCombined.contains("administratif") && posteCombined.contains("financier");
+            default -> false;
+        };
+    }
+
+    private int scoreCorrespondanceEmploye(EmployeEntity e, String searchNorm, java.util.Set<String> searchTokens) {
+        String codeNorm = normaliserTexteRecherche(e.getPoste() != null ? e.getPoste().getCodePoste() : null);
+        String intituleNorm = normaliserTexteRecherche(e.getPoste() != null ? e.getPoste().getIntitule() : null);
+        String nomNorm = normaliserTexteRecherche(
+                (e.getPrenom() != null ? e.getPrenom() : "") + " " + (e.getNom() != null ? e.getNom() : ""));
+        String posteCombined = (codeNorm + " " + intituleNorm).trim();
+
+        if (codeNorm.equals(searchNorm) || intituleNorm.equals(searchNorm) || nomNorm.equals(searchNorm)) {
+            return 400;
+        }
+        if (codeNorm.equals("poste " + searchNorm) || searchNorm.equals("poste " + codeNorm)) {
+            return 350;
+        }
+        if (!posteCombined.isEmpty() && (posteCombined.contains(searchNorm) || codeNorm.contains(searchNorm) || intituleNorm.contains(searchNorm))) {
+            return 200 - Math.min(100, Math.abs(intituleNorm.length() - searchNorm.length()));
+        }
+        if (!nomNorm.isEmpty() && nomNorm.contains(searchNorm)) {
+            return 150;
+        }
+        if (!posteCombined.isEmpty() && !searchTokens.isEmpty()) {
+            java.util.Set<String> posteWords = new java.util.HashSet<>(java.util.Arrays.asList(posteCombined.split("\\s+")));
+            boolean allMatched = searchTokens.stream().allMatch(token -> tokenMatchesPoste(token, posteCombined, posteWords));
+            if (allMatched) {
+                return 100 - Math.min(50, posteWords.size());
+            }
+        }
+        return 0;
+    }
+
     private EmployeEntity resoudreEmployeAssigne(WorkflowInstanceEntity instance, String valeurAssignation, UniteOrganisationnelleEntity restrictionUnite) {
         if (valeurAssignation == null || valeurAssignation.isBlank()) {
             return null;
         }
 
-        String search = valeurAssignation.toLowerCase().trim();
+        String searchNorm = normaliserTexteRecherche(valeurAssignation);
+        if (searchNorm.isEmpty()) {
+            return null;
+        }
+        java.util.Set<String> searchTokens = new java.util.HashSet<>(java.util.Arrays.asList(searchNorm.split("\\s+")));
         List<EmployeEntity> employes = employeRepository.findAll();
         UUID initiateurEmpId = (instance != null && instance.getInitiateurEmploye() != null) ? instance.getInitiateurEmploye().getId() : null;
 
-        return employes.stream()
-                .filter(e -> restrictionUnite == null || (e.getUniteOrganisationnelle() != null && e.getUniteOrganisationnelle().getId().equals(restrictionUnite.getId())))
-                .filter(e -> initiateurEmpId == null || !e.getId().equals(initiateurEmpId))
-                .filter(e -> {
-                    String poste = (e.getPoste() != null) ? (e.getPoste().getCodePoste() + " " + e.getPoste().getIntitule()).toLowerCase() : "";
-                    String nom = (e.getPrenom() + " " + e.getNom()).toLowerCase();
-                    return poste.contains(search) || nom.contains(search);
-                })
-                .findFirst()
-                .orElse(null);
+        EmployeEntity meilleurCandidat = null;
+        int meilleurScore = 0;
+        for (EmployeEntity e : employes) {
+            if (restrictionUnite != null && (e.getUniteOrganisationnelle() == null || !e.getUniteOrganisationnelle().getId().equals(restrictionUnite.getId()))) {
+                continue;
+            }
+            if (initiateurEmpId != null && e.getId().equals(initiateurEmpId)) {
+                continue;
+            }
+            int score = scoreCorrespondanceEmploye(e, searchNorm, searchTokens);
+            if (score > meilleurScore) {
+                meilleurScore = score;
+                meilleurCandidat = e;
+            }
+        }
+        return meilleurCandidat;
     }
 
     private UtilisateurEntity resoudreUtilisateurAssigne(WorkflowInstanceEntity instance, String valeurAssignation) {
@@ -1236,32 +1711,44 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .map(this::mapToTacheResponse);
     }
 
-    /**
-     * Consultation d'un dossier avec application stricte du principe Need-to-Know et bypass Superviseurs.
-     */
-    @Transactional(readOnly = true)
-    public WorkflowInstanceResponse getInstanceById(UUID instanceId) {
-        WorkflowInstanceEntity entity = workflowInstanceRepository.findById(instanceId)
-                .orElseThrow(() -> new RessourceIntrouvableException("Instance de workflow introuvable: " + instanceId));
+    private String resolveActorUsername(UUID acteurId) {
+        if (acteurId == null) {
+            return null;
+        }
+        return userRepository.findById(acteurId).map(UtilisateurEntity::getUsername).orElse(null);
+    }
+
+    private String resolveActorPoste(UUID acteurId) {
+        if (acteurId == null) {
+            return null;
+        }
+        EmployeEntity emp = employeRepository.findByUtilisateurId(acteurId).orElse(null);
+        return resolveActorPoste(emp, null);
+    }
+
+    private void assertAuthorizedInstance(WorkflowInstanceEntity entity) {
+        if (utilsService == null || org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() == null) {
+            return;
+        }
         UserData userData = utilsService.getCurrentUserData();
         UUID connectedUserId = UUID.fromString(userData.userId());
         EmployeEntity emp = employeRepository.findByUtilisateurId(connectedUserId).orElse(null);
         if (utilsService.isSuperviseurOuAdmin(emp, userData)) {
-            return mapToInstanceResponse(entity);
+            return;
         }
 
         // 2. L'agent est l'initiateur du dossier
         if (entity.getInitiateur() != null && entity.getInitiateur().getId().equals(connectedUserId)) {
-            return mapToInstanceResponse(entity);
+            return;
         }
         if (emp != null && entity.getInitiateurEmploye() != null && entity.getInitiateurEmploye().getId().equals(emp.getId())) {
-            return mapToInstanceResponse(entity);
+            return;
         }
 
         // 3. L'instance appartient à la cellule de l'agent
         if (emp != null && emp.getUniteOrganisationnelle() != null && entity.getUniteOrganisationnelle() != null) {
             if (emp.getUniteOrganisationnelle().getId().equals(entity.getUniteOrganisationnelle().getId())) {
-                return mapToInstanceResponse(entity);
+                return;
             }
         }
 
@@ -1271,18 +1758,78 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                         || (emp != null && t.getAssigneAEmploye() != null && t.getAssigneAEmploye().getId().equals(emp.getId())));
 
         if (hasTask) {
-            return mapToInstanceResponse(entity);
+            return;
         }
 
         throw new AccesRefuseException("Accès refusé au dossier : vous ne disposez pas des habilitations requises pour consulter cette instance.");
+    }
+
+    /**
+     * Vérifie le droit de lecture sur une instance de workflow (Superviseur/Admin, Initiateur, Même Unité ou Tâche assignée).
+     */
+    private WorkflowInstanceEntity getAuthorizedInstance(UUID instanceId) {
+        WorkflowInstanceEntity entity = workflowInstanceRepository.findById(instanceId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Instance de workflow introuvable: " + instanceId));
+        assertAuthorizedInstance(entity);
+        return entity;
+    }
+
+    /**
+     * Consultation d'un dossier avec application stricte du principe Need-to-Know et bypass Superviseurs.
+     */
+    @Transactional(readOnly = true)
+    public WorkflowInstanceResponse getInstanceById(UUID instanceId) {
+        return mapToInstanceResponse(getAuthorizedInstance(instanceId));
+    }
+
+    /**
+     * Vérifie que l'utilisateur connecté dispose d'une habilitation de supervision, de configuration
+     * ou d'administration l'autorisant à inspecter directement les états techniques ClickHouse / Outbox.
+     */
+    private WorkflowInstanceEntity getAuthorizedClickHouseInstance(UUID instanceId) {
+        WorkflowInstanceEntity entity = workflowInstanceRepository.findById(instanceId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Instance de workflow introuvable: " + instanceId));
+        UserData userData = utilsService.getCurrentUserData();
+
+        boolean hasClickHouseAccess = "admin_maker".equalsIgnoreCase(userData.username())
+                || (userData.permissions() != null && (
+                        userData.permissions().contains(Permissions.WORKFLOW_SUPERVISION)
+                        || userData.permissions().contains(Permissions.WORKFLOW_CONFIG)));
+
+        if (!hasClickHouseAccess) {
+            throw new AccesRefuseException(
+                    "Accès refusé aux états ClickHouse : seules les habilitations WORKFLOW_SUPERVISION, WORKFLOW_CONFIG ou un profil Admin autorisent l'inspection des états.");
+        }
+        return entity;
+    }
+
+    /**
+     * Restitue la projection consolidée des données courantes d'une instance (ClickHouse / Outbox, réservé aux profils habilités).
+     */
+    @Transactional
+    public com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse getCurrentData(UUID instanceId) {
+        WorkflowInstanceEntity entity = getAuthorizedClickHouseInstance(instanceId);
+        return workflowStateService.getCurrentData(entity);
+    }
+
+    /**
+     * Restitue l'historique versionné des états ClickHouse / Outbox d'une instance (réservé aux profils habilités).
+     */
+    @Transactional
+    public List<com.sodepa.erp.workflow.presentation.responses.WorkflowEntityStateResponse> getStateHistory(UUID instanceId) {
+        WorkflowInstanceEntity entity = getAuthorizedClickHouseInstance(instanceId);
+        return workflowStateService.getStateHistory(entity);
     }
 
 
 
     @Transactional(readOnly = true)
     public Optional<WorkflowInstanceResponse> getInstanceParEntite(String entityName, String entityId) {
-        return workflowInstanceRepository.findByEntityNameAndEntityId(entityName, entityId)
-                .map(this::mapToInstanceResponse);
+        return workflowInstanceRepository.findFirstByEntityNameAndEntityIdOrderByDateInitiationDesc(entityName, entityId)
+                .map(entity -> {
+                    assertAuthorizedInstance(entity);
+                    return mapToInstanceResponse(entity);
+                });
     }
 
     private WorkflowInstanceResponse mapToInstanceResponse(WorkflowInstanceEntity e) {
@@ -1314,6 +1861,20 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
     }
 
     private WorkflowTacheResponse mapToTacheResponse(WorkflowTaskEntity t) {
+        String champsModifiables = null;
+        if (t.getEtapeActeur() != null && t.getEtapeActeur().getDonnees() != null && !t.getEtapeActeur().getDonnees().isEmpty()) {
+            champsModifiables = String.join(",", t.getEtapeActeur().getDonnees().keySet());
+        }
+        Map<String, Object> taskData = t.getCurrentData();
+        if ((taskData == null || taskData.isEmpty()) && t.getWorkflowInstance() != null) {
+            try {
+                Map<String, Object> cachedOrLive = workflowStateService.getCachedOrLiveDomainData(t.getWorkflowInstance());
+                if (cachedOrLive != null && !cachedOrLive.isEmpty()) {
+                    taskData = cachedOrLive;
+                }
+            } catch (Exception ignored) {
+            }
+        }
         return WorkflowTacheResponse.builder()
                 .id(t.getId())
                 .instanceId(t.getWorkflowInstance().getId())
@@ -1327,7 +1888,9 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .assigneAEmployeId(t.getAssigneAEmploye() != null ? t.getAssigneAEmploye().getId() : null)
                 .assigneAEmployeMatricule(t.getAssigneAEmploye() != null ? t.getAssigneAEmploye().getMatricule() : null)
                 .assigneAEmployeNom(t.getAssigneAEmploye() != null ? t.getAssigneAEmploye().getPrenom() + " " + t.getAssigneAEmploye().getNom() : null)
-                .assigneAEmployePoste((t.getAssigneAEmploye() != null && t.getAssigneAEmploye().getPoste() != null) ? t.getAssigneAEmploye().getPoste().getIntitule() : null)
+                .assigneAEmployePoste((t.getAssigneAEmploye() != null && t.getAssigneAEmploye().getPoste() != null)
+                        ? t.getAssigneAEmploye().getPoste().getIntitule()
+                        : (t.getAssignePoste() != null ? t.getAssignePoste().getIntitule() : null))
                 .assigneAId(t.getAssigneA() != null ? t.getAssigneA().getId() : null)
                 .assigneANom(t.getAssigneA() != null ? t.getAssigneA().getPrenom() + " " + t.getAssigneA().getNom() : null)
                 .statut(t.getStatut())
@@ -1336,7 +1899,11 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .dateCreation(t.getDateCreation())
                 .dateEcheance(t.getDateEcheance())
                 .dateDecision(t.getDateDecision())
-
+                .champsModifiablesAutorises(champsModifiables)
+                .modeActionValidation(t.getModeActionValidation())
+                .pieceJointeUri(t.getPieceJointeUri())
+                .champsModifiesJson(t.getChampsModifiesJson())
+                .currentData(taskData)
                 .build();
     }
 
@@ -1352,7 +1919,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
     public WorkflowDefinitionResponse creerDefinition(CreerWorkflowDefinitionRequest request) {
         utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         String prefixe = WorkflowDefinitionEntity.getPrefixeCode();
-        long seq = workflowDefinitionRepository.count() + 1;
+        long seq = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_workflow_def", workflowDefinitionRepository::count);
         String code = CodeGenerator.generate(prefixe, seq);
         while (workflowDefinitionRepository.existsByCode(code)) {
             seq++;
@@ -1387,52 +1954,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .dateCreation(Instant.now())
                 .build();
 
-        if (request.getEtapes() != null) {
-            for (CreerWorkflowDefinitionRequest.CreerEtapeDefinitionRequest etapeReq : request.getEtapes()) {
-                String codeEtape = def.getCode() + "-E" + etapeReq.getOrdre();
-                WorkflowEtapeDefinitionEntity etape = WorkflowEtapeDefinitionEntity.builder()
-                        .id(UUID.randomUUID())
-                        .workflowDefinition(def)
-                        .ordre(etapeReq.getOrdre())
-                        .codeEtape(codeEtape)
-                        .intitule(etapeReq.getIntitule())
-                        .typeEtape(etapeReq.getTypeEtape())
-                        .politiqueValidation(etapeReq.getPolitiqueValidation() != null ? etapeReq.getPolitiqueValidation() : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
-                        .strategieAssignation(etapeReq.getStrategieAssignation())
-                        .delaiSlaHeures(etapeReq.getDelaiSlaHeures())
-                        .actionDepassementSla(etapeReq.getActionDepassementSla() != null ? etapeReq.getActionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
-                        .modeActionValidation(etapeReq.getModeActionValidation() != null ? etapeReq.getModeActionValidation() : ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE)
-                        .actif(true)
-                        .build();
-
-                if (etapeReq.getActeurs() != null) {
-                    for (CreerWorkflowDefinitionRequest.CreerActeurDefinitionRequest actReq : etapeReq.getActeurs()) {
-                        EmployeEntity emp = actReq.getEmployeId() != null ? employeRepository.findById(actReq.getEmployeId()).orElse(null) : null;
-                        UtilisateurEntity usr = actReq.getUtilisateurId() != null ? userRepository.findById(actReq.getUtilisateurId()).orElse(null) : null;
-                        UniteOrganisationnelleEntity actUnite = actReq.getUniteOrganisationnelleId() != null ? uniteRepository.findById(actReq.getUniteOrganisationnelleId()).orElse(null) : null;
-
-                        WorkflowEtapeActeurDefinitionEntity acteur = WorkflowEtapeActeurDefinitionEntity.builder()
-                                .id(UUID.randomUUID())
-                                .etapeDefinition(etape)
-                                .intituleAction(actReq.getIntituleAction())
-                                .employe(emp)
-                                .utilisateur(usr)
-                                .uniteOrganisationnelle(actUnite)
-                                .strategieAssignation(actReq.getStrategieAssignation())
-                                .valeurAssignation(etapeReq.getValeurAssignation())
-                                .modeActionValidation(actReq.getModeActionValidation() != null ? actReq.getModeActionValidation() : etape.getModeActionValidation())
-                                .donnees(actReq.getFields())
-                                .obligatoire(actReq.getObligatoire() != null ? actReq.getObligatoire() : true)
-                                .delaiSlaHeures(actReq.getDelaiSlaHeures() != null ? actReq.getDelaiSlaHeures() : etape.getDelaiSlaHeures())
-                                .actionDepassementSla(actReq.getActionDepassementSla() != null ? actReq.getActionDepassementSla() : etape.getActionDepassementSla())
-                                .actif(actReq.getActif() != null ? actReq.getActif() : true)
-                                .build();
-                        etape.addActeur(acteur);
-                    }
-                }
-                def.addEtape(etape);
-            }
-        }
+        peuplerEtapesEtActeurs(def, request.getEtapes());
 
         def = workflowDefinitionRepository.save(def);
 
@@ -1456,7 +1978,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
     public WorkflowDefinitionResponse modifierDefinition(UUID id, ModifierWorkflowDefinitionRequest request) {
         utilsService.hasPermission(Permissions.WORKFLOW_CONFIG);
         WorkflowDefinitionEntity def = workflowDefinitionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Définition introuvable avec l'ID: " + id));
+                .orElseThrow(() -> new RessourceIntrouvableException("Définition introuvable avec l'ID: " + id));
 
         def.setIntitule(request.getIntitule());
         def.setDescription(request.getDescription());
@@ -1477,50 +1999,7 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
 
         if (request.getEtapes() != null) {
             def.getEtapes().clear();
-            for (CreerWorkflowDefinitionRequest.CreerEtapeDefinitionRequest etapeReq : request.getEtapes()) {
-                String codeEtape = def.getCode() + "-E" + etapeReq.getOrdre();
-                WorkflowEtapeDefinitionEntity etape = WorkflowEtapeDefinitionEntity.builder()
-                        .id(UUID.randomUUID())
-                        .workflowDefinition(def)
-                        .ordre(etapeReq.getOrdre())
-                        .codeEtape(codeEtape)
-                        .intitule(etapeReq.getIntitule())
-                        .typeEtape(etapeReq.getTypeEtape())
-                        .politiqueValidation(etapeReq.getPolitiqueValidation() != null ? etapeReq.getPolitiqueValidation() : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
-                        .strategieAssignation(etapeReq.getStrategieAssignation())
-                        .delaiSlaHeures(etapeReq.getDelaiSlaHeures())
-                        .actionDepassementSla(etapeReq.getActionDepassementSla() != null ? etapeReq.getActionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
-                        .modeActionValidation(etapeReq.getModeActionValidation() != null ? etapeReq.getModeActionValidation() : ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE)
-                        .actif(true)
-                        .build();
-
-                if (etapeReq.getActeurs() != null) {
-                    for (CreerWorkflowDefinitionRequest.CreerActeurDefinitionRequest actReq : etapeReq.getActeurs()) {
-                        EmployeEntity emp = actReq.getEmployeId() != null ? employeRepository.findById(actReq.getEmployeId()).orElse(null) : null;
-                        UtilisateurEntity usr = actReq.getUtilisateurId() != null ? userRepository.findById(actReq.getUtilisateurId()).orElse(null) : null;
-                        UniteOrganisationnelleEntity actUnite = actReq.getUniteOrganisationnelleId() != null ? uniteRepository.findById(actReq.getUniteOrganisationnelleId()).orElse(null) : null;
-
-                        WorkflowEtapeActeurDefinitionEntity acteur = WorkflowEtapeActeurDefinitionEntity.builder()
-                                .id(UUID.randomUUID())
-                                .etapeDefinition(etape)
-                                .intituleAction(actReq.getIntituleAction())
-                                .employe(emp)
-                                .utilisateur(usr)
-                                .uniteOrganisationnelle(actUnite)
-                                .strategieAssignation(actReq.getStrategieAssignation())
-                                .valeurAssignation(etapeReq.getValeurAssignation())
-                                .modeActionValidation(actReq.getModeActionValidation() != null ? actReq.getModeActionValidation() : etape.getModeActionValidation())
-                                .donnees(actReq.getFields())
-                                .obligatoire(actReq.getObligatoire() != null ? actReq.getObligatoire() : true)
-                                .delaiSlaHeures(actReq.getDelaiSlaHeures() != null ? actReq.getDelaiSlaHeures() : etape.getDelaiSlaHeures())
-                                .actionDepassementSla(actReq.getActionDepassementSla() != null ? actReq.getActionDepassementSla() : etape.getActionDepassementSla())
-                                .actif(actReq.getActif() != null ? actReq.getActif() : true)
-                                .build();
-                        etape.addActeur(acteur);
-                    }
-                }
-                def.addEtape(etape);
-            }
+            peuplerEtapesEtActeurs(def, request.getEtapes());
         }
 
         def = workflowDefinitionRepository.save(def);
@@ -1534,6 +2013,71 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                 .build());
 
         return mapToDefinitionResponse(def);
+    }
+
+    /**
+     * Construit et rattache les étapes et leurs validateurs à une définition (création et mise à jour).
+     */
+    private void peuplerEtapesEtActeurs(
+            WorkflowDefinitionEntity def,
+            List<CreerWorkflowDefinitionRequest.CreerEtapeDefinitionRequest> etapesReq) {
+        if (etapesReq == null) {
+            return;
+        }
+        for (CreerWorkflowDefinitionRequest.CreerEtapeDefinitionRequest etapeReq : etapesReq) {
+            String codeEtape = def.getCode() + "-E" + etapeReq.getOrdre();
+            WorkflowEtapeDefinitionEntity etape = WorkflowEtapeDefinitionEntity.builder()
+                    .id(UUID.randomUUID())
+                    .workflowDefinition(def)
+                    .ordre(etapeReq.getOrdre())
+                    .codeEtape(codeEtape)
+                    .intitule(etapeReq.getIntitule())
+                    .description(etapeReq.getDescription())
+                    .typeEtape(etapeReq.getTypeEtape())
+                    .politiqueValidation(etapeReq.getPolitiqueValidation() != null ? etapeReq.getPolitiqueValidation() : PolitiqueValidation.ONLY_ONE_CAN_VALIDATE)
+                    .strategieAssignation(etapeReq.getStrategieAssignation())
+                    .valeurAssignation(etapeReq.getValeurAssignation())
+                    .delaiSlaHeures(etapeReq.getDelaiSlaHeures())
+                    .actionDepassementSla(etapeReq.getActionDepassementSla() != null ? etapeReq.getActionDepassementSla() : ActionDepassementSla.RELANCE_EMAIL)
+                    .modeActionValidation(etapeReq.getModeActionValidation() != null ? etapeReq.getModeActionValidation() : ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE)
+                    .actif(true)
+                    .build();
+
+            if (etapeReq.getActeurs() != null) {
+                for (CreerWorkflowDefinitionRequest.CreerActeurDefinitionRequest actReq : etapeReq.getActeurs()) {
+                    EmployeEntity emp = actReq.getEmployeId() != null ? employeRepository.findById(actReq.getEmployeId()).orElse(null) : null;
+                    UtilisateurEntity usr = actReq.getUtilisateurId() != null ? userRepository.findById(actReq.getUtilisateurId()).orElse(null) : null;
+                    UniteOrganisationnelleEntity actUnite = actReq.getUniteOrganisationnelleId() != null ? uniteRepository.findById(actReq.getUniteOrganisationnelleId()).orElse(null) : null;
+                    PosteEntity actPoste = actReq.getPosteId() != null
+                            ? posteRepository.findById(actReq.getPosteId())
+                                    .orElseThrow(() -> new RessourceIntrouvableException("Poste introuvable avec l'ID: " + actReq.getPosteId()))
+                            : null;
+                    String cibleVal = (actReq.getValeurAssignation() != null && !actReq.getValeurAssignation().isBlank())
+                            ? actReq.getValeurAssignation()
+                            : etapeReq.getValeurAssignation();
+
+                    WorkflowEtapeActeurDefinitionEntity acteur = WorkflowEtapeActeurDefinitionEntity.builder()
+                            .id(UUID.randomUUID())
+                            .etapeDefinition(etape)
+                            .intituleAction(actReq.getIntituleAction())
+                            .employe(emp)
+                            .utilisateur(usr)
+                            .uniteOrganisationnelle(actUnite)
+                            .poste(actPoste)
+                            .strategieAssignation(actReq.getStrategieAssignation())
+                            .valeurAssignation(cibleVal)
+                            .modeActionValidation(actReq.getModeActionValidation() != null ? actReq.getModeActionValidation() : etape.getModeActionValidation())
+                            .donnees(actReq.getFields())
+                            .obligatoire(actReq.getObligatoire() != null ? actReq.getObligatoire() : true)
+                            .delaiSlaHeures(actReq.getDelaiSlaHeures() != null ? actReq.getDelaiSlaHeures() : etape.getDelaiSlaHeures())
+                            .actionDepassementSla(actReq.getActionDepassementSla() != null ? actReq.getActionDepassementSla() : etape.getActionDepassementSla())
+                            .actif(actReq.getActif() != null ? actReq.getActif() : true)
+                            .build();
+                    etape.addActeur(acteur);
+                }
+            }
+            def.addEtape(etape);
+        }
     }
 
     /**
@@ -1710,6 +2254,22 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         return mapToMetierResponse(metier);
     }
 
+    private String resolveEtapeValeurAssignation(WorkflowEtapeDefinitionEntity et) {
+        if (et.getValeurAssignation() != null && !et.getValeurAssignation().isBlank()) {
+            return et.getValeurAssignation();
+        }
+        StrategieAssignation strat = et.getStrategieAssignation();
+        if ((strat == StrategieAssignation.POSTE_SPECIFIQUE || strat == StrategieAssignation.ROLE_KEYCLOAK)
+                && et.getActeurs() != null) {
+            return et.getActeurs().stream()
+                    .map(WorkflowEtapeActeurDefinitionEntity::getValeurAssignation)
+                    .filter(v -> v != null && !v.isBlank())
+                    .findFirst()
+                    .orElse(null);
+        }
+        return null;
+    }
+
     private WorkflowDefinitionResponse mapToDefinitionResponse(WorkflowDefinitionEntity def) {
         List<WorkflowDefinitionResponse.WorkflowEtapeResponse> etapes = def.getEtapes().stream()
                 .map(et -> {
@@ -1725,24 +2285,33 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
                                     .utilisateurNom(act.getUtilisateur() != null ? act.getUtilisateur().getPrenom() + " " + act.getUtilisateur().getNom() : null)
                                     .uniteOrganisationnelleId(act.getUniteOrganisationnelle() != null ? act.getUniteOrganisationnelle().getId() : null)
                                     .uniteOrganisationnelleNom(act.getUniteOrganisationnelle() != null ? act.getUniteOrganisationnelle().getIntitule() : null)
+                                    .posteId(act.getPoste() != null ? act.getPoste().getId() : null)
+                                    .posteCode(act.getPoste() != null ? act.getPoste().getCodePoste() : null)
+                                    .posteIntitule(act.getPoste() != null ? act.getPoste().getIntitule() : null)
                                     .strategieAssignation(act.getStrategieAssignation() != null ? act.getStrategieAssignation().name() : null)
                                     .valeurAssignation(act.getValeurAssignation())
                                     .obligatoire(act.isObligatoire())
                                     .delaiSlaHeures(act.getDelaiSlaHeures())
+                                    .modeActionValidation(act.getModeActionValidation() != null ? act.getModeActionValidation().name() : null)
                                     .actif(act.isActif())
                                     .build())
                             .collect(Collectors.toList())
                             : Collections.emptyList();
+
+                    String valeurAssignationEtape = resolveEtapeValeurAssignation(et);
 
                     return WorkflowDefinitionResponse.WorkflowEtapeResponse.builder()
                             .id(et.getId())
                             .ordre(et.getOrdre())
                             .codeEtape(et.getCodeEtape())
                             .intitule(et.getIntitule())
+                            .description(et.getDescription())
                             .typeEtape(et.getTypeEtape() != null ? et.getTypeEtape().name() : null)
                             .politiqueValidation(et.getPolitiqueValidation() != null ? et.getPolitiqueValidation().name() : null)
                             .strategieAssignation(et.getStrategieAssignation() != null ? et.getStrategieAssignation().name() : null)
+                            .valeurAssignation(valeurAssignationEtape)
                             .delaiSlaHeures(et.getDelaiSlaHeures())
+                            .actionDepassementSla(et.getActionDepassementSla() != null ? et.getActionDepassementSla().name() : ActionDepassementSla.RELANCE_EMAIL.name())
                             .modeActionValidation(et.getModeActionValidation() != null ? et.getModeActionValidation().name() : ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE.name())
                             .autoriserAjoutFichier(et.getAutoriserAjoutFichier())
                             .fichierValidationObligatoire(et.getFichierValidationObligatoire())
@@ -1791,6 +2360,16 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
     // =========================================================================
 
     public UUID submitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch, MakerCheckerOperationType checkerOperationType) {
+        return submitChange(entityName, entityPk, appliedPatch, checkerOperationType, null);
+    }
+
+    public UUID submitChange(
+            MakerCheckerEntityName entityName,
+            String entityPk,
+            Map<String, Object> appliedPatch,
+            MakerCheckerOperationType checkerOperationType,
+            String preferredDefinitionCode
+    ) {
         UUID requestId = UUID.randomUUID();
 
         String makerId = "SYSTEM";
@@ -1818,7 +2397,8 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
 
         // Déclenche l'instance de workflow pour gouverner l'ensemble du cycle d'approbation
         try {
-            WorkflowInstanceEntity wfInstance = demarrerWorkflowPourEntite(entityName.name(), entityPk, appliedPatch, request.getId());
+            WorkflowInstanceEntity wfInstance = demarrerWorkflowPourEntite(
+                    entityName.name(), entityPk, appliedPatch, request.getId(), checkerOperationType, preferredDefinitionCode);
             if (wfInstance != null) {
                 request.setWorkflowInstanceId(wfInstance.getId());
                 request = makerCheckerRequestRepo.save(request);
@@ -1831,6 +2411,22 @@ private void evaluerProgressionEtape(WorkflowInstanceEntity instance, WorkflowEt
         publishMakerCheckerEvent(request, makerId, null);
 
         return request.getId();
+    }
+
+    @Transactional
+    public void updateMakerCheckerPayload(UUID requestId, Map<String, Object> consolidatedPayload) {
+        if (requestId == null || consolidatedPayload == null || consolidatedPayload.isEmpty()) {
+            return;
+        }
+        makerCheckerRequestRepo.findById(requestId).ifPresent(entity -> {
+            Map<String, Object> merged = new LinkedHashMap<>();
+            if (entity.getPayload() != null) {
+                merged.putAll(entity.getPayload());
+            }
+            merged.putAll(consolidatedPayload);
+            entity.setPayload(merged);
+            makerCheckerRequestRepo.save(entity);
+        });
     }
 
     public UUID directSubmitChange(MakerCheckerEntityName entityName, String entityPk, Map<String, Object> appliedPatch, MakerCheckerOperationType checkerOperationType) {

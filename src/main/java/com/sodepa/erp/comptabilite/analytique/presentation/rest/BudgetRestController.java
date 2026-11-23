@@ -2,8 +2,10 @@ package com.sodepa.erp.comptabilite.analytique.presentation.rest;
 
 import com.sodepa.erp.comptabilite.analytique.application.usecase.BudgetUseCase;
 import com.sodepa.erp.comptabilite.analytique.infrastructure.entities.BudgetEntity;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,7 +31,8 @@ public class BudgetRestController {
      * @return la réponse HTTP avec la ligne enregistrée ou mise à jour, ou un message d'erreur
      */
     @PostMapping
-    public ResponseEntity<?> definirBudget(@RequestBody BudgetUseCase.BudgetRequest request) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
+    public ResponseEntity<?> definirBudget(@Valid @RequestBody BudgetUseCase.BudgetRequest request) {
         try {
             BudgetEntity budget = budgetUseCase.definirBudget(request);
             return ResponseEntity.ok(budget);
@@ -45,6 +48,7 @@ public class BudgetRestController {
      * @return la liste des budgets de l'année
      */
     @GetMapping("/{annee}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'VIEW_ECRITURE', 'CREATE_BUDGET', 'CREATE_BUDGET_PLAN')")
     public ResponseEntity<List<BudgetEntity>> listerBudgetsParAnnee(@PathVariable int annee) {
         return ResponseEntity.ok(budgetUseCase.listerBudgetsParAnnee(annee));
     }
@@ -57,6 +61,7 @@ public class BudgetRestController {
      * @return la liste des budgets de la section
      */
     @GetMapping("/{annee}/sections/{sectionId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'VIEW_ECRITURE', 'CREATE_BUDGET', 'CREATE_BUDGET_PLAN')")
     public ResponseEntity<List<BudgetEntity>> listerBudgetsParSection(
             @PathVariable int annee,
             @PathVariable UUID sectionId) {

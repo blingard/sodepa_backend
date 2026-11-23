@@ -11,8 +11,10 @@ import com.sodepa.erp.organigramme.infrastructure.entities.EvolutionStructureOrg
 import com.sodepa.erp.organigramme.infrastructure.repo.EvolutionStructureOrganigrammeRepository;
 import com.sodepa.erp.pastoral.infrastructure.repo.SiteExploitationRepository;
 import com.sodepa.erp.pastoral.infrastructure.repo.UniteMesureRepository;
+import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.StatutCycleVieReferentiel;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +53,44 @@ public class GouvernanceMdmService {
     private final SiteExploitationRepository siteExploitationRepository;
     private final UniteMesureRepository uniteMesureRepository;
     private final NotificationService notificationService;
+
+    @Autowired(required = false)
+    private UtilsService utilsService;
+
+    private String resolveActorUsername(String fallback) {
+        if (utilsService != null) {
+            try {
+                var ud = utilsService.getCurrentUserData();
+                if (ud != null && ud.username() != null && !ud.username().isBlank()) {
+                    return ud.username();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return (fallback != null && !fallback.isBlank()) ? fallback.trim() : "SYSTEM";
+    }
+
+    private String resolveActorRole(String fallbackRole) {
+        if (utilsService != null) {
+            try {
+                var ud = utilsService.getCurrentUserData();
+                if (ud != null) {
+                    if (ud.isDg()) return "DG";
+                    if (ud.isDaf()) return "DAF";
+                    if (ud.posteData() != null) {
+                        for (var pd : ud.posteData()) {
+                            if (pd != null && pd.codePoste() != null && pd.codePoste().toUpperCase(Locale.ROOT).contains("INFO")) {
+                                return "CELLULE_INFORMATIQUE";
+                            }
+                        }
+                    }
+                    return "PROPRIETAIRE_METIER";
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return fallbackRole != null ? fallbackRole : "PROPRIETAIRE_METIER";
+    }
 
     /**
      * Constructeur avec injection des dépôts MDM et du service de notifications multi-canaux.
@@ -191,6 +231,9 @@ public class GouvernanceMdmService {
         if (fiche.getStatutCycleVie() == null) {
             fiche.setStatutCycleVie(StatutCycleVieReferentiel.BROUILLON);
         }
+        fiche.setId(null);
+        fiche.setAuteurUsername(resolveActorUsername(fiche.getAuteurUsername()));
+        fiche.setValideurMetierUsername(null);
         fiche.setHorodatageModification(LocalDateTime.now());
         return ficheVersionRepository.save(fiche);
     }
@@ -213,20 +256,23 @@ public class GouvernanceMdmService {
         FicheReferentielVersionEntity fiche = ficheVersionRepository.findById(ficheId)
                 .orElseThrow(() -> new IllegalArgumentException("Fiche de référentiel introuvable : " + ficheId));
 
-        if ("CELLULE_INFORMATIQUE".equalsIgnoreCase(roleValideur) || "ADMIN_TECHNIQUE".equalsIgnoreCase(roleValideur)) {
+        String effectiveValideur = resolveActorUsername(valideurUsername);
+        String effectiveRole = resolveActorRole(roleValideur);
+
+        if ("CELLULE_INFORMATIQUE".equalsIgnoreCase(effectiveRole) || "ADMIN_TECHNIQUE".equalsIgnoreCase(effectiveRole)) {
             throw new IllegalStateException(
                     "Refus de sécurité (CA-REF-001-04 / RG-REF-027) : la Cellule Informatique ne peut pas valider fonctionnellement une donnée métier.");
         }
-        if (fiche.getAuteurUsername() != null && fiche.getAuteurUsername().equalsIgnoreCase(valideurUsername)) {
+        if (fiche.getAuteurUsername() != null && fiche.getAuteurUsername().equalsIgnoreCase(effectiveValideur)) {
             throw new IllegalStateException(
                     "Séparation des tâches (CA-REF-002-07 / RG-REF-019) : l'auteur d'une fiche ("
-                            + valideurUsername + ") ne peut pas approuver sa propre soumission.");
+                            + effectiveValideur + ") ne peut pas approuver sa propre soumission.");
         }
         if (!approuver && (motif == null || motif.isBlank())) {
             throw new IllegalArgumentException("Un motif est obligatoire en cas de rejet d'une fiche de référentiel (CT-REF-05).");
         }
 
-        fiche.setValideurMetierUsername(valideurUsername);
+        fiche.setValideurMetierUsername(effectiveValideur);
         fiche.setHorodatageModification(LocalDateTime.now());
         if (approuver) {
             fiche.setStatutCycleVie(StatutCycleVieReferentiel.ACTIF);
@@ -242,8 +288,8 @@ public class GouvernanceMdmService {
                     ? "[ERP SODEPA - MDM] Fiche référentiel approuvée : " + saved.getCodeFiche()
                     : "[ERP SODEPA - MDM] Fiche référentiel rejetée : " + saved.getCodeFiche();
             String corps = approuver
-                    ? "Votre fiche de référentiel " + saved.getCodeFiche() + " (" + saved.getLibelle() + ") a été approuvée et activée par " + valideurUsername + "."
-                    : "Votre fiche de référentiel " + saved.getCodeFiche() + " (" + saved.getLibelle() + ") a été rejetée par " + valideurUsername + ". Motif : " + motif;
+                    ? "Votre fiche de référentiel " + saved.getCodeFiche() + " (" + saved.getLibelle() + ") a été approuvée et activée par " + effectiveValideur + "."
+                    : "Votre fiche de référentiel " + saved.getCodeFiche() + " (" + saved.getLibelle() + ") a été rejetée par " + effectiveValideur + ". Motif : " + motif;
             notificationService.notifierEmailEtSms(
                     null, null, sujet, corps,
                     approuver ? "MDM_FICHE_APPROUVEE" : "MDM_FICHE_REJETEE",
@@ -340,6 +386,7 @@ public class GouvernanceMdmService {
     @Transactional
     public Map<String, Object> fusionnerFichesDoublons(
             String codeFamille, String codeFicheMaitre, String codeFicheSecondaire, String operateurUsername) {
+        String effectiveOperateur = resolveActorUsername(operateurUsername);
         if (codeFicheMaitre.trim().equalsIgnoreCase(codeFicheSecondaire.trim())) {
             throw new IllegalArgumentException("Les deux codes de fiches à fusionner doivent être distincts.");
         }
@@ -357,7 +404,7 @@ public class GouvernanceMdmService {
         secondaire.setTransactionsNonSoldeesCount(0);
         secondaire.setStatutCycleVie(StatutCycleVieReferentiel.ARCHIVE);
         secondaire.setFusionneeVersCodeFiche(maitre.getCodeFiche());
-        secondaire.setMotifRejetOuSuspension("Fusionnée vers la fiche maître " + maitre.getCodeFiche() + " par " + operateurUsername);
+        secondaire.setMotifRejetOuSuspension("Fusionnée vers la fiche maître " + maitre.getCodeFiche() + " par " + effectiveOperateur);
         secondaire.setHorodatageModification(LocalDateTime.now());
 
         ficheVersionRepository.save(maitre);
@@ -368,7 +415,7 @@ public class GouvernanceMdmService {
                 "ficheMaitreConservee", maitre.getCodeFiche(),
                 "ficheSecondaireArchivee", secondaire.getCodeFiche(),
                 "transactionsReaffectees", transactionsTransferees,
-                "operateur", operateurUsername,
+                "operateur", effectiveOperateur,
                 "horodatage", LocalDateTime.now().toString()
         );
     }

@@ -5,6 +5,7 @@ import com.sodepa.erp.budget.application.usecase.ConsulterAuditTrailBudgetUseCas
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/audit")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'WORKFLOW_SUPERVISION', 'WORKFLOW_CONFIG', 'GET_FULL_USER_INFO')")
 @Tag(name = "Piste d'Audit Budgétaire", description = "Historique inaltérable et traçabilité des opérations budgétaires")
 public class AuditTrailRestController {
 

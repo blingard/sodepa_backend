@@ -4,8 +4,10 @@ import com.sodepa.erp.comptabilite.analytique.application.usecase.AnalytiqueUseC
 import com.sodepa.erp.comptabilite.analytique.infrastructure.entities.AxeAnalytiqueEntity;
 import com.sodepa.erp.comptabilite.analytique.infrastructure.entities.SectionAnalytiqueEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.entities.LigneEcritureEntity;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,7 +33,8 @@ public class AnalytiqueRestController {
      * @return la réponse HTTP contenant l'axe analytique créé ou un message d'erreur
      */
     @PostMapping("/axes")
-    public ResponseEntity<?> createAxe(@RequestBody AnalytiqueUseCase.AxeRequest request) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
+    public ResponseEntity<?> createAxe(@Valid @RequestBody AnalytiqueUseCase.AxeRequest request) {
         try {
             AxeAnalytiqueEntity axe = analytiqueUseCase.creerAxe(request);
             return ResponseEntity.ok(axe);
@@ -46,6 +49,7 @@ public class AnalytiqueRestController {
      * @return la liste des axes analytiques
      */
     @GetMapping("/axes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_ECRITURE', 'VIEW_BUDGET', 'INIT_CREATE_ECRITURE', 'CREATE_BUDGET', 'CREATE_BUDGET_PLAN')")
     public ResponseEntity<List<AxeAnalytiqueEntity>> listerAxes() {
         return ResponseEntity.ok(analytiqueUseCase.listerAxes());
     }
@@ -58,6 +62,7 @@ public class AnalytiqueRestController {
      * @return la réponse HTTP contenant l'axe mis à jour ou une erreur
      */
     @PutMapping("/axes/{id}/statut")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_UPDATE_ECRITURE', 'UPDATE_BUDGET', 'UPDATE_BUDGET_PLAN')")
     public ResponseEntity<?> modifierStatutAxe(@PathVariable UUID id, @RequestParam boolean actif) {
         try {
             AxeAnalytiqueEntity axe = analytiqueUseCase.modifierStatutAxe(id, actif);
@@ -75,7 +80,8 @@ public class AnalytiqueRestController {
      * @return la section analytique créée ou une erreur
      */
     @PostMapping("/axes/{axeId}/sections")
-    public ResponseEntity<?> creerSection(@PathVariable UUID axeId, @RequestBody AnalytiqueUseCase.SectionRequest request) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
+    public ResponseEntity<?> creerSection(@PathVariable UUID axeId, @Valid @RequestBody AnalytiqueUseCase.SectionRequest request) {
         try {
             SectionAnalytiqueEntity section = analytiqueUseCase.creerSection(axeId, request);
             return ResponseEntity.ok(section);
@@ -91,6 +97,7 @@ public class AnalytiqueRestController {
      * @return la liste des sections rattachées
      */
     @GetMapping("/axes/{axeId}/sections")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_ECRITURE', 'VIEW_BUDGET', 'INIT_CREATE_ECRITURE', 'CREATE_BUDGET', 'CREATE_BUDGET_PLAN')")
     public ResponseEntity<List<SectionAnalytiqueEntity>> listerSectionsParAxe(@PathVariable UUID axeId) {
         return ResponseEntity.ok(analytiqueUseCase.listerSectionsParAxe(axeId));
     }
@@ -103,6 +110,7 @@ public class AnalytiqueRestController {
      * @return la section analytique mise à jour ou une erreur
      */
     @PutMapping("/sections/{id}/statut")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_UPDATE_ECRITURE', 'UPDATE_BUDGET', 'UPDATE_BUDGET_PLAN')")
     public ResponseEntity<?> modifierStatutSection(@PathVariable UUID id, @RequestParam boolean actif) {
         try {
             SectionAnalytiqueEntity section = analytiqueUseCase.modifierStatutSection(id, actif);
@@ -120,7 +128,8 @@ public class AnalytiqueRestController {
      * @return la ligne d'écriture ventilée ou une erreur
      */
     @PostMapping("/lignes/{ligneId}/ventiler")
-    public ResponseEntity<?> ventilerLigne(@PathVariable UUID ligneId, @RequestBody List<AnalytiqueUseCase.VentilationRequest> request) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'CREATE_BUDGET', 'UPDATE_BUDGET')")
+    public ResponseEntity<?> ventilerLigne(@PathVariable UUID ligneId, @Valid @RequestBody List<AnalytiqueUseCase.VentilationRequest> request) {
         try {
             LigneEcritureEntity ligne = analytiqueUseCase.ventilerLigne(ligneId, request);
             return ResponseEntity.ok(ligne);

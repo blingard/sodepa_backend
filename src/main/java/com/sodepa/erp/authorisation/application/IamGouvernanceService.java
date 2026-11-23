@@ -6,15 +6,22 @@ import com.sodepa.erp.authorisation.infrastructure.entities.RegleSodEntity;
 import com.sodepa.erp.authorisation.infrastructure.repo.AffectationProfilUtilisateurRepository;
 import com.sodepa.erp.authorisation.infrastructure.repo.ProfilFonctionnelRepository;
 import com.sodepa.erp.authorisation.infrastructure.repo.RegleSodRepository;
+import com.sodepa.erp.authentication.application.ports.KeycloakProvisioningPort;
 import com.sodepa.erp.notification.application.NotificationService;
 import com.sodepa.erp.rh.infrastructure.entities.ContratTravailEntity;
 import com.sodepa.erp.rh.infrastructure.entities.StatutContrat;
 import com.sodepa.erp.rh.infrastructure.repo.ContratTravailRepository;
+import com.sodepa.erp.share.UtilsService;
+import com.sodepa.erp.share.erreurs.AccesRefuseException;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
+import com.sodepa.erp.utils.Permissions;
+import com.sodepa.erp.utils.UserManagementEnginePort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +46,32 @@ public class IamGouvernanceService {
     private final ContratTravailRepository contratTravailRepository;
     private final NotificationService notificationService;
 
+    @Autowired(required = false)
+    private UtilsService utilsService;
+
+    @Autowired(required = false)
+    private KeycloakProvisioningPort keycloakProvisioningPort;
+
+    @Autowired(required = false)
+    private UserManagementEnginePort userManagementEnginePort;
+
+    private void requireGovernancePermission(boolean writeOperation) {
+        if (utilsService == null || SecurityContextHolder.getContext().getAuthentication() == null) {
+            return;
+        }
+        if (writeOperation) {
+            utilsService.hasAnyPermission(Permissions.INIT_CREATE_USER, Permissions.INIT_UPDATE_USER, Permissions.VALIDATE_OR_REJECT_USER);
+        } else {
+            utilsService.hasAnyPermission(Permissions.GET_FULL_USER_INFO, Permissions.INIT_CREATE_USER, Permissions.INIT_UPDATE_USER);
+        }
+    }
+
+    private void evictCacheSafe(UUID userId) {
+        if (userManagementEnginePort != null) {
+            userManagementEnginePort.evictAuthCache(userId);
+        }
+    }
+
     // ==========================================
     // PROFILS FONCTIONNELS & PROPAGATION (CA-REF-025-03 / RG-REF-018)
     // ==========================================
@@ -62,25 +95,38 @@ public class IamGouvernanceService {
      * @throws IllegalStateException Si le profil viole en interne une règle de la matrice SoD.
      */
     @Transactional
-    public ProfilFonctionnelEntity creerOuMettreAJourProfil(ProfilFonctionnelEntity profil) {
-        verifierAbsenceConflitSodInterneProfil(profil);
-        ProfilFonctionnelEntity saved = profilRepository.save(profil);
+    public ProfilFonctionnelEntity creerOuMettreAJourProfil(ProfilFonctionnelEntity input) {
+        requireGovernancePermission(true);
+        if (input == null || input.getCode() == null || input.getCode().isBlank()) {
+            throw new IllegalArgumentException("Le code du profil fonctionnel est obligatoire.");
+        }
+        String normalizedCode = input.getCode().trim().toUpperCase(Locale.ROOT);
+        ProfilFonctionnelEntity target = (input.getId() != null ? profilRepository.findById(input.getId()) : profilRepository.findByCodeIgnoreCase(normalizedCode))
+                .orElseGet(ProfilFonctionnelEntity::new);
 
-        // Propagation automatique à tous les utilisateurs porteurs de ce profil (CA-REF-025-03)
+        target.setCode(normalizedCode);
+        target.setLibelle(input.getLibelle());
+        target.setDescription(input.getDescription());
+        target.setPlafondEngagementFcfa(input.getPlafondEngagementFcfa());
+        target.setMfaRequis(input.isMfaRequis());
+        target.setPermissions(input.getPermissions() != null ? new HashSet<>(input.getPermissions()) : new HashSet<>());
+        target.setActif(true);
+
+        verifierAbsenceConflitSodInterneProfil(target);
+        ProfilFonctionnelEntity saved = profilRepository.save(target);
+
+        // Synchronisation MFA et invalidation de cache sans recopier définitivement les permissions du profil dans user.getPermissions()
         List<AffectationProfilUtilisateurEntity> porteurs = affectationProfilRepository.findByProfilIdAndActifTrue(saved.getId());
         for (AffectationProfilUtilisateurEntity aff : porteurs) {
             userRepository.findById(aff.getUtilisateurId()).ifPresent(u -> {
-                if (u.getPermissions() == null) {
-                    u.setPermissions(new HashSet<>());
-                }
-                u.getPermissions().addAll(saved.getPermissions());
-                if (saved.isMfaRequis()) {
+                if (saved.isMfaRequis() && !u.isMfaActive()) {
                     u.setMfaActive(true);
+                    userRepository.save(u);
                 }
-                userRepository.save(u);
+                evictCacheSafe(u.getId());
             });
         }
-        log.info("Profil fonctionnel {} sauvegardé et propagé à {} agents porteurs (CA-REF-025-03).",
+        log.info("Profil fonctionnel {} sauvegardé (résolution dynamique active pour {} porteurs).",
                 saved.getCode(), porteurs.size());
         return saved;
     }
@@ -111,6 +157,12 @@ public class IamGouvernanceService {
             String codeMagasinOuSite,
             Integer exerciceAutorise,
             LocalDate dateFin) {
+        requireGovernancePermission(true);
+
+        UUID actorId = utilsService != null ? utilsService.getCurrentUserIdOrNull() : null;
+        if (actorId != null && actorId.equals(utilisateurId) && !utilsService.isAdmin()) {
+            throw new AccesRefuseException("Auto-attribution de profil interdite (Principe des 4 yeux).");
+        }
 
         UtilisateurEntity user = userRepository.findById(utilisateurId)
                 .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable : " + utilisateurId));
@@ -118,8 +170,11 @@ public class IamGouvernanceService {
                 .orElseThrow(() -> new IllegalArgumentException("Profil fonctionnel introuvable : " + codeProfil));
 
         // 1. Vérification de la Matrice SoD avant attribution (CA-REF-027-01 / RG-REF-021, 022, 027)
+        LocalDate today = LocalDate.now();
         List<AffectationProfilUtilisateurEntity> affectationsActuelles =
-                affectationProfilRepository.findByUtilisateurIdAndActifTrue(utilisateurId);
+                affectationProfilRepository.findByUtilisateurIdAndActifTrue(utilisateurId).stream()
+                        .filter(a -> (a.getDateFin() == null || !a.getDateFin().isBefore(today)))
+                        .toList();
 
         Set<String> codesProfilsCumules = affectationsActuelles.stream()
                 .map(a -> a.getProfil().getCode().toUpperCase())
@@ -127,7 +182,10 @@ public class IamGouvernanceService {
         codesProfilsCumules.add(nouveauProfil.getCode().toUpperCase());
 
         Set<String> permissionsCumulees = new HashSet<>();
-        if (user.getPermissions() != null) {
+        if (userManagementEnginePort != null) {
+            userManagementEnginePort.resolveEffectivePermissions(utilisateurId)
+                    .forEach(p -> permissionsCumulees.add(p.name()));
+        } else if (user.getPermissions() != null) {
             user.getPermissions().forEach(p -> permissionsCumulees.add(p.name()));
         }
         affectationsActuelles.forEach(a -> a.getProfil().getPermissions().forEach(p -> permissionsCumulees.add(p.name())));
@@ -149,15 +207,12 @@ public class IamGouvernanceService {
                 .build();
         affectation = affectationProfilRepository.save(affectation);
 
-        // 3. Synchronisation des permissions effectives et du MFA (CA-REF-028-02)
-        if (user.getPermissions() == null) {
-            user.setPermissions(new HashSet<>());
-        }
-        user.getPermissions().addAll(nouveauProfil.getPermissions());
-        if (nouveauProfil.isMfaRequis()) {
+        // 3. Synchronisation du MFA sans figer les droits du profil dans user.getPermissions() (résolution dynamique dans UserManagementEngine)
+        if (nouveauProfil.isMfaRequis() && !user.isMfaActive()) {
             user.setMfaActive(true);
+            userRepository.save(user);
         }
-        userRepository.save(user);
+        evictCacheSafe(utilisateurId);
 
         return affectation;
     }
@@ -194,8 +249,25 @@ public class IamGouvernanceService {
      * @return La règle {@link RegleSodEntity} enregistrée.
      */
     @Transactional
-    public RegleSodEntity creerRegleSod(RegleSodEntity regle) {
-        return regleSodRepository.save(regle);
+    public RegleSodEntity creerRegleSod(RegleSodEntity input) {
+        requireGovernancePermission(true);
+        if (input == null || input.getCodeRegle() == null || input.getCodeRegle().isBlank()) {
+            throw new IllegalArgumentException("Le code de règle SoD est obligatoire.");
+        }
+        String code = input.getCodeRegle().trim().toUpperCase(Locale.ROOT);
+        RegleSodEntity target = input.getId() != null
+                ? regleSodRepository.findById(input.getId()).orElseGet(RegleSodEntity::new)
+                : new RegleSodEntity();
+        target.setCodeRegle(code);
+        target.setLibelle(input.getLibelle());
+        target.setTypeIncompatibilite(input.getTypeIncompatibilite() != null ? input.getTypeIncompatibilite().trim().toUpperCase(Locale.ROOT) : "PERMISSION_VS_PERMISSION");
+        target.setElementA(input.getElementA() != null ? input.getElementA().trim().toUpperCase(Locale.ROOT) : null);
+        target.setElementB(input.getElementB() != null ? input.getElementB().trim().toUpperCase(Locale.ROOT) : null);
+        target.setRegleGestionRef(input.getRegleGestionRef());
+        target.setRisqueMetier(input.getRisqueMetier());
+        target.setBloquant(input.isBloquant());
+        target.setActif(true);
+        return regleSodRepository.save(target);
     }
 
     /**
@@ -247,15 +319,18 @@ public class IamGouvernanceService {
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> auditerConflitsSodUtilisateurs() {
+        requireGovernancePermission(false);
         List<RegleSodEntity> regles = regleSodRepository.findByActifTrueOrderByCodeRegleAsc();
         List<UtilisateurEntity> users = userRepository.findAll();
         List<Map<String, Object>> anomalies = new ArrayList<>();
 
         for (UtilisateurEntity u : users) {
             if (!u.isActif()) continue;
-            Set<String> perms = u.getPermissions() != null
-                    ? u.getPermissions().stream().map(Enum::name).collect(Collectors.toSet())
-                    : Set.of();
+            Set<String> perms = userManagementEnginePort != null
+                    ? userManagementEnginePort.resolveEffectivePermissions(u.getId()).stream().map(Enum::name).collect(Collectors.toSet())
+                    : (u.getPermissions() != null
+                            ? u.getPermissions().stream().map(Enum::name).collect(Collectors.toSet())
+                            : Set.of());
             Set<String> profils = affectationProfilRepository.findByUtilisateurIdAndActifTrue(u.getId()).stream()
                     .map(a -> a.getProfil().getCode().toUpperCase())
                     .collect(Collectors.toSet());
@@ -296,39 +371,27 @@ public class IamGouvernanceService {
      *
      * @return Rapport synthétique des comptes désactivés lors de l'exécution.
      */
-    @Scheduled(cron = "0 5 0 * * *")
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 5 0 * * *")
+    @net.javacrumbs.shedlock.spring.annotation.SchedulerLock(name = "iamRevueAutomatiqueSortiesRh", lockAtMostFor = "PT10M", lockAtLeastFor = "PT2S")
     @Transactional
     public Map<String, Object> executerRevueAutomatiqueComptesEtSortiesRh() {
+        requireGovernancePermission(true);
         LocalDate today = LocalDate.now();
         List<String> comptesDesactives = new ArrayList<>();
 
         // 1. Comptes temporaires / prestataires arrivés à expiration (CA-REF-024-03)
-        for (UtilisateurEntity u : userRepository.findAll()) {
-            if (u.isActif() && u.getDateExpiration() != null && u.getDateExpiration().isBefore(today)) {
-                u.setActif(false);
-                u.setStatutCompte("EXPIRE");
-                userRepository.save(u);
-                revoquerAffectationsProfils(u.getId());
-                comptesDesactives.add(u.getUsername() + " (EXPIRATION_ACCES_TEMPORAIRE : " + u.getDateExpiration() + ")");
-                notifierSecuriteDesactivationCompte(u, "Expiration de la période d'accès temporaire au " + u.getDateExpiration());
-            }
+        for (UtilisateurEntity u : userRepository.findByActifTrueAndDateExpirationBefore(today)) {
+            desactiverCompteEtKeycloak(u, "EXPIRE", "Expiration de la période d'accès temporaire au " + u.getDateExpiration());
+            comptesDesactives.add(u.getUsername() + " (EXPIRATION_ACCES_TEMPORAIRE : " + u.getDateExpiration() + ")");
         }
 
         // 2. Agents RH en fin de contrat / sortie des effectifs (CA-REF-024-02 / RG-REF-024)
-        for (ContratTravailEntity contrat : contratTravailRepository.findAll()) {
-            boolean contratEchu = (contrat.getDateFinContrat() != null && contrat.getDateFinContrat().isBefore(today))
-                    || contrat.getStatut() == StatutContrat.RESILIE
-                    || contrat.getStatut() == StatutContrat.CLOTURE;
-            if (contratEchu && contrat.getEmploye() != null && contrat.getEmploye().getUtilisateur() != null) {
-                UtilisateurEntity u = contrat.getEmploye().getUtilisateur();
-                if (u.isActif()) {
-                    u.setActif(false);
-                    u.setStatutCompte("DESACTIVE_SORTIE_RH");
-                    userRepository.save(u);
-                    revoquerAffectationsProfils(u.getId());
-                    comptesDesactives.add(u.getUsername() + " (SORTIE_RH_CONTRAT : " + contrat.getNumeroContrat() + ")");
-                    notifierSecuriteDesactivationCompte(u, "Sortie RH / Fin du contrat " + contrat.getNumeroContrat());
-                }
+        for (ContratTravailEntity contrat : contratTravailRepository.findContratsEchusPourUtilisateursActifs(
+                today, List.of(StatutContrat.RESILIE, StatutContrat.CLOTURE))) {
+            UtilisateurEntity u = contrat.getEmploye().getUtilisateur();
+            if (u != null && u.isActif()) {
+                desactiverCompteEtKeycloak(u, "DESACTIVE_SORTIE_RH", "Sortie RH / Fin du contrat " + contrat.getNumeroContrat());
+                comptesDesactives.add(u.getUsername() + " (SORTIE_RH_CONTRAT : " + contrat.getNumeroContrat() + ")");
             }
         }
 
@@ -337,6 +400,22 @@ public class IamGouvernanceService {
         rapport.put("nombreComptesDesactives", comptesDesactives.size());
         rapport.put("comptesDesactives", comptesDesactives);
         return rapport;
+    }
+
+    private void desactiverCompteEtKeycloak(UtilisateurEntity u, String statutCompte, String motif) {
+        u.setActif(false);
+        u.setStatutCompte(statutCompte);
+        userRepository.save(u);
+        revoquerAffectationsProfils(u.getId());
+        evictCacheSafe(u.getId());
+        if (keycloakProvisioningPort != null) {
+            try {
+                keycloakProvisioningPort.setUserActive(u.getUsername(), false);
+            } catch (Exception e) {
+                log.warn("Impossible de désactiver le compte Keycloak '{}' lors de la revue RH : {}", u.getUsername(), e.getMessage());
+            }
+        }
+        notifierSecuriteDesactivationCompte(u, motif);
     }
 
     /**

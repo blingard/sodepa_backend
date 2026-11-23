@@ -72,9 +72,13 @@ public class MinioServiceImpl implements MinioService {
         log.info("Uploading file to MinIO: {} (size: {} bytes, type: {})",objectName, file.getSize(), contentType);
 
         try (InputStream inputStream = file.getInputStream()) {
+            String bucket = minioProperties.getBucketName();
+            if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build())) {
+                minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+            }
             minioClient.putObject(
                     PutObjectArgs.builder()
-                            .bucket(minioProperties.getBucketName())
+                            .bucket(bucket)
                             .object(objectName)
                             .stream(inputStream, file.getSize(), -1)
                             .contentType(contentType)

@@ -1,10 +1,12 @@
 package com.sodepa.erp.workflow.presentation.responses;
 
+import com.sodepa.erp.workflow.infrastructure.entities.ValidationStepActionMode;
 import com.sodepa.erp.workflow.infrastructure.entities.WorkflowDecision;
 import com.sodepa.erp.workflow.infrastructure.entities.StatutWorkflowTache;
 import lombok.*;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -83,4 +85,16 @@ public class WorkflowTacheResponse {
 
     /** Liste des champs autorisés à la modification. */
     private String champsModifiablesAutorises;
+
+    /** Mode d'action exigé pour valider cette tâche. */
+    private ValidationStepActionMode modeActionValidation;
+
+    /** URI du document justificatif téléversé lors du traitement de cette tâche. */
+    private String pieceJointeUri;
+
+    /** Données JSON sérialisées des attributs modifiés sur cette tâche. */
+    private String champsModifiesJson;
+
+    /** Données JSON structurées stockées sur la tâche (pièce jointe, champs modifiés). */
+    private Map<String, Object> currentData;
 }

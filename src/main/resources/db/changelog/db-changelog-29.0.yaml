@@ -1,0 +1,23 @@
+# Changelog 29.0 — Séquences PostgreSQL atomiques pour la génération sans collision des codes métier.
+databaseChangeLog:
+  - changeSet:
+      id: 29.0-01-code-generation-sequences
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_fournisseur START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_expression_besoin START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_marche_dossier START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_reception_pv START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_tiers START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_formation_action START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_stage START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_bovin START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_cheptel_mvt START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_employe START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_contrat_travail START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_regie_approv START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_regie_depense START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_workflow_def START WITH 1 INCREMENT BY 1;

@@ -1,0 +1,62 @@
+# Changelog 27.0 — suppression des contraintes CHECK héritées de Hibernate ddl-auto sur les énumérations IAM et Workflow.
+#
+# Sur une base initialisée avant l'ajout de nouvelles valeurs d'énumérations
+# (ex. BUDGET_CLOTURE_EXERCICE dans Permissions, ou évolutions de WorkflowDomaine / StatutWorkflowTache),
+# ddl-auto ne met pas à jour les contraintes CHECK existantes, bloquant le démarrage ou le workflow.
+databaseChangeLog:
+  - changeSet:
+      id: 27.0-01-iam-et-workflow-sans-check-enum
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                tbl text;
+                c record;
+              BEGIN
+                FOREACH tbl IN ARRAY ARRAY[
+                  'public.iam_profil_permissions',
+                  'public.utilisateur_permissions',
+                  'public.poste_permissions',
+                  'public.workflows_metiers',
+                  'public.workflows_definitions',
+                  'public.workflows_etapes_definitions',
+                  'public.workflows_etapes_acteurs_definitions',
+                  'public.workflows_instances',
+                  'public.workflows_taches',
+                  'public.workflows_historique_audit'
+                ]
+                LOOP
+                  IF to_regclass(tbl) IS NOT NULL THEN
+                    FOR c IN
+                      SELECT conname FROM pg_constraint
+                      WHERE conrelid = to_regclass(tbl) AND contype = 'c'
+                    LOOP
+                      EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', tbl, c.conname);
+                    END LOOP;
+                  END IF;
+                END LOOP;
+              END $$;
+
+  - changeSet:
+      id: 27.0-02-notifications-sans-check-enum
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                c record;
+              BEGIN
+                IF to_regclass('public.sys_notifications') IS NOT NULL THEN
+                  FOR c IN
+                    SELECT conname FROM pg_constraint
+                    WHERE conrelid = to_regclass('public.sys_notifications') AND contype = 'c'
+                  LOOP
+                    EXECUTE format('ALTER TABLE public.sys_notifications DROP CONSTRAINT %I', c.conname);
+                  END LOOP;
+                END IF;
+              END $$;

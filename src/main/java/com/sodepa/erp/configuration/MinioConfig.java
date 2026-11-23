@@ -33,6 +33,7 @@ public class MinioConfig {
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
                 .build();
+        client.setTimeout(3_000L, 10_000L, 10_000L);
 
         // Créer le bucket automatiquement s'il n'existe pas
         try {

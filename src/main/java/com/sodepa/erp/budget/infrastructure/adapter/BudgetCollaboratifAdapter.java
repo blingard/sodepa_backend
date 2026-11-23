@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -129,25 +130,26 @@ public class BudgetCollaboratifAdapter {
 
     @Transactional
     public void genererBudgetDepuisHistorique(GenererHistoriqueInput input) {
-        List<EcritureEntity> ecritures = ecritureRepository.findAll();
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
+                StatutEcriture.VALIDE,
+                LocalDate.of(input.anneeSource(), 1, 1),
+                LocalDate.of(input.anneeSource(), 12, 31));
         Map<String, Map<UUID, BigDecimal>> cumulsMap = new HashMap<>();
 
         for (EcritureEntity e : ecritures) {
-            if (e.getDateComptable().getYear() == input.anneeSource() && e.getStatut() == StatutEcriture.VALIDE) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    String compteCode = l.getCompteCode();
-                    if (compteCode.startsWith("6") || compteCode.startsWith("7")) {
-                        BigDecimal montantLigne = l.getDebit().compareTo(BigDecimal.ZERO) > 0 ? l.getDebit() : l.getCredit();
+            for (LigneEcritureEntity l : e.getLignes()) {
+                String compteCode = l.getCompteCode();
+                if (compteCode.startsWith("6") || compteCode.startsWith("7")) {
+                    BigDecimal montantLigne = l.getDebit().compareTo(BigDecimal.ZERO) > 0 ? l.getDebit() : l.getCredit();
 
-                        if (l.getVentilations() != null && !l.getVentilations().isEmpty()) {
-                            for (VentilationAnalytiqueEntity v : l.getVentilations()) {
-                                UUID secId = v.getSection().getId();
-                                BigDecimal montVent = v.getMontant();
-                                cumulerMontant(cumulsMap, compteCode, secId, montVent);
-                            }
-                        } else {
-                            cumulerMontant(cumulsMap, compteCode, null, montantLigne);
+                    if (l.getVentilations() != null && !l.getVentilations().isEmpty()) {
+                        for (VentilationAnalytiqueEntity v : l.getVentilations()) {
+                            UUID secId = v.getSection().getId();
+                            BigDecimal montVent = v.getMontant();
+                            cumulerMontant(cumulsMap, compteCode, secId, montVent);
                         }
+                    } else {
+                        cumulerMontant(cumulsMap, compteCode, null, montantLigne);
                     }
                 }
             }

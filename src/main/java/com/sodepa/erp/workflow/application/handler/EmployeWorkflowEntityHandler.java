@@ -71,41 +71,33 @@ public class EmployeWorkflowEntityHandler implements WorkflowEntityHandler {
                 || clean.equals(ENTITY_KEY_CLASS);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.sodepa.erp.rh.application.RhService rhService;
+
     @Override
     @Transactional
     public void onStepApproved(WorkflowTaskEntity task, Map<String, Object> modifiedFields) {
         if (task == null || task.getWorkflowInstance() == null) {
             return;
         }
-
-        UUID employeId = parseEntityId(task.getWorkflowInstance().getEntityId());
-        if (employeId == null) {
-            log.warn("[WORKFLOW-EMPLOYE] Identifiant employé invalide : {}", task.getWorkflowInstance().getEntityId());
-            return;
-        }
-
-        EmployeEntity employe = employeRepository.findById(employeId).orElse(null);
-        if (employe == null) {
-            log.warn("[WORKFLOW-EMPLOYE] Employé introuvable pour la tâche {} (ID: {})", task.getId(), employeId);
-            return;
-        }
-
-        log.info("[WORKFLOW-EMPLOYE] Étape '{}' approuvée pour l'employé {} ({})",
-                task.getEtapeDefinition() != null ? task.getEtapeDefinition().getCodeEtape() : "N/A",
-                employe.getMatricule(),
-                employe.getId());
-
-        // Application des champs modifiés / enrichis lors de la validation d'étape
-        if (modifiedFields != null && !modifiedFields.isEmpty()) {
-            appliquerChampsModifies(employe, modifiedFields);
-            employeRepository.save(employe);
-            log.info("[WORKFLOW-EMPLOYE] Modifications appliquées avec succès sur l'employé {}", employe.getId());
-        }
+        // Aucune écriture ni mutation en table métier PostgreSQL pendant les étapes intermédiaires :
+        // les champs modifiés (champsModifiesJson) et pièces jointes vivent dans ClickHouse / Outbox jusqu'à l'approbation finale.
+        WorkflowInstanceEntity instance = task.getWorkflowInstance();
+        String codeEtape = task.getEtapeDefinition() != null ? task.getEtapeDefinition().getCodeEtape() : "N/A";
+        log.debug("[WORKFLOW-EMPLOYE] Étape '{}' approuvée pour instance {} ({}) — état historisé dans ClickHouse.",
+                codeEtape, instance.getId(), instance.getEntityId());
     }
 
     @Override
     @Transactional
     public void onWorkflowCompleted(WorkflowInstanceEntity instance) {
+        onWorkflowCompleted(instance, null);
+    }
+
+    @Override
+    @Transactional
+    public void onWorkflowCompleted(WorkflowInstanceEntity instance, Map<String, Object> finalData) {
         if (instance == null) {
             return;
         }
@@ -117,6 +109,10 @@ public class EmployeWorkflowEntityHandler implements WorkflowEntityHandler {
         }
 
         EmployeEntity employe = employeRepository.findById(employeId).orElse(null);
+        if (employe == null && finalData != null && !finalData.isEmpty()) {
+            rhService.finaliserApprobationRecrutementDg(employeId, null, null, finalData);
+            return;
+        }
         if (employe == null) {
             log.error("[WORKFLOW-EMPLOYE] Employé introuvable pour la finalisation (ID: {})", employeId);
             return;
@@ -125,12 +121,10 @@ public class EmployeWorkflowEntityHandler implements WorkflowEntityHandler {
         log.info("[WORKFLOW-EMPLOYE] Finalisation du circuit de validation pour l'employé {} ({})",
                 employe.getNom() + " " + employe.getPrenom(), employe.getId());
 
-        // 1. Activation de l'employé si en attente d'approbation
         if (employe.getStatutActivite() == null || employe.getStatutActivite() == StatutActivite.SUSPENDU) {
             employe.setStatutActivite(StatutActivite.EN_FONCTION);
         }
 
-        // 2. Génération / normalisation du matricule si temporaire ou non défini
         if (employe.getMatricule() == null || employe.getMatricule().isBlank() || employe.getMatricule().startsWith("TEMP-")) {
             long sequence = employeRepository.count();
             String prefix = employe.getCodePrefix() != null ? employe.getCodePrefix() : "EMP";
@@ -139,7 +133,6 @@ public class EmployeWorkflowEntityHandler implements WorkflowEntityHandler {
             log.info("[WORKFLOW-EMPLOYE] Matricule généré pour l'employé {} : {}", employe.getId(), matriculeGenere);
         }
 
-        // 3. Activation du compte utilisateur associé s'il existe
         if (employe.getUtilisateur() != null) {
             UtilisateurEntity user = employe.getUtilisateur();
             if (!user.isActif()) {
@@ -159,33 +152,9 @@ public class EmployeWorkflowEntityHandler implements WorkflowEntityHandler {
         if (instance == null) {
             return;
         }
-
-        UUID employeId = parseEntityId(instance.getEntityId());
-        if (employeId == null) {
-            return;
-        }
-
-        EmployeEntity employe = employeRepository.findById(employeId).orElse(null);
-        if (employe == null) {
-            log.warn("[WORKFLOW-EMPLOYE] Employé introuvable pour le rejet (ID: {})", employeId);
-            return;
-        }
-
-        log.warn("[WORKFLOW-EMPLOYE] Circuit de validation rejeté pour l'employé {} | Motif: {}",
-                employe.getMatricule() != null ? employe.getMatricule() : employe.getId(), motif);
-
-        // Suspension du statut de l'employé
-        employe.setStatutActivite(StatutActivite.SUSPENDU);
-
-        // Désactivation du compte utilisateur s'il existe
-        if (employe.getUtilisateur() != null) {
-            UtilisateurEntity user = employe.getUtilisateur();
-            user.setActif(false);
-            userRepository.save(user);
-            log.info("[WORKFLOW-EMPLOYE] Compte utilisateur désactivé consécutivement au rejet : {}", user.getUsername());
-        }
-
-        employeRepository.save(employe);
+        // Zéro création et zéro altération/suspension d'un employé existant en PostgreSQL lors d'un rejet workflow
+        log.warn("[WORKFLOW-EMPLOYE] Instance {} ({}) REJETEE sans mutation PostgreSQL. Motif: {}",
+                instance.getId(), instance.getEntityId(), motif);
     }
 
     /**

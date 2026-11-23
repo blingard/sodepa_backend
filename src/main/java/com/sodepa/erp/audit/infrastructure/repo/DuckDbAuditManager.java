@@ -59,20 +59,24 @@ public class DuckDbAuditManager {
                         "timestamp TIMESTAMP, " +
                         "ip_address VARCHAR)");
 
-                // Installer et charger l'extension httpfs pour la fédération avec ClickHouse
-                stmt.execute("INSTALL httpfs");
-                stmt.execute("LOAD httpfs");
+                // Installer et charger l'extension httpfs pour la fédération avec ClickHouse (non bloquant hors-ligne)
+                try {
+                    stmt.execute("INSTALL httpfs");
+                    stmt.execute("LOAD httpfs");
 
-                // Créer les vues fédérées vers les tables ClickHouse via l'API HTTP
-                createClickHouseView(stmt, "ch_transactions",
-                        "SELECT * FROM clickhouse_transactions");
-                createClickHouseView(stmt, "ch_activities",
-                        "SELECT * FROM clickhouse_activities");
-                createClickHouseView(stmt, "ch_maker_checker",
-                        "SELECT * FROM clickhouse_maker_checker");
+                    // Créer les vues fédérées vers les tables ClickHouse via l'API HTTP
+                    createClickHouseView(stmt, "ch_transactions",
+                            "SELECT * FROM clickhouse_transactions");
+                    createClickHouseView(stmt, "ch_activities",
+                            "SELECT * FROM clickhouse_activities");
+                    createClickHouseView(stmt, "ch_maker_checker",
+                            "SELECT * FROM clickhouse_maker_checker");
+                } catch (Exception httpfsEx) {
+                    System.err.println("Avertissement : Extension DuckDB httpfs indisponible hors-ligne : " + httpfsEx.getMessage());
+                }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Impossible d'initialiser la base de données DuckDB : " + e.getMessage(), e);
+            System.err.println("Avertissement : Initialisation DuckDB en mode dégradé : " + e.getMessage());
         }
     }
 
@@ -103,8 +107,34 @@ public class DuckDbAuditManager {
         }
     }
 
-    private synchronized Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(CONNECTION_URL);
+    private volatile com.zaxxer.hikari.HikariDataSource duckDbPool;
+
+    private Connection getConnection() throws SQLException {
+        com.zaxxer.hikari.HikariDataSource existing = duckDbPool;
+        if (existing != null && !existing.isClosed()) {
+            return existing.getConnection();
+        }
+        synchronized (this) {
+            if (duckDbPool == null || duckDbPool.isClosed()) {
+                com.zaxxer.hikari.HikariDataSource ds = new com.zaxxer.hikari.HikariDataSource();
+                ds.setPoolName("sodepa-duckdb-local-pool");
+                ds.setJdbcUrl(CONNECTION_URL);
+                ds.setMaximumPoolSize(1);
+                ds.setMinimumIdle(1);
+                ds.setConnectionTimeout(2000L);
+                ds.setInitializationFailTimeout(-1L);
+                duckDbPool = ds;
+            }
+            return duckDbPool.getConnection();
+        }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void closePool() {
+        com.zaxxer.hikari.HikariDataSource pool = duckDbPool;
+        if (pool != null && !pool.isClosed()) {
+            pool.close();
+        }
     }
 
     /**
@@ -113,7 +143,7 @@ public class DuckDbAuditManager {
      * @param key la clé d'idempotence
      * @param status le statut initial (ex: 'IN_PROGRESS')
      */
-    public synchronized void saveIdempotencyKey(String key, String status) {
+    public void saveIdempotencyKey(String key, String status) {
         String sql = "INSERT INTO idempotency_keys (id, statut, response_status, response_body, created_at) VALUES (?, ?, null, null, CURRENT_TIMESTAMP)";
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, key);
@@ -130,7 +160,7 @@ public class DuckDbAuditManager {
      * @param key la clé d'idempotence
      * @return un dictionnaire contenant les valeurs ou null si non trouvée
      */
-    public synchronized Map<String, Object> getIdempotencyKey(String key) {
+    public Map<String, Object> getIdempotencyKey(String key) {
         String sql = "SELECT statut, response_status, response_body FROM idempotency_keys WHERE id = ?";
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, key);
@@ -152,7 +182,7 @@ public class DuckDbAuditManager {
     /**
      * Met à jour une clé d'idempotence avec la réponse HTTP finale capturée.
      */
-    public synchronized void updateIdempotencyKey(String key, String status, int responseStatus, String responseBody) {
+    public void updateIdempotencyKey(String key, String status, int responseStatus, String responseBody) {
         String sql = "UPDATE idempotency_keys SET statut = ?, response_status = ?, response_body = ? WHERE id = ?";
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, status);
@@ -168,7 +198,7 @@ public class DuckDbAuditManager {
     /**
      * Supprime une clé d'idempotence (en cas d'erreur réseau / applicative pour permettre le rejeu).
      */
-    public synchronized void deleteIdempotencyKey(String key) {
+    public void deleteIdempotencyKey(String key) {
         String sql = "DELETE FROM idempotency_keys WHERE id = ?";
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, key);
@@ -181,7 +211,7 @@ public class DuckDbAuditManager {
     /**
      * Enregistre une trace d'activité utilisateur dans la table DuckDB.
      */
-    public synchronized void saveUserActivity(String userId, String username, String sessionId,
+    public void saveUserActivity(String userId, String username, String sessionId,
                                              String action, String method, String uri,
                                              String idempotencyKey, String ipAddress) {
         String sql = "INSERT INTO user_activities (id, user_id, username, session_id, action, method, uri, idempotency_key, timestamp, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)";
@@ -204,8 +234,8 @@ public class DuckDbAuditManager {
     /**
      * Récupère l'historique complet d'activité pour un utilisateur à partir de DuckDB.
      */
-    public synchronized List<Map<String, Object>> listActivities(String userId) {
-        String sql = "SELECT id, user_id, username, session_id, action, method, uri, idempotency_key, timestamp, ip_address FROM user_activities WHERE user_id = ? ORDER BY timestamp DESC";
+    public List<Map<String, Object>> listActivities(String userId) {
+        String sql = "SELECT id, user_id, username, session_id, action, method, uri, idempotency_key, timestamp, ip_address FROM user_activities WHERE user_id = ? ORDER BY timestamp DESC LIMIT 200";
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, userId);
@@ -237,7 +267,7 @@ public class DuckDbAuditManager {
      * @param limit le nombre maximum de lignes à retourner
      * @return la liste des transactions sous forme de dictionnaires
      */
-    public synchronized List<Map<String, Object>> listClickHouseTransactions(int limit) {
+    public List<Map<String, Object>> listClickHouseTransactions(int limit) {
         String sql = "SELECT * FROM ch_transactions ORDER BY date_comptable DESC LIMIT ?";
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -265,7 +295,7 @@ public class DuckDbAuditManager {
      * @param limit le nombre maximum de lignes à retourner
      * @return la liste des activités sous forme de dictionnaires
      */
-    public synchronized List<Map<String, Object>> listClickHouseActivities(int limit) {
+    public List<Map<String, Object>> listClickHouseActivities(int limit) {
         String sql = "SELECT * FROM ch_activities ORDER BY timestamp DESC LIMIT ?";
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -294,7 +324,10 @@ public class DuckDbAuditManager {
      * @param query la requête SQL DuckDB
      * @return la liste des résultats sous forme de dictionnaires
      */
-    public synchronized List<Map<String, Object>> executeAnalyticalQuery(String query) {
+    public List<Map<String, Object>> executeAnalyticalQuery(String query) {
+        if (query == null || !query.trim().toUpperCase().startsWith("SELECT")) {
+            throw new IllegalArgumentException("Seules les requêtes analytiques en lecture seule (SELECT) sont autorisées.");
+        }
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {

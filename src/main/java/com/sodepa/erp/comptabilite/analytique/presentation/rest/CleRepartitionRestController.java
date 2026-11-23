@@ -3,8 +3,10 @@ package com.sodepa.erp.comptabilite.analytique.presentation.rest;
 import com.sodepa.erp.comptabilite.analytique.application.usecase.CleRepartitionUseCase;
 import com.sodepa.erp.comptabilite.analytique.infrastructure.entities.CleRepartitionEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.entities.LigneEcritureEntity;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,7 +32,8 @@ public class CleRepartitionRestController {
      * @return la réponse HTTP avec la clé créée ou un message d'erreur
      */
     @PostMapping
-    public ResponseEntity<?> creerCle(@RequestBody CleRepartitionUseCase.CleRequest request) {
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN')")
+    public ResponseEntity<?> creerCle(@Valid @RequestBody CleRepartitionUseCase.CleRequest request) {
         try {
             CleRepartitionEntity cle = cleRepartitionUseCase.creerCle(request);
             return ResponseEntity.ok(cle);
@@ -45,6 +48,7 @@ public class CleRepartitionRestController {
      * @return la liste des clés de répartition
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_ECRITURE', 'VIEW_BUDGET', 'INIT_CREATE_ECRITURE', 'CREATE_BUDGET')")
     public ResponseEntity<List<CleRepartitionEntity>> listerCles() {
         return ResponseEntity.ok(cleRepartitionUseCase.listerCles());
     }
@@ -57,6 +61,7 @@ public class CleRepartitionRestController {
      * @return la ligne d'écriture ventilée ou un message d'erreur
      */
     @PostMapping("/lignes/{ligneId}/appliquer/{cleId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_ECRITURE', 'INIT_UPDATE_ECRITURE', 'CREATE_BUDGET', 'UPDATE_BUDGET')")
     public ResponseEntity<?> appliquerCle(@PathVariable UUID ligneId, @PathVariable UUID cleId) {
         try {
             LigneEcritureEntity ligne = cleRepartitionUseCase.appliquerCle(ligneId, cleId);

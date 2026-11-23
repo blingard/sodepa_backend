@@ -118,12 +118,12 @@ public class WorkflowEtapeActeurDefinitionEntity {
 
     /**
      * Mode d'action exigé ou permis pour l'employé validateur lors du traitement de cette étape
-     * (RIEN_A_AJOUTER, AJOUT_FICHIER_OBLIGATOIRE, MODIFICATION_CHAMPS_OBLIGATOIRE, FICHIER_ET_CHAMPS_OBLIGATOIRES, OPTIONNEL_FICHIER_OU_CHAMPS).
+     * (DO_NOTHING, ADD_FILE, SET_ATTRIBUTE, FILE_AND_ATTRIBUTE, OPTIONAL_FILE_OR_ATTRIBUTE).
+     * Lorsqu'il est nul, hérite du mode configuré au niveau de l'étape parente.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_action_validation", length = 40)
-    @Builder.Default
-    private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.ADD_FILE;
+    private ValidationStepActionMode modeActionValidation;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "donnees_json", columnDefinition = "jsonb")

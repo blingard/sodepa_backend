@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,6 +60,7 @@ public class TiersPartenaireUnifieRestController {
      * @return Réponse HTTP 201 contenant la fiche crée.
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_TIERS', 'CREATE_PROVIDER', 'VALIDATE_OR_REJECT_TIERS')")
     @Operation(summary = "Créer une fiche Client, Fournisseur ou Partenaire avec segment, plafond de crédit et contrôle NIU/RIB (CA-REF-021-01 & CA-REF-022-01)")
     public ResponseEntity<TiersEntity> creerTiersUnifie(@Valid @RequestBody TiersEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(tiersUnifieService.creerFicheTiersUnifiee(request));
@@ -84,6 +86,7 @@ public class TiersPartenaireUnifieRestController {
      * @return Réponse HTTP 201 contenant la pièce enregistrée.
      */
     @PostMapping("/{tiersId}/pieces-conformite")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_TIERS', 'INIT_UPDATE_TIERS', 'CREATE_PROVIDER')")
     @Operation(summary = "Enregistrer une pièce obligatoire d'un tiers avec sa date d'expiration (CA-REF-023-01)")
     public ResponseEntity<PieceConformiteTiersEntity> enregistréerPieceConformite(
             @PathVariable UUID tiersId,

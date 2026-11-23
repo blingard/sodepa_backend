@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -52,6 +53,7 @@ public class ExerciceComptableRestController {
     }
 
     @PostMapping("/ouvrir")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_FISCAL_YEAR_CLOSING', 'BUDGET_CLOTURE_EXERCICE', 'VALIDATE_OR_REJECT_ECRITURE')")
     @Operation(summary = "Ouvrir un nouvel exercice comptable et générer ses 12 périodes mensuelles (CA-REF-017-03)")
     public ResponseEntity<ExerciceComptableEntity> ouvrirExercice(
             @RequestParam int annee,
@@ -73,6 +75,7 @@ public class ExerciceComptableRestController {
     }
 
     @PatchMapping("/periodes/{codePeriode}/statut")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_FISCAL_YEAR_CLOSING', 'BUDGET_CLOTURE_EXERCICE', 'VALIDATE_OR_REJECT_ECRITURE')")
     @Operation(summary = "Verrouiller ou cleéôturer une période mensuelle (ex: 2026-01)")
     public ResponseEntity<PeriodeComptableEntity> changerStatutPeriode(
             @PathVariable String codePeriode,
@@ -91,6 +94,7 @@ public class ExerciceComptableRestController {
     }
 
     @PostMapping("/schemas-ecritures")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF') or hasAnyAuthority('INIT_CREATE_COMPTE', 'VALIDATE_OR_REJECT_ECRITURE')")
     @Operation(summary = "Créer un schéma d'écriture comptable automatique")
     public ResponseEntity<SchemaEcritureComptableEntity> creerSchemaEcriture(
             @Valid @RequestBody SchemaEcritureComptableEntity request) {

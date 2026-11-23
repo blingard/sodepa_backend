@@ -120,4 +120,54 @@ public class NotificationEntity {
     /** Date et heure de prise de connaissance par l'utilisateur. */
     @Column(name = "date_lecture")
     private LocalDateTime dateLecture;
+
+    /** Identifiant de regroupement lorsque plusieurs canaux découlent d'un même événement métier. */
+    @Column(name = "group_id")
+    private UUID groupId;
+
+    /** Identifiant parent lorsque cette notification est un repli (ex. SMS après échec WhatsApp). */
+    @Column(name = "parent_notification_id")
+    private UUID parentNotificationId;
+
+    /** Clé d'idempotence empêchant la double création / double expédition. */
+    @Column(name = "idempotency_key", unique = true, length = 160)
+    private String idempotencyKey;
+
+    /** Nom technique du fournisseur ayant traité le message (ex. smtp-mailhog, africa_talking, meta_whatsapp, in_app). */
+    @Column(name = "provider_name", length = 60)
+    private String providerName;
+
+    /** Identifiant de traçabilité renvoyé par le fournisseur distant. */
+    @Column(name = "provider_message_id", length = 160)
+    private String providerMessageId;
+
+    /** Indique si un mécanisme de repli (failover ou repli WhatsApp -> SMS) a été déclenché. */
+    @Column(name = "fallback_used", nullable = false)
+    @Builder.Default
+    private boolean fallbackUsed = false;
+
+    /** Nombre de tentatives techniques d'expédition effectuées. */
+    @Column(name = "retry_count", nullable = false)
+    @Builder.Default
+    private int retryCount = 0;
+
+    /** Prochaine échéance planifiée en cas de nouvelle tentative différée. */
+    @Column(name = "next_retry_at")
+    private LocalDateTime nextRetryAt;
+
+    /** Rendu HTML sécurisé pour les courriels multipart/alternative. */
+    @Column(name = "message_html", columnDefinition = "TEXT")
+    private String messageHtml;
+
+    /** Numéro WhatsApp normalisé au format international E.164. */
+    @Column(name = "destinataire_whatsapp", length = 40)
+    private String destinataireWhatsapp;
+
+    /** Code du template métier appliqué. */
+    @Column(name = "template_code", length = 80)
+    private String templateCode;
+
+    /** Paramètres structurés JSON (notamment template WhatsApp HSM et variables résolues). */
+    @Column(name = "metadata_json", columnDefinition = "TEXT")
+    private String metadataJson;
 }

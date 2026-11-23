@@ -45,7 +45,19 @@ public class RapprochementAdapter {
         ReleveBancaireEntity releve = releveBancaireRepository.findById(releveId)
                 .orElseThrow(() -> new IllegalArgumentException("Relevé bancaire introuvable."));
 
-        List<EcritureEntity> ecritures = ecritureRepository.findAll();
+        LocalDate minDate = null;
+        LocalDate maxDate = null;
+        for (LigneReleveBancaireEntity l : releve.getLignes()) {
+            if (!"RAPPROCHE".equalsIgnoreCase(l.getStatutRapprochement()) && l.getDateValeur() != null) {
+                if (minDate == null || l.getDateValeur().isBefore(minDate)) minDate = l.getDateValeur();
+                if (maxDate == null || l.getDateValeur().isAfter(maxDate)) maxDate = l.getDateValeur();
+            }
+        }
+        if (minDate == null) {
+            return 0;
+        }
+        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithDetails(
+                StatutEcriture.VALIDE, minDate.minusDays(3), maxDate.plusDays(3));
         int matchingCount = 0;
 
         for (LigneReleveBancaireEntity ligneReleve : releve.getLignes()) {

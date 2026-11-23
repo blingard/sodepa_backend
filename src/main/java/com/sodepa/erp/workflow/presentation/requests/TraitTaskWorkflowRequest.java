@@ -32,7 +32,11 @@ public class TraitTaskWorkflowRequest {
      */
     private String commentaire;
 
-    private boolean accept;
+    private Boolean accept;
+
+    public boolean isAccept() {
+        return Boolean.TRUE.equals(accept);
+    }
     private MultipartFile file;
     /**
      * Données JSON représentant les champs modifiés ou enrichis lors de la validation.

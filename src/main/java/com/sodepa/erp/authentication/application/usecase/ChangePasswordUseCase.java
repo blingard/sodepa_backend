@@ -17,7 +17,11 @@ public class ChangePasswordUseCase implements UseCase<ChangePasswordInput, Void>
 
     @Override
     public Void execute(ChangePasswordInput input) {
-        authenticationAdapter.changePassword(input.userId(), input.newPassword());
+        if (input.currentPassword() != null && !input.currentPassword().isBlank() && input.username() != null) {
+            authenticationAdapter.changePasswordWithVerification(input.userId(), input.username(), input.currentPassword(), input.newPassword());
+        } else {
+            authenticationAdapter.changePassword(input.userId(), input.newPassword());
+        }
         return null;
     }
 }

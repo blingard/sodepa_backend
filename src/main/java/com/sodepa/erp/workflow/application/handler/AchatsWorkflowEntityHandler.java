@@ -30,14 +30,33 @@ public class AchatsWorkflowEntityHandler implements WorkflowEntityHandler {
 
     private final ExpressionBesoinRepository expressionBesoinRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.sodepa.erp.achats.application.AchatsService achatsService;
+
     private static final String ENTITY_EXPRESSION_BESOIN = "EXPRESSION_BESOIN";
     private static final String ENTITY_EB_SHORT = "EB";
     private static final String ENTITY_CLASS = ExpressionBesoinEntity.class.getName();
     private static final String ENTITY_SIMPLE = ExpressionBesoinEntity.class.getSimpleName();
 
-    @Override
-    public boolean supports(String entityName) {
-        if (entityName == null || entityName.isBlank()) {
+    private static final String ENTITY_FOURNISSEUR = "FOURNISSEUR";
+    private static final String ENTITY_FRN_SHORT = "FRN";
+    private static final String ENTITY_FRN_CLASS = com.sodepa.erp.achats.infrastructure.entities.FournisseurEntity.class.getName();
+    private static final String ENTITY_FRN_SIMPLE = com.sodepa.erp.achats.infrastructure.entities.FournisseurEntity.class.getSimpleName();
+
+    private boolean isFournisseurEntity(String entityName) {
+        if (entityName == null) {
+            return false;
+        }
+        String clean = entityName.trim();
+        return clean.equalsIgnoreCase(ENTITY_FOURNISSEUR)
+                || clean.equalsIgnoreCase(ENTITY_FRN_SHORT)
+                || clean.equalsIgnoreCase(ENTITY_FRN_SIMPLE)
+                || clean.equals(ENTITY_FRN_CLASS);
+    }
+
+    private boolean isExpressionBesoinEntity(String entityName) {
+        if (entityName == null) {
             return false;
         }
         String clean = entityName.trim();
@@ -48,48 +67,66 @@ public class AchatsWorkflowEntityHandler implements WorkflowEntityHandler {
     }
 
     @Override
+    public boolean supports(String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            return false;
+        }
+        return isExpressionBesoinEntity(entityName) || isFournisseurEntity(entityName);
+    }
+
+    @Override
     @Transactional
     public void onStepApproved(WorkflowTaskEntity task, Map<String, Object> modifiedFields) {
         if (task == null || task.getWorkflowInstance() == null) {
             return;
         }
+        // Aucune écriture ni mutation en table métier PostgreSQL pendant les étapes intermédiaires :
+        // l'état consolidé et les pièces jointes sont historisés étape par étape dans ClickHouse / Outbox.
         WorkflowInstanceEntity instance = task.getWorkflowInstance();
-        UUID ebId = parseUuid(instance.getEntityId());
-        if (ebId == null) {
-            return;
-        }
-
-        expressionBesoinRepository.findById(ebId).ifPresent(eb -> {
-            String codeEtape = task.getEtapeDefinition() != null ? task.getEtapeDefinition().getCodeEtape().toUpperCase() : "";
-            String intituleEtape = task.getEtapeDefinition() != null ? task.getEtapeDefinition().getIntitule().toUpperCase() : "";
-
-            if (codeEtape.contains("BUDGET") || intituleEtape.contains("BUDGET") || intituleEtape.contains("FINANCE")) {
-                eb.setStatut(StatutExpressionBesoin.VISEE_BUDGET);
-                log.info("[ACHATS-WORKFLOW] Expression de besoin {} marquée VISEE_BUDGET à l'étape {}", eb.getNumero(), codeEtape);
-            } else if (codeEtape.contains("HIERARCHIE") || intituleEtape.contains("HIERARCH") || intituleEtape.contains("CHEF")) {
-                eb.setStatut(StatutExpressionBesoin.VALIDEE_HIERARCHIE);
-                log.info("[ACHATS-WORKFLOW] Expression de besoin {} marquée VALIDEE_HIERARCHIE à l'étape {}", eb.getNumero(), codeEtape);
-            }
-            expressionBesoinRepository.save(eb);
-        });
+        String codeEtape = task.getEtapeDefinition() != null ? task.getEtapeDefinition().getCodeEtape() : "N/A";
+        log.debug("[ACHATS-WORKFLOW] Étape {} validée sur instance {} ({}) — état conservé dans ClickHouse avant clôture.",
+                codeEtape, instance.getId(), instance.getEntityId());
     }
 
     @Override
     @Transactional
     public void onWorkflowCompleted(WorkflowInstanceEntity instance) {
+        onWorkflowCompleted(instance, null);
+    }
+
+    @Override
+    @Transactional
+    public void onWorkflowCompleted(WorkflowInstanceEntity instance, Map<String, Object> finalData) {
         if (instance == null) {
             return;
         }
-        UUID ebId = parseUuid(instance.getEntityId());
-        if (ebId == null) {
+        UUID entityId = parseUuid(instance.getEntityId());
+        if (entityId == null) {
             return;
         }
 
-        expressionBesoinRepository.findById(ebId).ifPresent(eb -> {
-            eb.setStatut(StatutExpressionBesoin.APPROUVEE_DG);
-            expressionBesoinRepository.save(eb);
-            log.info("[ACHATS-WORKFLOW] Expression de besoin {} validée et totalement APPROUVEE_DG", eb.getNumero());
-        });
+        if (isFournisseurEntity(instance.getEntityName())) {
+            if (finalData != null && !finalData.isEmpty()) {
+                achatsService.finaliserFournisseurDepuisWorkflow(entityId, finalData);
+            }
+            return;
+        }
+
+        if (expressionBesoinRepository.findById(entityId).isPresent()) {
+            expressionBesoinRepository.findById(entityId).ifPresent(eb -> {
+                if (eb.getStatut() != StatutExpressionBesoin.APPROUVEE_DG) {
+                    eb.setStatut(StatutExpressionBesoin.APPROUVEE_DG);
+                    expressionBesoinRepository.save(eb);
+                }
+                log.info("[ACHATS-WORKFLOW] Expression de besoin {} validée et totalement APPROUVEE_DG", eb.getNumero());
+            });
+            return;
+        }
+
+        // Cas d'un workflow démarré directement sans ticket Maker-Checker : matérialisation finale à partir de finalData
+        if (finalData != null && !finalData.isEmpty()) {
+            achatsService.finaliserExpressionBesoinDepuisWorkflow(entityId, finalData);
+        }
     }
 
     @Override
@@ -98,16 +135,9 @@ public class AchatsWorkflowEntityHandler implements WorkflowEntityHandler {
         if (instance == null) {
             return;
         }
-        UUID ebId = parseUuid(instance.getEntityId());
-        if (ebId == null) {
-            return;
-        }
-
-        expressionBesoinRepository.findById(ebId).ifPresent(eb -> {
-            eb.setStatut(StatutExpressionBesoin.REJETEE);
-            expressionBesoinRepository.save(eb);
-            log.warn("[ACHATS-WORKFLOW] Expression de besoin {} REJETEE suite à décision workflow. Motif: {}", eb.getNumero(), motif);
-        });
+        // Zéro création et zéro écrasement destructif dans achat_expressions_besoin sur rejet workflow
+        log.warn("[ACHATS-WORKFLOW] Instance {} ({}) REJETEE sans matérialisation PostgreSQL. Motif: {}",
+                instance.getId(), instance.getEntityId(), motif);
     }
 
     private UUID parseUuid(String idStr) {

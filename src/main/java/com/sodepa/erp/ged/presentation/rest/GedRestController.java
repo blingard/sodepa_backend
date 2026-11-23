@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -47,6 +48,7 @@ public class GedRestController {
      * @return Réponse HTTP 201 contenant la fiche GED crée.
      */
     @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('CREATE_FOLDER', 'UPDATE_FOLDER', 'CREATE_RECEPTION', 'INIT_CREATE_ECRITURE', 'CREATE_EMPLOYE', 'CREATE_BUDGET_PLAN', 'WORKFLOW_DECISION', 'WORKFLOW_CONFIG')")
     @Operation(summary = "Téléverser et indexer un document dans la GED avec versioning automatique (CA-REF-031-01 & 02)")
     public ResponseEntity<DocumentGedEntity> uploadDocument(
             @RequestPart("file") MultipartFile file,
@@ -70,6 +72,7 @@ public class GedRestController {
      * @return Réponse HTTP 201 contenant le document archivé.
      */
     @PostMapping("/documents")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('CREATE_FOLDER', 'UPDATE_FOLDER', 'CREATE_RECEPTION', 'INIT_CREATE_ECRITURE', 'CREATE_EMPLOYE', 'CREATE_BUDGET_PLAN', 'WORKFLOW_DECISION', 'WORKFLOW_CONFIG')")
     @Operation(summary = "Enregistrer et versionner un document officiel généré dans la GED (CA-REF-031-01 & 02 / CT-REF-06)")
     public ResponseEntity<DocumentGedEntity> archiverDocumentJson(@Valid @RequestBody DocumentGedEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(gedService.archiverDocumentJson(request));
@@ -83,6 +86,7 @@ public class GedRestController {
      * @return Réponse HTTP 200 contenant la liste des documents rattachés.
      */
     @GetMapping("/documents/entite/{typeEntite}/{entiteId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('VIEW_FOLDER', 'LIST_FOLDERS', 'VIEW_EXPRESSION', 'VIEW_ECRITURE', 'VIEW_BUDGET', 'VIEW_EMPLOYE', 'WORKFLOW_SUPERVISION', 'WORKFLOW_READ')")
     @Operation(summary = "Consulter tous les documents et versions rattachés à une transaction ou entité métier (BF-REF-052)")
     public ResponseEntity<List<DocumentGedEntity>> consulterDocumentsEntite(
             @PathVariable String typeEntite,
@@ -99,6 +103,7 @@ public class GedRestController {
      * @return Réponse HTTP 200 contenant les documents correspondants.
      */
     @GetMapping("/documents/recherche")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('VIEW_FOLDER', 'LIST_FOLDERS', 'VIEW_ECRITURE', 'VIEW_BUDGET', 'VIEW_EMPLOYE', 'WORKFLOW_SUPERVISION')")
     @Operation(summary = "Rechercher des documents dans la GED par type d'entité, catégorie et mots-cleés plein texte (CA-REF-031-01)")
     public ResponseEntity<List<DocumentGedEntity>> rechercherDocuments(
             @RequestParam(required = false) String typeEntite,
@@ -115,10 +120,11 @@ public class GedRestController {
      * @return Réponse HTTP 200 contenant le document signé électroniquement.
      */
     @PostMapping("/documents/{id}/signer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_OR_REJECT_ECRITURE', 'VALIDATE_FOLDER', 'VALIDATE_BUDGET_PLAN', 'VALIDATE_EMPLOYE')")
     @Operation(summary = "Apposer une signature et un cachet électroniques scellant l'empreinte SHA-256 du document (CA-REF-031-03)")
     public ResponseEntity<DocumentGedEntity> signerDocument(
             @PathVariable UUID id,
-            @RequestParam String signataireNom) {
+            @RequestParam(required = false) String signataireNom) {
         return ResponseEntity.ok(gedService.signerDocumentElectroniquement(id, signataireNom));
     }
 
@@ -130,6 +136,7 @@ public class GedRestController {
      * @return Réponse HTTP 200 contenant le diagnostic d'intégrité cryptographique.
      */
     @PostMapping("/documents/{id}/verifier-integrite")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG', 'DRH') or hasAnyAuthority('VIEW_FOLDER', 'LIST_FOLDERS', 'VIEW_ECRITURE', 'VIEW_BUDGET', 'VIEW_EMPLOYE', 'WORKFLOW_SUPERVISION')")
     @Operation(summary = "Vérifier l'authenticité de la signature électronique et détecter toute altération SHA-256 (CA-REF-031-03)")
     public ResponseEntity<Map<String, Object>> verifierIntegrite(
             @PathVariable UUID id,
@@ -144,6 +151,7 @@ public class GedRestController {
      * @return Réponse HTTP 204 si la suppression est autorisée.
      */
     @DeleteMapping("/documents/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('DELETE_EMPLOYE', 'DELETE_UNITE')")
     @Operation(summary = "Supprimer un document (bloqué tant que la durée légale de conservation n'est pas échue — CA-REF-031-04)")
     public ResponseEntity<Void> supprimerDocument(@PathVariable UUID id) {
         gedService.supprimerDocument(id);

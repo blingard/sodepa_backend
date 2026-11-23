@@ -1,0 +1,21 @@
+# Changelog 28.0 — Verrouillage optimiste (optimistic_version) sur les entités budgétaires et de régie.
+databaseChangeLog:
+  - changeSet:
+      id: 28.0-01-optimistic-version-budget-et-regies
+      author: sodepa-erp
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF to_regclass('public.budget_item') IS NOT NULL THEN
+                  ALTER TABLE public.budget_item ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+                IF to_regclass('public.budget_engagement') IS NOT NULL THEN
+                  ALTER TABLE public.budget_engagement ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+                IF to_regclass('public.tresorerie_regies') IS NOT NULL THEN
+                  ALTER TABLE public.tresorerie_regies ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+              END $$;

@@ -123,17 +123,11 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
-        if (canValidate(Permissions.VALIDATE_UNITE)) {
-            UniteOrganisationnelleEntity uniteEntity = creationUnite(payload, id);
-            try {
-                if (uuid != null) {
-                    workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Validation automatique par l'utilisateur créateur", "SYSTEM");
-                }
-            } catch (Exception e) {
-                log.warn("Erreur validation auto unité {}: {}", input.code(), e.getMessage());
-            }
-            return mapToUniteOutput(uniteEntity);
-        }
+        String previewPath = input.parentId() != null
+                ? uniteRepository.findById(input.parentId())
+                        .map(p -> p.getMaterializedPath() + input.code() + "/")
+                        .orElse("/" + input.code() + "/")
+                : "/" + input.code() + "/";
 
         return uniteRepository.findById(id)
                 .map(this::mapToUniteOutput)
@@ -142,6 +136,7 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                         .code(input.code())
                         .intitule(input.intitule())
                         .typeUnite(input.typeUnite())
+                        .materializedPath(previewPath)
                         .localisation(input.localisation())
                         .statut(StatutUnite.ACTIF)
                         .dateCreation(input.dateCreation() != null ? input.dateCreation() : LocalDate.now())
@@ -218,18 +213,6 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "code", unite.getCode(),
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
-
-        if (canValidate(Permissions.VALIDATE_UNITE)) {
-            UniteOrganisationnelleEntity deplacerEntity = applyDeplacerUnite(payload, input.uniteId());
-            try {
-                if (uuid != null) {
-                    workflowService.update(uuid, MakerCheckerStatus.ACCEPTED, "Validation automatique par l'utilisateur", "SYSTEM");
-                }
-            } catch (Exception e) {
-                log.warn("Erreur validation auto déplacement unité {}: {}", input.uniteId(), e.getMessage());
-            }
-            return mapToUniteOutput(deplacerEntity);
-        }
 
         return mapToUniteOutput(uniteRepository.findById(input.uniteId()).orElse(unite));
     }
@@ -366,19 +349,6 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "codePoste", input.codePoste(),
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
-
-        if (canValidate(Permissions.VALIDATE_POSTE)) {
-            try {
-                validateOrRejectPoste(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto poste {}: {}", input.codePoste(), e.getMessage());
-            }
-        }
 
         return posteRepository.findById(id)
                 .map(this::mapToPosteOutput)
@@ -523,19 +493,6 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
 
-        if (canValidate(Permissions.VALIDATE_AFFECTATION)) {
-            try {
-                validateOrRejectAffectation(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto affectation: {}", e.getMessage());
-            }
-        }
-
         return affectationRepository.findById(id)
                 .map(this::mapToAffectationOutput)
                 .orElseGet(() -> AffectationOutput.builder()
@@ -606,19 +563,6 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "action", "SOUMISSION_CLOTURER_AFFECTATION",
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
-
-        if (canValidate(Permissions.VALIDATE_AFFECTATION)) {
-            try {
-                validateOrRejectAffectation(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique de clôture",
-                        MakerCheckerOperationType.UPDATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto clôture affectation: {}", e.getMessage());
-            }
-        }
 
         return mapToAffectationOutput(affectationRepository.findById(input.affectationId()).orElse(affectation));
     }
@@ -714,19 +658,6 @@ public class OrganigrammeAdapter implements OrganigrammePort, HierarchieResoluti
                 "delegataire", delegataire.getUsername(),
                 "ticket", uuid != null ? uuid.toString() : "TICKET-AUTO"
         ));
-
-        if (canValidate(Permissions.VALIDATE_DELEGATION)) {
-            try {
-                validateOrRejectDelegation(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto délégation: {}", e.getMessage());
-            }
-        }
 
         return delegationRepository.findById(id)
                 .map(this::mapToDelegationOutput)

@@ -388,4 +388,29 @@ class BudgetModuleRulesTest {
                 pageable, planExecutoire.getId(), null, null));
         verify(budgetEngagementRepository).rechercher(eq(planExecutoire.getId()), isNull(), isNull(), any());
     }
+
+    @Test
+    @DisplayName("P0 Robustesse : liquiderEngagement décrémente montantEngage et incrémente montantReal")
+    void testLiquiderEngagementUpdatesMontantReal() {
+        itemSource.setMontantEngage(new BigDecimal("300000"));
+        itemSource.setMontantReal(new BigDecimal("100000"));
+        BudgetEngagementEntity engagement = BudgetEngagementEntity.builder()
+                .id(UUID.randomUUID())
+                .budgetItem(itemSource)
+                .numeroEngagement("BE-2026-LIQ-001")
+                .montant(new BigDecimal("300000"))
+                .statut("ENGAGED")
+                .build();
+
+        when(budgetEngagementRepository.findByNumeroEngagement("BE-2026-LIQ-001"))
+                .thenReturn(Optional.of(engagement));
+
+        budgetPlanAdapter.liquiderEngagement("BE-2026-LIQ-001", UUID.randomUUID());
+
+        assertEquals("CONVERTED_TO_REAL", engagement.getStatut());
+        assertEquals(0, BigDecimal.ZERO.compareTo(itemSource.getMontantEngage()));
+        assertEquals(0, new BigDecimal("400000").compareTo(itemSource.getMontantReal()));
+        verify(budgetItemRepository).save(itemSource);
+        verify(budgetEngagementRepository).save(engagement);
+    }
 }

@@ -153,6 +153,18 @@ public class BudgetPlanRestController {
     }
 
     /**
+     * Initie une demande de modification d'un plan budgétaire existant via circuit de validation workflow.
+     */
+    @PutMapping("/plans/{planId}")
+    @Operation(summary = "Soumettre la modification d'un plan budgétaire au circuit de validation workflow")
+    public BudgetPlanOutput modifierBudgetPlan(
+            @PathVariable UUID planId,
+            @Valid @RequestBody CreerBudgetRequest request) {
+        return budgetPlanAdapter.modifierBudgetPlan(planId,
+                new CreerBudgetPlanInput(request.annee(), request.intitule(), request.utilisateurId()));
+    }
+
+    /**
      * Ajoute une ligne budgetaire individualisee (rubrique de depense) au sein d'un budget.
      * <p>
      * Chaque ligne est rattachee a un compte du plan comptable et a une section organisationnelle
@@ -180,7 +192,7 @@ public class BudgetPlanRestController {
      */
     @PostMapping("/plans/{planId}/soumettre")
     @Operation(summary = "Soumettre le projet de budget au circuit de validation")
-    public void soumettrePlan(@PathVariable UUID planId, @RequestParam UUID userId) {
+    public void soumettrePlan(@PathVariable UUID planId, @RequestParam(required = false) UUID userId) {
         soumettrePlanUseCase.execute(new SoumettrePlanUseCase.Input(planId, userId));
     }
 
@@ -194,7 +206,7 @@ public class BudgetPlanRestController {
      */
     @PostMapping("/plans/{planId}/approuver")
     @Operation(summary = "Approuver et rendre exécutoire le budget")
-    public void approuverPlan(@PathVariable UUID planId, @RequestParam UUID userId) {
+    public void approuverPlan(@PathVariable UUID planId, @RequestParam(required = false) UUID userId) {
         approuverPlanUseCase.execute(new ApprouverPlanUseCase.Input(planId, userId));
     }
 
@@ -206,7 +218,7 @@ public class BudgetPlanRestController {
      */
     @PostMapping("/plans/{planId}/rejeter")
     @Operation(summary = "Rejeter le projet de budget annuel")
-    public void rejeterPlan(@PathVariable UUID planId, @RequestParam UUID userId) {
+    public void rejeterPlan(@PathVariable UUID planId, @RequestParam(required = false) UUID userId) {
         rejeterPlanUseCase.execute(new RejeterPlanUseCase.Input(planId, userId));
     }
 
@@ -262,7 +274,7 @@ public class BudgetPlanRestController {
      */
     @PostMapping("/engagements/{numero}/liquider")
     @Operation(summary = "Liquider un engagement (constatation du service fait et facture)")
-    public void liquider(@PathVariable String numero, @RequestParam UUID userId) {
+    public void liquider(@PathVariable String numero, @RequestParam(required = false) UUID userId) {
         liquiderEngagementUseCase.execute(new LiquiderEngagementUseCase.Input(numero, userId));
     }
 
@@ -277,7 +289,7 @@ public class BudgetPlanRestController {
      */
     @PostMapping("/engagements/{numero}/annuler")
     @Operation(summary = "Annuler un bon d'engagement et restituer les crédits budgétaires")
-    public void annuler(@PathVariable String numero, @RequestParam UUID userId) {
+    public void annuler(@PathVariable String numero, @RequestParam(required = false) UUID userId) {
         annulerEngagementUseCase.execute(new AnnulerEngagementUseCase.Input(numero, userId));
     }
 

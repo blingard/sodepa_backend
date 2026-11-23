@@ -237,4 +237,9 @@ public class EmployeEntity implements Persistable<UUID> {
     @Column(name = "date_creation", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime dateCreation = LocalDateTime.now();
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

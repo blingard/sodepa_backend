@@ -26,6 +26,8 @@ public interface WorkflowInstanceRepository extends JpaRepository<WorkflowInstan
      */
     Optional<WorkflowInstanceEntity> findByEntityNameAndEntityId(String entityName, String entityId);
 
+    Optional<WorkflowInstanceEntity> findFirstByEntityNameAndEntityIdOrderByDateInitiationDesc(String entityName, String entityId);
+
     /**
      * Recherche toutes les instances initiées par un collaborateur particulier.
      *
@@ -51,4 +53,15 @@ public interface WorkflowInstanceRepository extends JpaRepository<WorkflowInstan
      * @return Une page d'instances correspondantes.
      */
     Page<WorkflowInstanceEntity> findByEntityName(String entityName, Pageable pageable);
+
+    List<WorkflowInstanceEntity> findByEntityNameInAndStatutIn(
+            java.util.Collection<String> entityNames,
+            java.util.Collection<StatutWorkflowInstance> statuts
+    );
+
+    Optional<WorkflowInstanceEntity> findFirstByEntityNameInAndEntityIdAndStatutInOrderByDateInitiationDesc(
+            java.util.Collection<String> entityNames,
+            String entityId,
+            java.util.Collection<StatutWorkflowInstance> statuts
+    );
 }

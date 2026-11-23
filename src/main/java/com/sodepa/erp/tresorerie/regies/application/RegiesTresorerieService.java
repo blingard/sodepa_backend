@@ -6,6 +6,7 @@ import com.sodepa.erp.audit.infrastructure.repo.ClickHouseManager;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.configuration.parametres.application.ParametreConfigurationService;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.share.CodeSequenceService;
 import com.sodepa.erp.share.MakerCheckerOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.tresorerie.regies.infrastructure.entities.*;
@@ -50,6 +51,9 @@ public class RegiesTresorerieService {
     private final UtilsService utilsService;
     private final ObjectMapper objectMapper;
     private final ClickHouseManager clickHouseManager;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CodeSequenceService codeSequenceService;
 
     public boolean canValidate(Permissions permission) {
         try {
@@ -106,7 +110,7 @@ public class RegiesTresorerieService {
         TresorerieRegieEntity regie = regieRepository.findById(request.getRegieId())
                 .orElseThrow(() -> new IllegalArgumentException("Régie introuvable: " + request.getRegieId()));
 
-        long count = approvRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_regie_approv", approvRepository::count);
         int annee = LocalDate.now().getYear();
         String numero = String.format("APPROV-%s-%d-%04d", regie.getCode().replace("REGIE_", ""), annee, count);
         UUID id = UUID.randomUUID();
@@ -130,19 +134,6 @@ public class RegiesTresorerieService {
                 "montant", request.getMontantDemandeFcfa(),
                 "ticket", uuid.toString()
         ));
-
-        if (canValidate(Permissions.VALIDATE_APPROVISIONNEMENT)) {
-            try {
-                validateOrRejectApprovisionnement(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto approvisionnement: {}", e.getMessage());
-            }
-        }
 
         return approvRepository.findById(id)
                 .map(TresorerieRegieApprovisionnementResponse::fromEntity)
@@ -235,8 +226,13 @@ public class RegiesTresorerieService {
 
     @Transactional
     public TresorerieRegieApprovisionnementResponse signerDaf(UUID approvId) {
+        utilsService.hasPermission(Permissions.VALIDATE_APPROVISIONNEMENT);
         TresorerieRegieApprovisionnementEntity entity = approvRepository.findById(approvId)
                 .orElseThrow(() -> new IllegalArgumentException("Demande d'approvisionnement introuvable: " + approvId));
+
+        if (entity.getStatut() != StatutApprovisionnementRegie.EN_ATTENTE_DAF || entity.isSignatureDaf()) {
+            throw new IllegalStateException("La demande n'est pas en attente de signature DAF ou a déjà été visée par le DAF.");
+        }
 
         entity.setSignatureDaf(true);
         entity.setDateSignatureDaf(Instant.now());
@@ -248,9 +244,18 @@ public class RegiesTresorerieService {
 
     @Transactional
     public TresorerieRegieApprovisionnementResponse signerDgEtDebloquer(UUID approvId, String referenceVirement) {
+        utilsService.hasPermission(Permissions.VALIDATE_APPROVISIONNEMENT);
+        var currentUser = utilsService.getCurrentUserData();
+        if (currentUser != null && !currentUser.isAdmin() && !currentUser.isDg()) {
+            throw new com.sodepa.erp.share.erreurs.AccesRefuseException(
+                    "L'approbation finale de déblocage des fonds de régie est strictement réservée à la Direction Générale.");
+        }
         TresorerieRegieApprovisionnementEntity entity = approvRepository.findById(approvId)
                 .orElseThrow(() -> new IllegalArgumentException("Demande d'approvisionnement introuvable: " + approvId));
 
+        if (entity.getStatut() == StatutApprovisionnementRegie.APPROUVE_APPROVISIONNE || entity.isSignatureDg()) {
+            throw new IllegalStateException("Cette demande d'approvisionnement a déjà été approuvée et débloquée.");
+        }
         if (!entity.isSignatureDaf()) {
             throw new IllegalStateException("La double signature est obligatoire : le visa préalable du DAF est requis.");
         }
@@ -289,7 +294,7 @@ public class RegiesTresorerieService {
                     regie.getSoldeActuelFcfa(), request.getMontantDepenseFcfa()));
         }
 
-        long count = depenseRepository.count() + 1;
+        long count = CodeSequenceService.nextOrCount(codeSequenceService, "seq_code_regie_depense", depenseRepository::count);
         int annee = LocalDate.now().getYear();
         String numeroPiece = String.format("DEP-%s-%d-%05d", regie.getCode().replace("REGIE_", ""), annee, count);
         UUID id = UUID.randomUUID();
@@ -313,19 +318,6 @@ public class RegiesTresorerieService {
                 "montant", request.getMontantDepenseFcfa(),
                 "ticket", uuid.toString()
         ));
-
-        if (canValidate(Permissions.VALIDATE_DEPENSE_REGIE)) {
-            try {
-                validateOrRejectDepense(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto dépense régie: {}", e.getMessage());
-            }
-        }
 
         return depenseRepository.findById(id)
                 .map(TresorerieRegieDepenseResponse::fromEntity)
