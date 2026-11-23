@@ -197,6 +197,27 @@ app:
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
+      # ── Gestion budgétaire reconstruite : structures (US-BUD-107) ──
+      # Quelques structures par an au plus : la limite basse suffit.
+      - name: sodepa-budget-structures-write
+        path-patterns:
+          - /api/budget/structures/**
+        methods:
+          - POST
+        limit: 20
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-structures-read
+        path-patterns:
+          - /api/budget/structures
+          - /api/budget/structures/**
+        methods:
+          - GET
+        limit: 120
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
       # ── Budget / Engagements / Collaboratif (write operations) ──
       - name: sodepa-budget-write
         path-patterns:
