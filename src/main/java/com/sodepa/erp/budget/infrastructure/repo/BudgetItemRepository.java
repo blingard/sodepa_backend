@@ -1,7 +1,9 @@
 package com.sodepa.erp.budget.infrastructure.repo;
 
 import com.sodepa.erp.budget.infrastructure.entities.BudgetItemEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,20 @@ import java.util.UUID;
  */
 @Repository
 public interface BudgetItemRepository extends JpaRepository<BudgetItemEntity, UUID> {
+
+    /**
+     * Charge une ligne budgétaire avec verrou pessimiste {@code FOR UPDATE} pour prévenir les engagements concurrents.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM BudgetItemEntity b WHERE b.id = :id")
+    Optional<BudgetItemEntity> findWithLockById(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM BudgetItemEntity b WHERE b.budgetPlan.id = :planId AND b.compteCode = :compteCode AND b.sectionId = :sectionId")
+    Optional<BudgetItemEntity> findWithLockByPlanAndCompteAndSection(
+            @Param("planId") UUID planId,
+            @Param("compteCode") String compteCode,
+            @Param("sectionId") UUID sectionId);
 
     /**
      * Recherche une ligne budgétaire par plan, compte général et section analytique.

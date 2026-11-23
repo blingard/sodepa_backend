@@ -73,4 +73,9 @@ public class EmployeResponse {
     private UUID utilisateurId;
     private String username;
     private LocalDateTime dateCreation;
+    private boolean enCoursDeModification;
+    private boolean workflowEnCours;
+    private String workflowStatut;
+    private String workflowOperationType;
+    private java.util.List<java.util.Map<String, Object>> piecesJointesWorkflow;
 }

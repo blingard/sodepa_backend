@@ -131,19 +131,6 @@ public class PaieService {
                 "ticket", uuid.toString()
         ));
 
-        if (canValidate(Permissions.VALIDATE_PERIODE_PAIE)) {
-            try {
-                validateOrRejectPeriodePaie(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur créateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto période paie: {}", e.getMessage());
-            }
-        }
-
         YearMonth ym = YearMonth.of(req.getAnnee(), req.getMois());
         LocalDate debut = ym.atDay(1);
         LocalDate fin = ym.atEndOfMonth();
@@ -257,19 +244,6 @@ public class PaieService {
                 "montant", req.getMontant(),
                 "ticket", uuid.toString()
         ));
-
-        if (canValidate(Permissions.VALIDATE_VARIABLE_PAIE)) {
-            try {
-                validateOrRejectVariablePaie(new ValidateOrRejectSubmissionInput(
-                        uuid,
-                        MakerCheckerStatus.ACCEPTED,
-                        "Validation automatique par l'utilisateur",
-                        MakerCheckerOperationType.CREATE
-                ));
-            } catch (Exception e) {
-                log.warn("Erreur validation auto variable paie: {}", e.getMessage());
-            }
-        }
     }
 
     private VariablePaieEntity creationVariablePaie(Map<String, Object> payload, UUID variableId) {
@@ -336,6 +310,7 @@ public class PaieService {
 
     @Transactional
     public PeriodePaieResponse calculerPaie(UUID periodeId) {
+        utilsService.hasPermission(Permissions.CALCULATE_PAIE);
         PeriodePaieEntity periode = periodeRepository.findById(periodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Période introuvable: " + periodeId));
 
@@ -641,6 +616,7 @@ public class PaieService {
 
     @Transactional
     public PeriodePaieResponse validerPaie(UUID periodeId) {
+        utilsService.hasPermission(Permissions.VALIDATE_PERIODE_PAIE);
         PeriodePaieEntity periode = periodeRepository.findById(periodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Période introuvable: " + periodeId));
 
@@ -658,6 +634,7 @@ public class PaieService {
 
     @Transactional
     public PeriodePaieResponse cloturerPeriode(UUID periodeId) {
+        utilsService.hasPermission(Permissions.CLOSE_PERIODE_PAIE);
         PeriodePaieEntity periode = periodeRepository.findById(periodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Période introuvable: " + periodeId));
 
@@ -669,21 +646,62 @@ public class PaieService {
         return mapToPeriodeResponse(saved);
     }
 
+    private boolean hasPaiePrivileges() {
+        try {
+            com.sodepa.erp.share.UserData actor = utilsService.getCurrentUserData();
+            if (actor.isAdmin() || actor.isDaf() || actor.isDg()) {
+                return true;
+            }
+            Set<Permissions> perms = actor.permissions() != null ? actor.permissions() : Set.of();
+            return perms.contains(Permissions.CALCULATE_PAIE)
+                    || perms.contains(Permissions.VALIDATE_PERIODE_PAIE)
+                    || perms.contains(Permissions.CLOSE_PERIODE_PAIE)
+                    || perms.contains(Permissions.CREATE_PERIODE_PAIE)
+                    || perms.contains(Permissions.VALIDATE_VARIABLE_PAIE)
+                    || perms.contains(Permissions.LIST_EMPLOYE)
+                    || perms.contains(Permissions.VIEW_EMPLOYE);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Transactional(readOnly = true)
     public Page<BulletinPaieResponse> getBulletins(UUID periodeId, Pageable pageable) {
-        return bulletinRepository.findByPeriodeId(periodeId, pageable)
-                .map(this::mapToBulletinResponse);
+        if (hasPaiePrivileges()) {
+            return bulletinRepository.findByPeriodeId(periodeId, pageable)
+                    .map(this::mapToBulletinResponse);
+        }
+        com.sodepa.erp.share.UserData actor = utilsService.getCurrentUserData();
+        if (actor.userId() == null) {
+            return Page.empty(pageable);
+        }
+        return employeRepository.findByUtilisateurId(UUID.fromString(actor.userId()))
+                .map(emp -> bulletinRepository.findByPeriodeIdAndEmployeId(periodeId, emp.getId(), pageable)
+                        .map(this::mapToBulletinResponse))
+                .orElseGet(() -> Page.empty(pageable));
     }
 
     @Transactional(readOnly = true)
     public BulletinPaieResponse getBulletinById(UUID bulletinId) {
         BulletinPaieEntity b = bulletinRepository.findById(bulletinId)
                 .orElseThrow(() -> new IllegalArgumentException("Bulletin de paie introuvable: " + bulletinId));
+        if (!hasPaiePrivileges()) {
+            com.sodepa.erp.share.UserData actor = utilsService.getCurrentUserData();
+            UUID bulletinOwnerUserId = (b.getEmploye() != null && b.getEmploye().getUtilisateur() != null)
+                    ? b.getEmploye().getUtilisateur().getId()
+                    : null;
+            if (actor.userId() == null || bulletinOwnerUserId == null
+                    || !actor.userId().equals(bulletinOwnerUserId.toString())) {
+                throw new com.sodepa.erp.share.erreurs.AccesRefuseException(
+                        "Accès refusé : vous ne pouvez consulter que vos propres bulletins de paie.");
+            }
+        }
         return mapToBulletinResponse(b);
     }
 
     @Transactional(readOnly = true)
     public DipeDeclarationResponse genererDipe(UUID periodeId) {
+        utilsService.hasAnyPermission(Permissions.CALCULATE_PAIE, Permissions.VALIDATE_PERIODE_PAIE, Permissions.CLOSE_PERIODE_PAIE);
         PeriodePaieEntity p = periodeRepository.findById(periodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Période introuvable: " + periodeId));
 

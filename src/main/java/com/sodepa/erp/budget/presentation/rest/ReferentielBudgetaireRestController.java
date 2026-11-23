@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,8 +60,10 @@ public class ReferentielBudgetaireRestController {
      * @return le programme créé avec statut HTTP 201 (CREATED)
      */
     @PostMapping("/programmes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Créer un nouveau programme budgétaire")
     public ResponseEntity<BudgetProgrammeEntity> creerProgramme(@Valid @RequestBody BudgetProgrammeEntity request) {
+        request.setId(null);
         return ResponseEntity.status(HttpStatus.CREATED).body(programmeRepository.save(request));
     }
 
@@ -88,11 +91,13 @@ public class ReferentielBudgetaireRestController {
      * @throws IllegalArgumentException si le code de programme spécifié n'existe pas dans le référentiel
      */
     @PostMapping("/activites")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Créer une activité budgétaire rattachée à un programme")
     public ResponseEntity<BudgetActiviteEntity> creerActivite(@Valid @RequestBody BudgetActiviteEntity request) {
         if (programmeRepository.findByCodeIgnoreCase(request.getProgrammeCode()).isEmpty()) {
             throw new IllegalArgumentException("Programme budgétaire introuvable : " + request.getProgrammeCode());
         }
+        request.setId(null);
         return ResponseEntity.status(HttpStatus.CREATED).body(activiteRepository.save(request));
     }
 
@@ -114,9 +119,11 @@ public class ReferentielBudgetaireRestController {
      * @return la source de financement créée
      */
     @PostMapping("/sources-financement")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Créer une source de financement budgétaire")
     public ResponseEntity<BudgetSourceFinancementEntity> creerSourceFinancement(
             @Valid @RequestBody BudgetSourceFinancementEntity request) {
+        request.setId(null);
         return ResponseEntity.status(HttpStatus.CREATED).body(sourceRepository.save(request));
     }
 
@@ -138,9 +145,11 @@ public class ReferentielBudgetaireRestController {
      * @return la nature de dépense créée
      */
     @PostMapping("/natures-depenses")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BUDGET', 'UPDATE_BUDGET', 'CREATE_BUDGET_PLAN', 'UPDATE_BUDGET_PLAN')")
     @Operation(summary = "Créer une nature de dépense budgétaire")
     public ResponseEntity<BudgetNatureDepenseEntity> creerNatureDepense(
             @Valid @RequestBody BudgetNatureDepenseEntity request) {
+        request.setId(null);
         return ResponseEntity.status(HttpStatus.CREATED).body(natureRepository.save(request));
     }
 }

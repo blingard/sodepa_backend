@@ -1,48 +1,21 @@
-# Changelog 28.0 — nomenclature budgétaire (US-BUD-104, ticket #45).
-#
-# Une seule table pour les quatre niveaux du budget-programme (programme →
-# action → activité → tâche), reliés par parent_id. US-BUD-104 n'écrit que des
-# programmes et des actions ; US-BUD-105 ouvrira les deux autres niveaux sans
-# migration de cette table. Les anciennes tables budget_programmes et
-# budget_activites (changelog 20.0) ne sont pas touchées.
+# Changelog 28.0 — Verrouillage optimiste (optimistic_version) sur les entités budgétaires et de régie.
 databaseChangeLog:
   - changeSet:
-      id: 28.0-01-budget-element-programmatique
+      id: 28.0-01-optimistic-version-budget-et-regies
       author: sodepa-erp
-      preConditions:
-        - onFail: MARK_RAN
-        - not:
-            - tableExists:
-                tableName: budget_element_programmatique
       changes:
-        - createTable:
-            tableName: budget_element_programmatique
-            remarks: Élément de la nomenclature budgétaire (programme, action, activité, tâche)
-            columns:
-              - column: { name: id, type: uuid, constraints: { primaryKey: true, primaryKeyName: pk_budget_element_programmatique, nullable: false } }
-              # Unique sur tous les niveaux et jamais réutilisé : des exercices
-              # passés citent le code, même après désactivation de l'élément.
-              - column: { name: code, type: varchar(30), constraints: { nullable: false, unique: true, uniqueConstraintName: uk_budget_element_code } }
-              - column: { name: libelle, type: varchar(255), constraints: { nullable: false } }
-              - column: { name: description, type: varchar(1000) }
-              # Pas de contrainte CHECK sur le niveau : elle figerait l'énumération
-              # (voir le changelog 26.0 pour maker_checker_requests).
-              - column: { name: niveau, type: varchar(20), constraints: { nullable: false } }
-              - column: { name: parent_id, type: uuid, constraints: { foreignKeyName: fk_budget_element_parent, references: budget_element_programmatique(id) } }
-              - column: { name: responsable_id, type: uuid, constraints: { foreignKeyName: fk_budget_element_responsable, references: utilisateurs(id) } }
-              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
-              - column: { name: motif_desactivation, type: varchar(1000) }
-              - column: { name: demande_creation_id, type: uuid }
-              - column: { name: cree_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: cree_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: valide_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: valide_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: modifie_par, type: varchar(100) }
-              - column: { name: modifie_le, type: timestamp with time zone }
-              - column: { name: version, type: bigint, defaultValueNumeric: 0, constraints: { nullable: false } }
-        # L'arbre se lit d'un bloc, mais la désactivation cherche les enfants actifs d'un parent.
-        - createIndex:
-            tableName: budget_element_programmatique
-            indexName: idx_budget_element_parent
-            columns:
-              - column: { name: parent_id }
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                IF to_regclass('public.budget_item') IS NOT NULL THEN
+                  ALTER TABLE public.budget_item ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+                IF to_regclass('public.budget_engagement') IS NOT NULL THEN
+                  ALTER TABLE public.budget_engagement ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+                IF to_regclass('public.tresorerie_regies') IS NOT NULL THEN
+                  ALTER TABLE public.tresorerie_regies ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0;
+                END IF;
+              END $$;

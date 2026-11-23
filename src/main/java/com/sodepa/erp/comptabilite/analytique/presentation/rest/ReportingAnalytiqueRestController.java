@@ -4,6 +4,7 @@ import com.sodepa.erp.comptabilite.analytique.application.usecase.ReportingAnaly
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -16,6 +17,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/comptabilite/analytique/reporting")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_ECRITURE', 'VIEW_BUDGET', 'INIT_CREATE_ECRITURE', 'GET_FULL_ECRITURE_INFO', 'CREATE_BUDGET_PLAN')")
 public class ReportingAnalytiqueRestController {
 
     /**

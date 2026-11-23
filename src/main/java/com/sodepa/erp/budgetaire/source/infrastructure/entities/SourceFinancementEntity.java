@@ -24,7 +24,7 @@ import java.util.UUID;
  * Un financement extérieur n'a pas de budget distinct (H-30) : la source
  * portée par la ligne suffit à suivre ce que chaque partenaire finance. Le code
  * et le type ne changent plus après la création. Le schéma est porté par le
- * changelog 30.0.
+ * changelog 35.0.
  * </p>
  */
 @Entity

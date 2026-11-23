@@ -8,8 +8,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -44,9 +46,13 @@ public class FecUseCase {
      */
     @Transactional(readOnly = true)
     public String genererFec(int annee) {
-        List<EcritureEntity> ecritures = ecritureRepository.findAll().stream()
-                .filter(e -> e.getStatut() == StatutEcriture.VALIDE && e.getDateComptable().getYear() == annee)
-                .collect(Collectors.toList());
+        LocalDate debut = LocalDate.of(annee, 1, 1);
+        LocalDate fin = LocalDate.of(annee, 12, 31);
+        List<EcritureEntity> ecritures = ecritureRepository
+                .findByStatutAndDateComptableBetweenWithDetails(StatutEcriture.VALIDE, debut, fin);
+
+        Map<String, String> compteLibelles = compteRepository.findAll().stream()
+                .collect(Collectors.toMap(CompteEntity::getCode, CompteEntity::getIntitule, (a, b) -> a));
 
         StringBuilder sb = new StringBuilder();
         
@@ -54,8 +60,8 @@ public class FecUseCase {
         sb.append("JournalCode|JournalLib|EcritureNum|EcritureDate|CompteNum|CompteLib|CompteAuxNum|CompteAuxLib|PieceRef|PieceDate|EcritureLib|Debit|Credit|EcritureLet|DateLet|ValidDate|Montantdevise|Devise\n");
 
         for (EcritureEntity e : ecritures) {
-            String journalCode = e.getJournal().getCode().name();
-            String journalLib = e.getJournal().getIntitule();
+            String journalCode = e.getJournal() != null && e.getJournal().getCode() != null ? e.getJournal().getCode().name() : "";
+            String journalLib = e.getJournal() != null ? e.getJournal().getIntitule() : "";
             String ecritureNum = e.getId().toString();
             String ecritureDate = e.getDateComptable().format(FEC_DATE_FORMATTER);
             String pieceRef = e.getNumeroPiece();
@@ -66,9 +72,7 @@ public class FecUseCase {
                 String compteNum = l.getCompteCode();
                 
                 // Chercher l'intitulé du compte
-                String compteLib = compteRepository.findByCode(compteNum)
-                        .map(CompteEntity::getIntitule)
-                        .orElse("Compte inconnu");
+                String compteLib = compteLibelles.getOrDefault(compteNum, "Compte inconnu");
 
                 String compteAuxNum = "";
                 String compteAuxLib = "";
@@ -78,16 +82,18 @@ public class FecUseCase {
                 }
 
                 String ecritureLib = l.getLibelleLigne();
-                BigDecimal debit = l.getDebit();
-                BigDecimal credit = l.getCredit();
+                BigDecimal debit = l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO;
+                BigDecimal credit = l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO;
 
                 String montantDevise = "";
                 String codeDevise = "";
                 if (e.getTypeDevise() != null) {
                     codeDevise = e.getTypeDevise().name();
                     BigDecimal totalLigne = debit.compareTo(BigDecimal.ZERO) > 0 ? debit : credit;
-                    BigDecimal totalDev = totalLigne.divide(e.getTauxChange(), 2, java.math.RoundingMode.HALF_UP);
-                    montantDevise = totalDev.toString();
+                    if (e.getTauxChange() != null && e.getTauxChange().compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal totalDev = totalLigne.divide(e.getTauxChange(), 2, java.math.RoundingMode.HALF_UP);
+                        montantDevise = totalDev.toString();
+                    }
                 }
 
                 // Append line

@@ -1,5 +1,8 @@
 package com.sodepa.erp.user.infrastructure.adapter;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 
 import com.sodepa.erp.user.application.BootstrapInitializationService;
 
@@ -38,14 +41,18 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserAdapter implements UserAdapterInterface {
 
+    private static final java.util.List<String> USER_WORKFLOW_ENTITY_NAMES = java.util.List.of("USER", "UtilisateurEntity");
+
     private final UserRepository userRepository;
     private final WorkflowService workflowService;
+    private final WorkflowStateService workflowStateService;
     private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
     private final KeycloakProvisioningPort keycloakProvisioningPort;
     private final AuditTrailRepository auditTrailRepository;
     private final BootstrapInitializationService bootstrapInitializationService;
+    private final UserManagementEnginePort userManagementEnginePort;
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final String PROFILE_PICTURES_PATH = "/user/profile_pictures";
@@ -62,10 +69,24 @@ public class UserAdapter implements UserAdapterInterface {
                 .build()).orElse(null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserOutput getUserOutputById(UUID id) {
-        return userRepository.findById(id).map(this::toOutput)
-                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable avec l'ID: " + id));
+        java.util.Optional<UtilisateurEntity> opt = userRepository.findById(id);
+        java.util.Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(USER_WORKFLOW_ENTITY_NAMES, id);
+
+        if (opt.isPresent()) {
+            UtilisateurEntity entity = opt.get();
+            if (activeWfOpt.isPresent()) {
+                return buildUserOutputFromWorkflow(id, entity, activeWfOpt.get());
+            }
+            return toOutput(entity);
+        }
+
+        if (activeWfOpt.isPresent()) {
+            return buildUserOutputFromWorkflow(id, null, activeWfOpt.get());
+        }
+
+        throw new IllegalArgumentException("Utilisateur introuvable avec l'ID: " + id);
     }
 
     @Transactional(readOnly = true)
@@ -75,20 +96,43 @@ public class UserAdapter implements UserAdapterInterface {
                 .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable."));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<UserOutput> getPage(Pageable pageable) {
         if (pageable.getPageSize() > MAX_PAGE_SIZE) {
             pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
         }
         Page<UtilisateurEntity> page = userRepository.findAll(pageable);
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(USER_WORKFLOW_ENTITY_NAMES);
+        java.util.Set<UUID> materializedIds = new java.util.HashSet<>();
+        java.util.List<UserOutput> items = new java.util.ArrayList<>();
+
+        for (UtilisateurEntity entity : page.getContent()) {
+            materializedIds.add(entity.getId());
+            WorkflowInstanceEntity wf = activeById.get(entity.getId());
+            if (wf != null) {
+                items.add(buildUserOutputFromWorkflow(entity.getId(), entity, wf));
+            } else {
+                items.add(this.toOutput(entity));
+            }
+        }
+
+        if (pageable.getPageNumber() == 0) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey()) || userRepository.existsById(entry.getKey())) {
+                    continue;
+                }
+                items.add(buildUserOutputFromWorkflow(entry.getKey(), null, entry.getValue()));
+            }
+        }
+
         boolean paged = page.getPageable().isPaged();
         return new PageRecord<>(
-                page.getContent().stream().map(this::toOutput).collect(Collectors.toList()),
-                page.isEmpty(),
+                items,
+                items.isEmpty(),
                 page.isFirst(),
                 page.isLast(),
                 page.getNumber(),
-                page.getNumberOfElements(),
+                items.size(),
                 PageableRecord.builder()
                         .offset(paged ? page.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? (long) page.getPageable().getPageNumber() : 0L)
@@ -101,6 +145,35 @@ public class UserAdapter implements UserAdapterInterface {
                 page.getSort(),
                 page.getTotalElements(),
                 page.getTotalPages()
+        );
+    }
+
+    private UserOutput buildUserOutputFromWorkflow(UUID id, UtilisateurEntity base, WorkflowInstanceEntity wf) {
+        WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+        Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+        java.util.List<String> attachments = current.getAttachments() == null ? java.util.List.of()
+                : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+        UserEventInput evt = null;
+        try {
+            evt = objectMapper.convertValue(data, UserEventInput.class);
+        } catch (Exception ignored) {}
+
+        return new UserOutput(
+                id,
+                evt != null && evt.username() != null ? evt.username() : (base != null ? base.getUsername() : ""),
+                evt != null && evt.nom() != null ? evt.nom() : (base != null ? base.getNom() : ""),
+                evt != null && evt.prenom() != null ? evt.prenom() : (base != null ? base.getPrenom() : ""),
+                evt != null && evt.email() != null ? evt.email() : (base != null ? base.getEmail() : ""),
+                evt != null && evt.photoProfile() != null ? evt.photoProfile() : (base != null ? base.getPhotoProfile() : ""),
+                evt != null ? evt.actif() : (base == null || base.isActif()),
+                evt != null && evt.telephones() != null ? evt.telephones() : (base != null ? base.getTelephones() : java.util.Set.of()),
+                evt != null && evt.permissions() != null ? evt.permissions() : (base != null ? base.getPermissions() : java.util.Set.of()),
+                true,
+                true,
+                wf.getId(),
+                wf.getStatut() != null ? wf.getStatut().name() : null,
+                current.getOperationType() != null ? current.getOperationType() : (base != null ? "UPDATE" : "CREATE"),
+                attachments
         );
     }
 
@@ -455,7 +528,7 @@ public class UserAdapter implements UserAdapterInterface {
                 fileStorageService.getPresignedUrlFromFullUrl(entity.getPhotoProfile(), 1),
                 entity.isActif(),
                 entity.getTelephones(),
-                entity.getPermissions()
+                userManagementEnginePort.resolveEffectivePermissions(entity.getId())
         );
     }
 }

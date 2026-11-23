@@ -98,6 +98,15 @@ public class AchatsSecurityService {
         }
 
         Optional<AffectationPosteEntity> aff = getActiveAffectation();
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities() != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority())
+                        || "ROLE_SUPER_ADMIN".equalsIgnoreCase(a.getAuthority())
+                        || "ROLE_WORKFLOW_ORCHESTRATOR".equalsIgnoreCase(a.getAuthority()))) {
+            return true;
+        }
+
         if (aff.isEmpty()) {
             return false;
         }

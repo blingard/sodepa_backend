@@ -11,7 +11,11 @@ import com.sodepa.erp.comptabilite.generale.infrastructure.entities.JournalEntit
 import com.sodepa.erp.comptabilite.generale.infrastructure.event.JournalEventInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.JournalRepository;
 import com.sodepa.erp.workflow.application.WorkflowService;
+import com.sodepa.erp.workflow.application.WorkflowStateService;
+import com.sodepa.erp.workflow.infrastructure.entities.WorkflowInstanceEntity;
+import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataResponse;
 import com.sodepa.erp.share.MakerCheckerOutput;
+import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.utils.*;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +36,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class JournalAdapter {
+    private static final List<String> JOURNAL_WORKFLOW_ENTITY_NAMES = List.of("JOURNAL", "JournalEntity");
+
     private final WorkflowService workflowService;
+    private final WorkflowStateService workflowStateService;
     private final JournalRepository journalRepository;
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
@@ -45,18 +52,19 @@ public class JournalAdapter {
      * @param request les données du journal
      */
     @Transactional
-    public void initCreateJournal(CreateJournalInput request) {
+    public SubmissionOutput initCreateJournal(CreateJournalInput request) {
         utilsService.hasPermission(Permissions.INIT_CREATE_JOURNAL);
         if (journalRepository.findByCode(request.code()).isPresent()) {
             throw new IllegalArgumentException("Le code journal " + request.code() + " est déjà utilisé.");
         }
         UUID entityPk = UUID.randomUUID();
         Map<String, Object> payload = toPayload(request, entityPk, true);
-        workflowService.submitChange(
+        UUID requestId = workflowService.submitChange(
                 MakerCheckerEntityName.JOURNAL,
                 entityPk.toString(),
                 payload, MakerCheckerOperationType.CREATE
         );
+        return new SubmissionOutput(requestId, entityPk);
     }
 
     /**
@@ -65,19 +73,31 @@ public class JournalAdapter {
      * @param id identifiant
      * @return journal
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public JournalOutput getJournalById(UUID id) {
         utilsService.hasPermission(Permissions.GET_FULL_JOURNAL_INFO);
-        JournalEntity entity = journalRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Journal introuvable avec l'ID: " + id));
+        Optional<JournalEntity> opt = journalRepository.findById(id);
+        Optional<WorkflowInstanceEntity> activeWfOpt = workflowStateService.findActiveInstanceForEntity(JOURNAL_WORKFLOW_ENTITY_NAMES, id);
 
-        return JournalOutput.builder()
-                .id(entity.getId())
-                .code(entity.getCode())
-                .intitule(entity.getIntitule())
-                .typeJournal(entity.getTypeJournal())
-                .actif(entity.getActif())
-                .build();
+        if (opt.isPresent()) {
+            JournalEntity entity = opt.get();
+            if (activeWfOpt.isPresent()) {
+                return buildJournalOutputFromWorkflow(id, entity, activeWfOpt.get());
+            }
+            return JournalOutput.builder()
+                    .id(entity.getId())
+                    .code(entity.getCode())
+                    .intitule(entity.getIntitule())
+                    .typeJournal(entity.getTypeJournal())
+                    .actif(entity.getActif())
+                    .build();
+        }
+
+        if (activeWfOpt.isPresent()) {
+            return buildJournalOutputFromWorkflow(id, null, activeWfOpt.get());
+        }
+
+        throw new IllegalArgumentException("Journal introuvable avec l'ID: " + id);
     }
 
     /**
@@ -163,21 +183,44 @@ public class JournalAdapter {
      * @param pageable pagination
      * @return page de journaux
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PageRecord<JournalSmartOutput> getJournauxByPage(Pageable pageable) {
         utilsService.hasPermission(Permissions.GET_FULL_JOURNAL_INFO);
         if (pageable.getPageSize() > MAX_PAGE_SIZE) {
             pageable = PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
         }
         Page<JournalEntity> page = journalRepository.findAll(pageable);
+        Map<UUID, WorkflowInstanceEntity> activeById = workflowStateService.findActiveInstancesByEntityUuid(JOURNAL_WORKFLOW_ENTITY_NAMES);
+        Set<UUID> materializedIds = new HashSet<>();
+        List<JournalSmartOutput> items = new ArrayList<>();
+
+        for (JournalEntity entity : page.getContent()) {
+            materializedIds.add(entity.getId());
+            WorkflowInstanceEntity wf = activeById.get(entity.getId());
+            if (wf != null) {
+                items.add(buildJournalSmartFromWorkflow(entity.getId(), entity, wf));
+            } else {
+                items.add(this.map(entity));
+            }
+        }
+
+        if (pageable.getPageNumber() == 0) {
+            for (Map.Entry<UUID, WorkflowInstanceEntity> entry : activeById.entrySet()) {
+                if (materializedIds.contains(entry.getKey()) || journalRepository.existsById(entry.getKey())) {
+                    continue;
+                }
+                items.add(buildJournalSmartFromWorkflow(entry.getKey(), null, entry.getValue()));
+            }
+        }
+
         boolean paged = page.getPageable().isPaged();
         return new PageRecord<>(
-                page.getContent().stream().map(this::map).toList(),
-                page.isEmpty(),
+                items,
+                items.isEmpty(),
                 page.isFirst(),
                 page.isLast(),
                 page.getNumber(),
-                page.getNumberOfElements(),
+                items.size(),
                 PageableRecord.builder()
                         .offset(paged ? page.getPageable().getOffset() : 0L)
                         .pageNumber(paged ? page.getPageable().getPageNumber() : 0L)
@@ -191,6 +234,45 @@ public class JournalAdapter {
                 page.getTotalElements(),
                 page.getTotalPages()
         );
+    }
+
+    private JournalOutput buildJournalOutputFromWorkflow(UUID id, JournalEntity base, WorkflowInstanceEntity wf) {
+        WorkflowCurrentDataResponse current = workflowStateService.getCachedCurrentData(wf);
+        Map<String, Object> data = current.getData() != null ? current.getData() : Map.of();
+        List<String> attachments = current.getAttachments() == null ? List.of()
+                : current.getAttachments().stream().map(m -> m.get("url") != null ? m.get("url").toString() : m.toString()).toList();
+        CodeJournal cj = base != null ? base.getCode() : CodeJournal.OD;
+        if (data.get("code") != null) {
+            try { cj = CodeJournal.valueOf(data.get("code").toString()); } catch (Exception ignored) {}
+        }
+        return JournalOutput.builder()
+                .id(id)
+                .code(cj)
+                .intitule(data.get("intitule") != null ? data.get("intitule").toString() : (base != null ? base.getIntitule() : ""))
+                .typeJournal(data.get("typeJournal") != null ? data.get("typeJournal").toString() : (base != null ? base.getTypeJournal() : "DIVERS"))
+                .actif(data.get("actif") != null ? Boolean.valueOf(data.get("actif").toString()) : (base == null || Boolean.TRUE.equals(base.getActif())))
+                .enCoursDeModification(true)
+                .workflowEnCours(true)
+                .workflowInstanceId(wf.getId())
+                .workflowStatut(wf.getStatut() != null ? wf.getStatut().name() : null)
+                .workflowOperationType(current.getOperationType() != null ? current.getOperationType() : (base != null ? "UPDATE" : "CREATE"))
+                .piecesJointesWorkflow(attachments)
+                .build();
+    }
+
+    private JournalSmartOutput buildJournalSmartFromWorkflow(UUID id, JournalEntity base, WorkflowInstanceEntity wf) {
+        JournalOutput full = buildJournalOutputFromWorkflow(id, base, wf);
+        return JournalSmartOutput.builder()
+                .id(full.id())
+                .code(full.code())
+                .intitule(full.intitule())
+                .enCoursDeModification(full.enCoursDeModification())
+                .workflowEnCours(full.workflowEnCours())
+                .workflowInstanceId(full.workflowInstanceId())
+                .workflowStatut(full.workflowStatut())
+                .workflowOperationType(full.workflowOperationType())
+                .piecesJointesWorkflow(full.piecesJointesWorkflow())
+                .build();
     }
 
     /**

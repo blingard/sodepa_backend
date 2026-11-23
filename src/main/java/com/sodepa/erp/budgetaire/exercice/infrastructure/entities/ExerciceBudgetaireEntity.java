@@ -24,7 +24,7 @@ import java.util.UUID;
  * <p>
  * Distinct de l'exercice comptable ({@code compta_exercices}) : celui-ci suit
  * le cycle de la procédure budgétaire, l'autre découpe l'année en périodes.
- * Le schéma est porté par le changelog 27.0.
+ * Le schéma est porté par le changelog 32.0.
  * </p>
  *
  * <p>

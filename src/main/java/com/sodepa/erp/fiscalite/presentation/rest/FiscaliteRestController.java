@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -81,6 +82,7 @@ public class FiscaliteRestController {
      * @return Réponse HTTP 201 contenant la taxe enregistrée.
      */
     @PostMapping("/taxes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_COMPTE', 'VALIDATE_OR_REJECT_COMPTE', 'BUDGET_CLOTURE_EXERCICE')")
     @Operation(summary = "Créer ou réviser un taux fiscal avec date d'effet et historisation automatique (CA-REF-020-01)")
     public ResponseEntity<TaxeImpotsEntity> enregistréerTaxe(@Valid @RequestBody TaxeImpotsEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fiscaliteService.enregistréerOuRevisionnerTaxe(request));
@@ -123,6 +125,7 @@ public class FiscaliteRestController {
      * @return Réponse HTTP 201 contenant le régime cré.
      */
     @PostMapping("/regimes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('INIT_CREATE_COMPTE', 'VALIDATE_OR_REJECT_COMPTE')")
     @Operation(summary = "Créer un régime fiscal")
     public ResponseEntity<RegimeFiscalEntity> creerRegime(@Valid @RequestBody RegimeFiscalEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fiscaliteService.creerRegimeFiscal(request));
@@ -193,6 +196,7 @@ public class FiscaliteRestController {
      * @return Réponse HTTP 201 contenant le seuil enregistré.
      */
     @PostMapping("/seuils")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_BUDGET_PLAN', 'BUDGET_CLOTURE_EXERCICE')")
     @Operation(summary = "Créer ou réviser un seuil de gestion avec date d'effet sans écrasement rétroactif (CA-REF-020-03)")
     public ResponseEntity<SeuilGestionEntity> enregistréerSeuil(@Valid @RequestBody SeuilGestionEntity request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fiscaliteService.enregistréerOuRevisionnerSeuil(request));

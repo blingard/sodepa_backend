@@ -25,7 +25,7 @@ import java.util.UUID;
  * « Ventes de viande » sur le 701). Le code, la section, le sens et le compte
  * ne changent plus après la création : les lignes budgétaires s'en servent.
  * Pour changer de compte, on crée une nouvelle nature et on désactive
- * l'ancienne. Le schéma est porté par le changelog 30.0.
+ * l'ancienne. Le schéma est porté par le changelog 35.0.
  * </p>
  */
 @Entity

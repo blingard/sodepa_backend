@@ -29,11 +29,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String requestPath = request.getRequestURI();
             log.debug("Processing JWT authentication for request path: {}", requestPath);
+            boolean isPublicActuator = requestPath.equals("/actuator/health")
+                    || requestPath.startsWith("/actuator/health/")
+                    || requestPath.equals("/actuator/info");
+            boolean isProtectedActuator = requestPath.startsWith("/actuator") && !isPublicActuator;
             if(requestPath.startsWith("/public") ||
                     requestPath.startsWith("/swagger-ui") ||
                     requestPath.startsWith("/v3/api-docs") ||
                     requestPath.startsWith("/api-docs") ||
-                    requestPath.startsWith("/actuator") ||
+                    isPublicActuator ||
                     requestPath.equals("/api/auth/login") ||
                     requestPath.equals("/api/auth/refresh") ||
                     requestPath.equals("/api/auth/logout")) {
@@ -42,7 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
             String correlationId = request.getHeader(CORRELATION_ID_HEADER);
-            if (correlationId == null || correlationId.isBlank()) {
+            if (!isProtectedActuator && (correlationId == null || correlationId.isBlank())) {
                 sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Correlation Id header not provided");
                 return;
             }

@@ -36,6 +36,8 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
      */
     boolean existsByCode(String code);
 
+    Page<WorkflowDefinitionEntity> findAllByActif(boolean actif, Pageable pageable);
+
     @Query("""
     SELECT w
     FROM WorkflowDefinitionEntity w
@@ -45,8 +47,7 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
           FROM WorkflowEtapeDefinitionEntity e
           JOIN e.acteurs a
           WHERE e.workflowDefinition = w
-            AND e.actif = :enable
-            AND a.actif = :enable
+            AND (:enable = false OR (e.actif = true AND a.actif = true))
             AND a.poste.id IN :posteId
             AND a.poste.uniteOrganisationnelle.id = w.uniteOrganisationnelle.id
       )
@@ -61,8 +62,7 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
     JOIN FETCH w.etapes e
     JOIN FETCH e.acteurs a
     WHERE w.id IN :ids
-      AND e.actif = :enable
-      AND a.actif = :enable
+      AND (:enable = false OR (e.actif = true AND a.actif = true))
       AND a.poste.id IN :posteId
     """)
     List<WorkflowDefinitionEntity> findDetailsByIds(@Param("ids") List<UUID> ids,

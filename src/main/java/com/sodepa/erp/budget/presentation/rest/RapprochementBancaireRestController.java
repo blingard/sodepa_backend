@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -42,6 +43,7 @@ public class RapprochementBancaireRestController {
      * @return synthese du traitement contenant le nombre de lignes automatiquement lettrées
      */
     @PostMapping("/matching")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VALIDATE_OR_REJECT_RELEVE_BANCAIRE', 'INIT_UPDATE_RELEVE_BANCAIRE', 'INIT_CREATE_ECRITURE')")
     @Operation(summary = "Lancer le rapprochement bancaire automatique")
     public Map<String, Object> matcherReleve(@RequestParam UUID releveId) {
         Integer count = matchingAutomatiqueUseCase.execute(releveId);
@@ -61,6 +63,7 @@ public class RapprochementBancaireRestController {
      * @return la liste des paiements conseilles et planifies par ordre de priorite
      */
     @GetMapping("/arbitrage")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'LIST_RELEVE_BANCAIRE', 'LIQUIDATE_INVOICE', 'VALIDATE_LIQUIDATION')")
     @Operation(summary = "Calculer l'arbitrage optimal des paiements fournisseurs")
     public List<RecommandationPaiementOutput> genererArbitrage(
             @RequestParam BigDecimal fondsSecurite,

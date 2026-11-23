@@ -1,35 +1,23 @@
-# Changelog 29.0 — structures budgétaires (US-BUD-107, ticket #48).
-#
-# Une structure est une unité de l'organigramme qui porte un budget. Elle ne
-# recopie rien de l'unité : elle y ajoute le poste de l'ordonnateur et l'unité
-# du service d'engagement, tous deux pris dans l'organigramme.
+# Changelog 29.0 — Séquences PostgreSQL atomiques pour la génération sans collision des codes métier.
 databaseChangeLog:
   - changeSet:
-      id: 29.0-01-budget-structure
+      id: 29.0-01-code-generation-sequences
       author: sodepa-erp
-      preConditions:
-        - onFail: MARK_RAN
-        - not:
-            - tableExists:
-                tableName: budget_structure
       changes:
-        - createTable:
-            tableName: budget_structure
-            remarks: Unité de l'organigramme portant un budget, avec son ordonnateur et son service d'engagement
-            columns:
-              - column: { name: id, type: uuid, constraints: { primaryKey: true, primaryKeyName: pk_budget_structure, nullable: false } }
-              # Une seule structure par unité, active ou désactivée.
-              - column: { name: unite_id, type: uuid, constraints: { nullable: false, unique: true, uniqueConstraintName: uk_budget_structure_unite, foreignKeyName: fk_budget_structure_unite, references: unites_organisationnelles(id) } }
-              # Un poste, pas une personne : le signataire se lit sur l'affectation active.
-              - column: { name: ordonnateur_poste_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_budget_structure_ordonnateur, references: postes(id) } }
-              - column: { name: service_engagement_unite_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_budget_structure_service, references: unites_organisationnelles(id) } }
-              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
-              - column: { name: motif_desactivation, type: varchar(1000) }
-              - column: { name: demande_creation_id, type: uuid }
-              - column: { name: cree_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: cree_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: valide_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: valide_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: modifie_par, type: varchar(100) }
-              - column: { name: modifie_le, type: timestamp with time zone }
-              - column: { name: version, type: bigint, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_fournisseur START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_expression_besoin START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_marche_dossier START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_reception_pv START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_tiers START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_formation_action START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_stage START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_bovin START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_cheptel_mvt START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_employe START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_contrat_travail START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_regie_approv START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_regie_depense START WITH 1 INCREMENT BY 1;
+              CREATE SEQUENCE IF NOT EXISTS public.seq_code_workflow_def START WITH 1 INCREMENT BY 1;

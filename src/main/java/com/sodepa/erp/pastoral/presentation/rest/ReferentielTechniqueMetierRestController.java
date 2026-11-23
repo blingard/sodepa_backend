@@ -4,8 +4,10 @@ import com.sodepa.erp.pastoral.application.ReferentielTechniqueMetierService;
 import com.sodepa.erp.pastoral.infrastructure.entities.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -57,8 +59,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant la localité crée.
      */
     @PostMapping("/localites")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_UNITE', 'VALIDATE_UNITE')")
     @Operation(summary = "Créer une localité géographique (Région, Département, Arrondissement, Ville)")
-    public ResponseEntity<LocaliteGeographiqueEntity> creerLocalite(@RequestBody LocaliteGeographiqueEntity localite) {
+    public ResponseEntity<LocaliteGeographiqueEntity> creerLocalite(@Valid @RequestBody LocaliteGeographiqueEntity localite) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerLocalite(localite));
     }
 
@@ -85,8 +88,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant le site cré.
      */
     @PostMapping("/sites")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_UNITE', 'CREATE_BOVIN')")
     @Operation(summary = "Proposer ou créer un site d'exploitation avec rattachement géographique obligatoire (CA-REF-012-01 & 02)")
-    public ResponseEntity<SiteExploitationEntity> proposerOuCreerSite(@RequestBody SiteExploitationEntity site) {
+    public ResponseEntity<SiteExploitationEntity> proposerOuCreerSite(@Valid @RequestBody SiteExploitationEntity site) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.proposerOuCreerSite(site));
     }
 
@@ -97,6 +101,7 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 200 contenant le site validé et activé.
      */
     @PostMapping("/sites/{siteId}/valider-central")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG') or hasAnyAuthority('VALIDATE_UNITE', 'VALIDATE_BOVIN')")
     @Operation(summary = "Valider centralement un site ou point de vente proposé par une unité locale (CA-REF-012-02 / RG-REF-028)")
     public ResponseEntity<SiteExploitationEntity> validerSiteCentral(@PathVariable UUID siteId) {
         return ResponseEntity.ok(service.validerSiteCentral(siteId));
@@ -122,8 +127,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant l'espèce crée.
      */
     @PostMapping("/especes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_BOVIN', 'VALIDATE_BOVIN')")
     @Operation(summary = "Créer une espèce animale dans le référentiel zootechnique")
-    public ResponseEntity<EspeceAnimaleEntity> creerEspece(@RequestBody EspeceAnimaleEntity espece) {
+    public ResponseEntity<EspeceAnimaleEntity> creerEspece(@Valid @RequestBody EspeceAnimaleEntity espece) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerEspece(espece));
     }
 
@@ -146,8 +152,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant la race crée.
      */
     @PostMapping("/races")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_BOVIN', 'VALIDATE_BOVIN')")
     @Operation(summary = "Créer une race animale rattachée obligatoirement à une espèce validée (CA-REF-013-01 & 02)")
-    public ResponseEntity<RaceAnimaleEntity> creerRace(@RequestBody RaceAnimaleEntity race) {
+    public ResponseEntity<RaceAnimaleEntity> creerRace(@Valid @RequestBody RaceAnimaleEntity race) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerRace(race));
     }
 
@@ -171,8 +178,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant le produit cré.
      */
     @PostMapping("/produits")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_BOVIN', 'VALIDATE_BOVIN')")
     @Operation(summary = "Créer un produit ou sous-produit animal avec contrôle anti-doublon insensible à la casse (CA-REF-014-02)")
-    public ResponseEntity<CatalogueProduitAnimalEntity> creerProduit(@RequestBody CatalogueProduitAnimalEntity produit) {
+    public ResponseEntity<CatalogueProduitAnimalEntity> creerProduit(@Valid @RequestBody CatalogueProduitAnimalEntity produit) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerProduit(produit));
     }
 
@@ -198,9 +206,10 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant l'élément cré.
      */
     @PostMapping("/sanitaire")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_BOVIN', 'VALIDATE_BOVIN')")
     @Operation(summary = "Créer un élément sanitaire/vétérinaire avec délai d'attente avant abattage (CA-REF-015-01)")
     public ResponseEntity<ReferentielSanitaireVeterinaireEntity> creerElementSanitaire(
-            @RequestBody ReferentielSanitaireVeterinaireEntity element) {
+            @Valid @RequestBody ReferentielSanitaireVeterinaireEntity element) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerElementSanitaire(element));
     }
 
@@ -224,9 +233,10 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant la norme crée.
      */
     @PostMapping("/abattage")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_BOVIN', 'VALIDATE_BOVIN')")
     @Operation(summary = "Créer une norme d'abattage ou de transformation (CA-REF-015-02)")
     public ResponseEntity<ReferentielAbattageTransformationEntity> creerNormeAbattage(
-            @RequestBody ReferentielAbattageTransformationEntity norme) {
+            @Valid @RequestBody ReferentielAbattageTransformationEntity norme) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerNormeAbattage(norme));
     }
 
@@ -250,8 +260,9 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant l'unité crée.
      */
     @PostMapping("/unites-mesure")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_UNITE', 'CREATE_BOVIN')")
     @Operation(summary = "Créer une unité de mesure avec sa dimension physique")
-    public ResponseEntity<UniteMesureEntity> creerUniteMesure(@RequestBody UniteMesureEntity unite) {
+    public ResponseEntity<UniteMesureEntity> creerUniteMesure(@Valid @RequestBody UniteMesureEntity unite) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerUniteMesure(unite));
     }
 
@@ -273,9 +284,10 @@ public class ReferentielTechniqueMetierRestController {
      * @return Réponse HTTP 201 contenant la règle crée.
      */
     @PostMapping("/conversions")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DG', 'DAF') or hasAnyAuthority('CREATE_UNITE', 'CREATE_BOVIN')")
     @Operation(summary = "Créer une règle de conversion avec contrôle de cohérence dimensionnelle (CA-REF-016-01 & 02)")
     public ResponseEntity<RegleConversionUniteEntity> creerRegleConversion(
-            @RequestBody RegleConversionUniteEntity regle) {
+            @Valid @RequestBody RegleConversionUniteEntity regle) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.creerRegleConversion(regle));
     }
 

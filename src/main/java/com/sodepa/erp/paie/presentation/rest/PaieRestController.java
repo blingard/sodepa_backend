@@ -17,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,18 +36,21 @@ public class PaieRestController {
     private final PaieService paieService;
 
     @GetMapping("/periodes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('CREATE_PERIODE_PAIE', 'VALIDATE_PERIODE_PAIE', 'CALCULATE_PAIE', 'CLOSE_PERIODE_PAIE', 'CREATE_VARIABLE_PAIE', 'VALIDATE_VARIABLE_PAIE', 'LIST_EMPLOYE', 'VIEW_EMPLOYE')")
     @Operation(summary = "Lister les périodes de paie mensuelles SODEPA")
     public ResponseEntity<List<PeriodePaieResponse>> listerPeriodes() {
         return ResponseEntity.ok(paieService.listerPeriodes());
     }
 
     @PostMapping("/periodes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('CREATE_PERIODE_PAIE')")
     @Operation(summary = "Ouvrir une nouvelle période de paie mensuelle")
     public ResponseEntity<PeriodePaieResponse> creerPeriode(@Valid @RequestBody CreerPeriodePaieRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(paieService.creerPeriode(request));
     }
 
     @PutMapping("/periodes/validate_or_reject/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('VALIDATE_PERIODE_PAIE')")
     @Operation(summary = "Valider ou rejeter l'ouverture d'une période de paie (Maker-Checker)")
     public ResponseEntity<Void> validateOrRejectPeriodePaie(
             @PathVariable UUID id,
@@ -62,12 +66,14 @@ public class PaieRestController {
     }
 
     @GetMapping("/periodes/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('CREATE_PERIODE_PAIE', 'VALIDATE_PERIODE_PAIE', 'CALCULATE_PAIE', 'CLOSE_PERIODE_PAIE', 'CREATE_VARIABLE_PAIE', 'VALIDATE_VARIABLE_PAIE', 'LIST_EMPLOYE', 'VIEW_EMPLOYE')")
     @Operation(summary = "Consulter le récapitulatif d'une période de paie")
     public ResponseEntity<PeriodePaieResponse> getPeriodeById(@PathVariable UUID id) {
         return ResponseEntity.ok(paieService.getPeriodeById(id));
     }
 
     @PostMapping("/periodes/{id}/variables")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('CREATE_VARIABLE_PAIE')")
     @Operation(summary = "Saisir une variable de paie mensuelle pour un employé (prime, acompte, heures supplémentaires)")
     public ResponseEntity<Void> ajouterVariable(
             @PathVariable UUID id,
@@ -77,6 +83,7 @@ public class PaieRestController {
     }
 
     @PutMapping("/variables/validate_or_reject/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('VALIDATE_VARIABLE_PAIE')")
     @Operation(summary = "Valider ou rejeter une variable de paie (Maker-Checker)")
     public ResponseEntity<Void> validateOrRejectVariablePaie(
             @PathVariable UUID id,
@@ -92,18 +99,21 @@ public class PaieRestController {
     }
 
     @PostMapping("/periodes/{id}/calculer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('CALCULATE_PAIE')")
     @Operation(summary = "Lancer le calcul automatisé de la paie et des bulletins pour l'ensemble du personnel actif")
     public ResponseEntity<PeriodePaieResponse> calculerPaie(@PathVariable UUID id) {
         return ResponseEntity.ok(paieService.calculerPaie(id));
     }
 
     @PostMapping("/periodes/{id}/valider")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('VALIDATE_PERIODE_PAIE')")
     @Operation(summary = "Valider la paie mensuelle (déclenche l'ordonnancement et les flux budgétaires/comptables)")
     public ResponseEntity<PeriodePaieResponse> validerPaie(@PathVariable UUID id) {
         return ResponseEntity.ok(paieService.validerPaie(id));
     }
 
     @PostMapping("/periodes/{id}/cloturer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAuthority('CLOSE_PERIODE_PAIE')")
     @Operation(summary = "Clôturer définitivement la période de paie")
     public ResponseEntity<PeriodePaieResponse> cloturerPeriode(@PathVariable UUID id) {
         return ResponseEntity.ok(paieService.cloturerPeriode(id));
@@ -124,6 +134,7 @@ public class PaieRestController {
     }
 
     @GetMapping("/periodes/{id}/dipe")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRH', 'DAF', 'DG') or hasAnyAuthority('CALCULATE_PAIE', 'VALIDATE_PERIODE_PAIE', 'CLOSE_PERIODE_PAIE')")
     @Operation(summary = "Générer la liasse officielle DIPE (Document d'Information sur le Personnel Employé - format DGI & CNPS Cameroun)")
     public ResponseEntity<DipeDeclarationResponse> genererDipe(@PathVariable UUID id) {
         return ResponseEntity.ok(paieService.genererDipe(id));

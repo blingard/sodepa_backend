@@ -5,9 +5,7 @@ import com.sodepa.erp.budget.application.outputs.RunwayReportOutput;
 import com.sodepa.erp.budget.application.outputs.TftOhadaReportOutput;
 import com.sodepa.erp.budget.infrastructure.entities.AuditTrailEntity;
 import com.sodepa.erp.budget.infrastructure.repo.AuditTrailRepository;
-import com.sodepa.erp.comptabilite.generale.infrastructure.entities.EcritureEntity;
-import com.sodepa.erp.comptabilite.generale.infrastructure.entities.LigneEcritureEntity;
-import com.sodepa.erp.comptabilite.generale.infrastructure.repo.EcritureRepository;
+import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneEcritureRepository;
 import com.sodepa.erp.utils.StatutEcriture;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -26,59 +24,51 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PilotageAdapter {
 
-    private final EcritureRepository ecritureRepository;
+    private final LigneEcritureRepository ligneEcritureRepository;
     private final AuditTrailRepository auditTrailRepository;
 
     @Transactional(readOnly = true)
     public TftOhadaReportOutput genererTftOhada(int annee) {
-        List<EcritureEntity> ecritures = ecritureRepository.findAll();
+        LocalDate debutAnnee = LocalDate.of(annee, 1, 1);
+        LocalDate finAnnee = LocalDate.of(annee, 12, 31);
 
         BigDecimal fto = BigDecimal.ZERO;
         BigDecimal fti = BigDecimal.ZERO;
         BigDecimal ftf = BigDecimal.ZERO;
         BigDecimal tresoDebut = BigDecimal.ZERO;
-        BigDecimal tresoFin = BigDecimal.ZERO;
+        BigDecimal tresoAnnee = BigDecimal.ZERO;
 
-        for (EcritureEntity e : ecritures) {
-            if (e.getStatut() != StatutEcriture.VALIDE) {
-                continue;
-            }
-
-            int anneeComptable = e.getDateComptable().getYear();
-
-            for (LigneEcritureEntity l : e.getLignes()) {
-                String compte = l.getCompteCode();
-                BigDecimal debit = l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO;
-                BigDecimal credit = l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO;
-                BigDecimal variationSolde = debit.subtract(credit);
-
-                if (compte.startsWith("5")) {
-                    if (anneeComptable < annee) {
-                        tresoDebut = tresoDebut.add(variationSolde);
-                    }
-                    if (anneeComptable <= annee) {
-                        tresoFin = tresoFin.add(variationSolde);
-                    }
-                }
-
-                if (anneeComptable == annee) {
-                    if (compte.startsWith("2")) {
-                        fti = fti.subtract(variationSolde);
-                    } else if (compte.startsWith("16") || compte.startsWith("10")) {
-                        ftf = ftf.add(variationSolde.negate());
-                    } else if (compte.startsWith("6") || compte.startsWith("7") || compte.startsWith("4")) {
-                        if (compte.startsWith("7")) {
-                            fto = fto.add(credit.subtract(debit));
-                        } else if (compte.startsWith("6")) {
-                            fto = fto.subtract(debit.subtract(credit));
-                        } else {
-                            fto = fto.add(variationSolde.negate());
-                        }
-                    }
-                }
+        for (Object[] row : ligneEcritureRepository.sumMovementsBeforeDateForStatut(StatutEcriture.VALIDE, debutAnnee)) {
+            String compte = (String) row[0];
+            if (compte != null && compte.startsWith("5")) {
+                BigDecimal debit = (BigDecimal) row[1];
+                BigDecimal credit = (BigDecimal) row[2];
+                tresoDebut = tresoDebut.add(debit.subtract(credit));
             }
         }
 
+        for (Object[] row : ligneEcritureRepository.sumMovementsBetweenDatesForStatut(StatutEcriture.VALIDE, debutAnnee, finAnnee)) {
+            String compte = (String) row[0];
+            if (compte == null) {
+                continue;
+            }
+            BigDecimal debit = (BigDecimal) row[1];
+            BigDecimal credit = (BigDecimal) row[2];
+            BigDecimal variationSolde = debit.subtract(credit);
+
+            if (compte.startsWith("5")) {
+                tresoAnnee = tresoAnnee.add(variationSolde);
+            }
+            if (compte.startsWith("2")) {
+                fti = fti.subtract(variationSolde);
+            } else if (compte.startsWith("16") || compte.startsWith("10")) {
+                ftf = ftf.add(variationSolde.negate());
+            } else if (compte.startsWith("6") || compte.startsWith("7") || compte.startsWith("4")) {
+                fto = fto.add(variationSolde.negate());
+            }
+        }
+
+        BigDecimal tresoFin = tresoDebut.add(tresoAnnee);
         BigDecimal varNet = fto.add(fti).add(ftf);
         if (tresoDebut.compareTo(BigDecimal.ZERO) == 0 && tresoFin.compareTo(BigDecimal.ZERO) != 0) {
             tresoDebut = tresoFin.subtract(varNet);
@@ -89,33 +79,27 @@ public class PilotageAdapter {
 
     @Transactional(readOnly = true)
     public RunwayReportOutput calculerRunwayAndBurnRate() {
-        List<EcritureEntity> ecritures = ecritureRepository.findAll();
-
         LocalDate fin = LocalDate.now();
         LocalDate debut3Mois = fin.minusMonths(3);
 
         BigDecimal soldeTreso = BigDecimal.ZERO;
         BigDecimal cumulSorties3Mois = BigDecimal.ZERO;
 
-        for (EcritureEntity e : ecritures) {
-            if (e.getStatut() != StatutEcriture.VALIDE) {
-                continue;
+        for (Object[] row : ligneEcritureRepository.sumMovementsByCompteCodeForStatut(StatutEcriture.VALIDE)) {
+            String compte = (String) row[0];
+            if (compte != null && compte.startsWith("5")) {
+                BigDecimal debit = (BigDecimal) row[1];
+                BigDecimal credit = (BigDecimal) row[2];
+                soldeTreso = soldeTreso.add(debit.subtract(credit));
             }
+        }
 
-            for (LigneEcritureEntity l : e.getLignes()) {
-                String compte = l.getCompteCode();
-                BigDecimal debit = l.getDebit() != null ? l.getDebit() : BigDecimal.ZERO;
-                BigDecimal credit = l.getCredit() != null ? l.getCredit() : BigDecimal.ZERO;
-                BigDecimal variation = debit.subtract(credit);
-
-                if (compte.startsWith("5")) {
-                    soldeTreso = soldeTreso.add(variation);
-
-                    if (!e.getDateComptable().isBefore(debut3Mois) && !e.getDateComptable().isAfter(fin)) {
-                        if (credit.compareTo(BigDecimal.ZERO) > 0) {
-                            cumulSorties3Mois = cumulSorties3Mois.add(credit);
-                        }
-                    }
+        for (Object[] row : ligneEcritureRepository.sumMovementsBetweenDatesForStatut(StatutEcriture.VALIDE, debut3Mois, fin)) {
+            String compte = (String) row[0];
+            if (compte != null && compte.startsWith("5")) {
+                BigDecimal credit = (BigDecimal) row[2];
+                if (credit.compareTo(BigDecimal.ZERO) > 0) {
+                    cumulSorties3Mois = cumulSorties3Mois.add(credit);
                 }
             }
         }

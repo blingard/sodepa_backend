@@ -29,7 +29,16 @@ public class VaultEnvironmentPostProcessor implements EnvironmentPostProcessor {
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         String vaultUri = environment.getProperty("VAULT_URI", "http://localhost:8200");
-        String vaultToken = environment.getProperty("VAULT_TOKEN", "sodepa-root-token");
+        boolean isProdProfile = java.util.Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+        String vaultToken = environment.getProperty("VAULT_TOKEN");
+        if (vaultToken == null || vaultToken.isBlank()) {
+            if (isProdProfile) {
+                log.warn("⚠️ VAULT_TOKEN absent en profil production : récupération Vault ignorée (aucun jeton par défaut autorisé).");
+                return;
+            }
+            vaultToken = "sodepa-dev-token";
+        }
         String secretPath = environment.getProperty("VAULT_SECRET_PATH", "secret/data/erp");
 
         log.info("🔐 Récupération des secrets depuis Vault : {} (path: {})", vaultUri, secretPath);

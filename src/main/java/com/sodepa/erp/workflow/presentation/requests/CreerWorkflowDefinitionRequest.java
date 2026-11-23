@@ -68,7 +68,11 @@ public class CreerWorkflowDefinitionRequest {
      * Indicateur d'activation opérationnelle (true si actif, false si archivé/désactivé) dans le cadre des opérations SODEPA.
      */
     @Builder.Default
-    private boolean actif = true;
+    private Boolean actif = Boolean.TRUE;
+
+    public boolean isActif() {
+        return !Boolean.FALSE.equals(actif);
+    }
 
     /**
      * Champ etapes : etapes utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -92,6 +96,11 @@ public class CreerWorkflowDefinitionRequest {
      */
         @NotBlank
         private String intitule;
+
+    /**
+     * Consignes ou description détaillée de l'étape dans le Studio Visuel.
+     */
+        private String description;
 
     /**
      * Champ typeEtape : type etape utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -168,6 +177,8 @@ public class CreerWorkflowDefinitionRequest {
         @NotNull
         private StrategieAssignation strategieAssignation;
 
+        private String valeurAssignation;
+
 
     /**
      * Champ obligatoire : obligatoire utilisé pour le pilotage et le suivi dans CreerWorkflowDefinitionRequest.
@@ -180,10 +191,9 @@ public class CreerWorkflowDefinitionRequest {
      */
         private Integer delaiSlaHeures;
         /**
-         * Mode d'action exigé pour la validation de cette étape (fichiers/champs/rien/optionnel).
+         * Mode d'action exigé pour cet acteur (hérite du mode de l'étape s'il est omis).
          */
-        @Builder.Default
-        private ValidationStepActionMode modeActionValidation = ValidationStepActionMode.OPTIONAL_FILE_OR_ATTRIBUTE;
+        private ValidationStepActionMode modeActionValidation;
 
        private Map<String, Object> fields;
 

@@ -88,6 +88,14 @@ public class BudgetItemEntity {
     private BigDecimal montantReal;
 
     /**
+     * Verrouillage optimiste pour sécuriser les engagements et réallocations concurrents.
+     */
+    @Version
+    @Column(name = "optimistic_version")
+    @Builder.Default
+    private Long optimisticVersion = 0L;
+
+    /**
      * Répartition périodique (mensuelle ou trimestrielle) de l'enveloppe.
      */
     @OneToMany(mappedBy = "budgetItem", cascade = CascadeType.ALL, orphanRemoval = true)

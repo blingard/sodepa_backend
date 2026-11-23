@@ -1,67 +1,36 @@
-# Changelog 30.0 — natures et sources de financement (US-BUD-108, ticket #49).
-#
-# Les deux qualifications d'une ligne budgétaire, en plus de sa structure et de
-# son élément de nomenclature. Les anciennes tables budget_natures_depenses et
-# budget_sources_financement (changelog 20.0) ne sont pas touchées.
+# Changelog 30.0 — Table ShedLock distribuée et verrouillage optimiste (optimistic_version) sur les entités financières/RH/achats.
 databaseChangeLog:
   - changeSet:
-      id: 30.0-01-budget-nature
+      id: 30.0-01-shedlock-and-optimistic-locking
       author: sodepa-erp
-      preConditions:
-        - onFail: MARK_RAN
-        - not:
-            - tableExists:
-                tableName: budget_nature
       changes:
-        - createTable:
-            tableName: budget_nature
-            remarks: Nature d'une ligne budgétaire, avec sa section, son sens et son compte SYSCOHADA
-            columns:
-              - column: { name: id, type: uuid, constraints: { primaryKey: true, primaryKeyName: pk_budget_nature, nullable: false } }
-              # Unique et jamais réutilisé : les lignes passées citent la nature.
-              - column: { name: code, type: varchar(30), constraints: { nullable: false, unique: true, uniqueConstraintName: uk_budget_nature_code } }
-              - column: { name: libelle, type: varchar(255), constraints: { nullable: false } }
-              # Pas de contrainte CHECK sur la section ni le sens (voir le changelog 26.0).
-              - column: { name: section, type: varchar(20), constraints: { nullable: false } }
-              - column: { name: sens, type: varchar(10), constraints: { nullable: false } }
-              # Plusieurs natures peuvent partager un compte.
-              - column: { name: compte_id, type: uuid, constraints: { nullable: false, foreignKeyName: fk_budget_nature_compte, references: comptes(id) } }
-              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
-              - column: { name: motif_desactivation, type: varchar(1000) }
-              - column: { name: demande_creation_id, type: uuid }
-              - column: { name: cree_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: cree_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: valide_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: valide_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: modifie_par, type: varchar(100) }
-              - column: { name: modifie_le, type: timestamp with time zone }
-              - column: { name: version, type: bigint, defaultValueNumeric: 0, constraints: { nullable: false } }
-
-  - changeSet:
-      id: 30.0-02-budget-source-financement
-      author: sodepa-erp
-      preConditions:
-        - onFail: MARK_RAN
-        - not:
-            - tableExists:
-                tableName: budget_source_financement
-      changes:
-        - createTable:
-            tableName: budget_source_financement
-            remarks: Origine des fonds d'une ligne budgétaire (ressources propres, subvention, partenaire)
-            columns:
-              - column: { name: id, type: uuid, constraints: { primaryKey: true, primaryKeyName: pk_budget_source_financement, nullable: false } }
-              - column: { name: code, type: varchar(30), constraints: { nullable: false, unique: true, uniqueConstraintName: uk_budget_source_code } }
-              - column: { name: libelle, type: varchar(255), constraints: { nullable: false } }
-              - column: { name: type, type: varchar(30), constraints: { nullable: false } }
-              - column: { name: bailleur, type: varchar(255) }
-              - column: { name: actif, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
-              - column: { name: motif_desactivation, type: varchar(1000) }
-              - column: { name: demande_creation_id, type: uuid }
-              - column: { name: cree_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: cree_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: valide_par, type: varchar(100), constraints: { nullable: false } }
-              - column: { name: valide_le, type: timestamp with time zone, constraints: { nullable: false } }
-              - column: { name: modifie_par, type: varchar(100) }
-              - column: { name: modifie_le, type: timestamp with time zone }
-              - column: { name: version, type: bigint, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE IF NOT EXISTS public.shedlock (
+                name VARCHAR(64) NOT NULL,
+                lock_until TIMESTAMP NOT NULL,
+                locked_at TIMESTAMP NOT NULL,
+                locked_by VARCHAR(255) NOT NULL,
+                PRIMARY KEY (name)
+              );
+              DO $$
+              DECLARE
+                tbl text;
+                tables text[] := ARRAY[
+                  'ecritures',
+                  'immobilisations',
+                  'tiers',
+                  'achat_expressions_besoin',
+                  'marche_dossiers',
+                  'paie_bulletins',
+                  'rh_contrats_travail',
+                  'rh_employes'
+                ];
+              BEGIN
+                FOREACH tbl IN ARRAY tables LOOP
+                  IF to_regclass('public.' || tbl) IS NOT NULL THEN
+                    EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS optimistic_version bigint NOT NULL DEFAULT 0', tbl);
+                  END IF;
+                END LOOP;
+              END $$;

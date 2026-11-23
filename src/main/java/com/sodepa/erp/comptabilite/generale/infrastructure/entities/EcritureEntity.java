@@ -152,4 +152,9 @@ public class EcritureEntity {
                     String.format("Écriture non équilibrée – débit=%s, crédit=%s", totalDebit, totalCredit));
         }
     }
+
+    @Version
+    @Column(name = "optimistic_version", nullable = false)
+    @Builder.Default
+    private Long optimisticVersion = 0L;
 }

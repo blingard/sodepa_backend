@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -48,6 +49,7 @@ public class ChangeHedgingRestController {
      * @return la liste des instruments de couverture correspondants
      */
     @GetMapping("/couverture")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Lister les contrats de couverture de change à terme")
     public List<ContratCouvertureOutput> listerCouvertures(
             @RequestParam(required = false) String devise,
@@ -66,6 +68,7 @@ public class ChangeHedgingRestController {
      * @return le contrat de couverture formalise
      */
     @PostMapping("/couverture")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('CREATE_BANK', 'INIT_CREATE_BANK', 'UPDATE_BANK', 'CREATE_APPROVISIONNEMENT')")
     @Operation(summary = "Enregistrer un nouveau contrat de couverture de change")
     public ContratCouvertureOutput enregistrerCouverture(@Valid @RequestBody CouvertureRequest request) {
         return enregistrerCouvertureUseCase.execute(
@@ -84,6 +87,7 @@ public class ChangeHedgingRestController {
      * @return le rapport d'evaluation de valorisation et l'ecart latent calcule
      */
     @GetMapping("/couverture/{id}/evaluer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DAF', 'DG') or hasAnyAuthority('VIEW_BUDGET', 'LIST_ALL_BANKS', 'GET_FULL_BANK_INFO')")
     @Operation(summary = "Valoriser un contrat de couverture au cours du jour (Mark-to-Market)")
     public ValuationCouvertureReportOutput evaluer(@PathVariable UUID id, @RequestParam BigDecimal coursSpot) {
         return evaluerEcartsChangeLatentsUseCase.execute(new EvaluerEcartsChangeLatentsUseCase.Input(id, coursSpot));

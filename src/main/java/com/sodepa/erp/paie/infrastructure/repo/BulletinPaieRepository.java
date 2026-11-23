@@ -18,5 +18,6 @@ public interface BulletinPaieRepository extends JpaRepository<BulletinPaieEntity
     List<BulletinPaieEntity> findByPeriodeId(UUID periodeId);
     Page<BulletinPaieEntity> findByPeriodeId(UUID periodeId, Pageable pageable);
     Optional<BulletinPaieEntity> findByPeriodeIdAndEmployeId(UUID periodeId, UUID employeId);
+    Page<BulletinPaieEntity> findByPeriodeIdAndEmployeId(UUID periodeId, UUID employeId, Pageable pageable);
     List<BulletinPaieEntity> findByEmployeIdOrderByPeriodeDateDebutDesc(UUID employeId);
 }
