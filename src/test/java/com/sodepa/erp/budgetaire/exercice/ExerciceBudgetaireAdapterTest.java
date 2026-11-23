@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.exercice;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.CreerExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
@@ -85,7 +86,8 @@ class ExerciceBudgetaireAdapterTest {
 
     @BeforeEach
     void preparer() {
-        adapter = new ExerciceBudgetaireAdapter(exerciceRepository, demandeRepository, workflowService, utilsService, HORLOGE);
+        adapter = new ExerciceBudgetaireAdapter(exerciceRepository,
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE), utilsService, HORLOGE);
     }
 
     private void connecte(String userId) {

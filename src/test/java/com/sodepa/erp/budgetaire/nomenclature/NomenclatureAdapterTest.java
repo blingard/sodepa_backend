@@ -1,7 +1,8 @@
 package com.sodepa.erp.budgetaire.nomenclature;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
-import com.sodepa.erp.budgetaire.nomenclature.application.UsageNomenclature;
+import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
@@ -86,14 +87,15 @@ class NomenclatureAdapterTest {
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
     @Mock private UserRepository utilisateurRepository;
-    @Mock private UsageNomenclature usageNomenclature;
+    @Mock private UsageReferentiels usageReferentiels;
 
     private NomenclatureAdapter adapter;
 
     @BeforeEach
     void preparer() {
-        adapter = new NomenclatureAdapter(elementRepository, demandeRepository, workflowService, utilsService,
-                utilisateurRepository, usageNomenclature, HORLOGE);
+        adapter = new NomenclatureAdapter(elementRepository,
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE), utilsService,
+                utilisateurRepository, usageReferentiels, HORLOGE);
     }
 
     // ─── Outils ─────────────────────────────────────────────────────────────
@@ -394,7 +396,7 @@ class NomenclatureAdapterTest {
             ElementProgrammatiqueEntity a01 = element("P01-A01", NiveauProgrammatique.ACTION, UUID.randomUUID(), true);
             when(elementRepository.findById(a01.getId())).thenReturn(Optional.of(a01));
             when(elementRepository.existsByParentIdAndActifTrue(a01.getId())).thenReturn(false);
-            when(usageNomenclature.estUtilise(a01.getId())).thenReturn(false);
+            when(usageReferentiels.elementUtilise(a01.getId())).thenReturn(false);
             aucuneDemandeEnAttente(a01.getId());
             when(workflowService.submitChange(any(), anyString(), any(), any())).thenReturn(UUID.randomUUID());
 
@@ -410,7 +412,7 @@ class NomenclatureAdapterTest {
             ElementProgrammatiqueEntity a01 = element("P01-A01", NiveauProgrammatique.ACTION, UUID.randomUUID(), true);
             when(elementRepository.findById(a01.getId())).thenReturn(Optional.of(a01));
             when(elementRepository.existsByParentIdAndActifTrue(a01.getId())).thenReturn(false);
-            when(usageNomenclature.estUtilise(a01.getId())).thenReturn(true);
+            when(usageReferentiels.elementUtilise(a01.getId())).thenReturn(true);
 
             ConflitMetierException e = assertThrows(ConflitMetierException.class,
                     () -> adapter.initDesactiver(new ChangerEtatElementInput(a01.getId(), "Fusion")));
@@ -522,7 +524,7 @@ class NomenclatureAdapterTest {
             connecte(VALIDATEUR);
             when(elementRepository.findById(a01.getId())).thenReturn(Optional.of(a01));
             when(elementRepository.existsByParentIdAndActifTrue(a01.getId())).thenReturn(false);
-            when(usageNomenclature.estUtilise(a01.getId())).thenReturn(false);
+            when(usageReferentiels.elementUtilise(a01.getId())).thenReturn(false);
 
             adapter.decider(new DeciderDemandeNomenclatureInput(demande.getId(), MakerCheckerStatus.ACCEPTED, "OK"));
 
