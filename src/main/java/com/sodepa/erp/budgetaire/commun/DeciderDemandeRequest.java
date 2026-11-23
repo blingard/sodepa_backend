@@ -1,11 +1,11 @@
-package com.sodepa.erp.budgetaire.exercice.presentation.requests;
+package com.sodepa.erp.budgetaire.commun;
 
 import com.sodepa.erp.utils.MakerCheckerStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Corps de {@code POST /api/budget/exercices/validate_or_reject/{requestId}}.
+ * Corps des routes {@code validate_or_reject/{requestId}} du module budgétaire.
  *
  * <p>Contrairement à {@code RejectOrValidateSubmitRequest}, il ne demande pas
  * le type d'opération : le serveur le connaît déjà par la demande. Le motif
