@@ -12,14 +12,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Service applicatif (Use Case) gérant les restitutions et rapports de la comptabilité analytique et budgétaire.
- * Calcule les résultats réels ventilés par section et les compare aux budgets prévisionnels.
+ * Service applicatif (Use Case) gérant les restitutions et rapports de la comptabilité analytique.
+ * Calcule les résultats réels ventilés par section. Le suivi des crédits relève du module budgétaire.
  */
 @Service
 @RequiredArgsConstructor
@@ -34,11 +33,6 @@ public class ReportingAnalytiqueUseCase {
      * Dépôt de données pour les sections analytiques.
      */
     private final SectionAnalytiqueRepository sectionAnalytiqueRepository;
-
-    /**
-     * Dépôt de données pour les budgets prévisionnels.
-     */
-    private final BudgetRepository budgetRepository;
 
     /**
      * DTO représentant une section dans le rapport du Grand Livre Analytique.
@@ -202,70 +196,6 @@ public class ReportingAnalytiqueUseCase {
          * Montant total imputé (ventilations cumulées).
          */
         private BigDecimal montant;
-    }
-
-    /**
-     * DTO représentant le suivi budgétaire (réel vs prévisions).
-     */
-    @Data
-    @Builder
-    public static class SuiviBudgetaireReport {
-        /**
-         * Code de la section analytique.
-         */
-        private String sectionCode;
-        /**
-         * Libellé de la section.
-         */
-        private String sectionIntitule;
-        /**
-         * Année d'exercice budgétaire.
-         */
-        private int annee;
-        /**
-         * Lignes comparatives par compte.
-         */
-        private List<SuiviBudgetaireLine> lignes;
-        /**
-         * Total budgété cumulé.
-         */
-        private BigDecimal totalBudget;
-        /**
-         * Total réel cumulé.
-         */
-        private BigDecimal totalReel;
-        /**
-         * Écart net cumulé.
-         */
-        private BigDecimal ecartNet;
-    }
-
-    /**
-     * DTO représentant une ligne de comparaison budget vs réel.
-     */
-    @Data
-    @Builder
-    public static class SuiviBudgetaireLine {
-        /**
-         * Code du compte comptable général (ex: '605200').
-         */
-        private String compteCode;
-        /**
-         * Montant budgété ou prévisionnel alloué.
-         */
-        private BigDecimal montantBudget;
-        /**
-         * Montant réel consommé (ventilations cumulées).
-         */
-        private BigDecimal montantReel;
-        /**
-         * Écart de consommation (Reel - Budget).
-         */
-        private BigDecimal ecart;
-        /**
-         * Taux d'écart ou de dépassement en pourcentage (ex: +15.5%).
-         */
-        private BigDecimal pourcentageEcart;
     }
 
     /**
@@ -451,78 +381,6 @@ public class ReportingAnalytiqueUseCase {
                 .totalCharges(totalCharges)
                 .totalProduits(totalProduits)
                 .resultatNetAnalytique(net)
-                .build();
-    }
-
-    /**
-     * Génère un comparatif Budgets vs Montants Réels (Suivi budgétaire) d'une section analytique.
-     * 
-     * @param sectionId l'identifiant unique de la section
-     * @param annee l'exercice comptable concerné
-     * @return le rapport de suivi budgétaire de la section
-     * @throws IllegalArgumentException si la section n'existe pas
-     */
-    @Transactional(readOnly = true)
-    public SuiviBudgetaireReport genererSuiviBudgetaire(UUID sectionId, int annee) {
-        SectionAnalytiqueEntity section = sectionAnalytiqueRepository.findById(sectionId)
-                .orElseThrow(() -> new IllegalArgumentException("Section analytique introuvable avec l'ID: " + sectionId));
-
-        List<BudgetEntity> budgets = budgetRepository.findByAnneeAndSectionId(annee, sectionId);
-
-        List<EcritureEntity> ecritures = ecritureRepository.findByStatutAndDateComptableBetweenWithVentilations(
-                StatutEcriture.VALIDE, LocalDate.of(annee, 1, 1), LocalDate.of(annee, 12, 31));
-
-        List<SuiviBudgetaireLine> lignesReport = new ArrayList<>();
-        BigDecimal totalBudgetCumul = BigDecimal.ZERO;
-        BigDecimal totalReelCumul = BigDecimal.ZERO;
-
-        for (BudgetEntity b : budgets) {
-            String compteCode = b.getCompteCode();
-            BigDecimal montantBudget = b.getMontantBudget();
-            totalBudgetCumul = totalBudgetCumul.add(montantBudget);
-
-            // Calcul du réel (cumul des ventilations de cette section et de ce compte general dans l'année)
-            BigDecimal montantReel = BigDecimal.ZERO;
-            for (EcritureEntity e : ecritures) {
-                for (LigneEcritureEntity l : e.getLignes()) {
-                    if (l.getCompteCode().equals(compteCode)) {
-                        for (VentilationAnalytiqueEntity v : l.getVentilations()) {
-                            if (v.getSection().getId().equals(sectionId)) {
-                                montantReel = montantReel.add(v.getMontant());
-                            }
-                        }
-                    }
-                }
-            }
-
-            totalReelCumul = totalReelCumul.add(montantReel);
-            BigDecimal ecart = montantReel.subtract(montantBudget);
-            
-            BigDecimal pourcEcart = BigDecimal.ZERO;
-            if (montantBudget.compareTo(BigDecimal.ZERO) > 0) {
-                pourcEcart = ecart.multiply(BigDecimal.valueOf(100))
-                        .divide(montantBudget, 2, RoundingMode.HALF_UP);
-            }
-
-            lignesReport.add(SuiviBudgetaireLine.builder()
-                    .compteCode(compteCode)
-                    .montantBudget(montantBudget)
-                    .montantReel(montantReel)
-                    .ecart(ecart)
-                    .pourcentageEcart(pourcEcart)
-                    .build());
-        }
-
-        BigDecimal ecartNet = totalReelCumul.subtract(totalBudgetCumul);
-
-        return SuiviBudgetaireReport.builder()
-                .sectionCode(section.getCode())
-                .sectionIntitule(section.getIntitule())
-                .annee(annee)
-                .lignes(lignesReport)
-                .totalBudget(totalBudgetCumul)
-                .totalReel(totalReelCumul)
-                .ecartNet(ecartNet)
                 .build();
     }
 }

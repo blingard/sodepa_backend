@@ -78,7 +78,6 @@ public class TestDataSeeder implements CommandLineRunner {
     private final ValiderEcritureUseCase validerEcritureUseCase;
     private final SoumettreEcritureUseCase soumettreEcritureUseCase;
     private final CleRepartitionUseCase cleRepartitionUseCase;
-    private final BudgetUseCase budgetUseCase;
     private final FiscalYearClosingAdapter fiscalYearClosingAdapter;
     private final PlatformTransactionManager transactionManager;
 
@@ -443,31 +442,6 @@ public class TestDataSeeder implements CommandLineRunner {
                 } catch (Exception e) {
                     log.debug("Erreur écriture BQ: {}", e.getMessage());
                 }
-            }
-
-            // C. Budgets analytiques (Comptabilité Analytique)
-            try {
-                new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-                    authenticate("admin_maker", MAKER_ID);
-                    if (secNgd != null) {
-                        BudgetUseCase.BudgetRequest req1 = new BudgetUseCase.BudgetRequest();
-                        req1.setAnnee(finalAnnee);
-                        req1.setSectionId(secNgd.getId());
-                        req1.setCompteCode("601");
-                        req1.setMontantBudget(BigDecimal.valueOf(200_000_000));
-                        budgetUseCase.definirBudget(req1);
-                    }
-                    if (secDla != null) {
-                        BudgetUseCase.BudgetRequest req2 = new BudgetUseCase.BudgetRequest();
-                        req2.setAnnee(finalAnnee);
-                        req2.setSectionId(secDla.getId());
-                        req2.setCompteCode("601");
-                        req2.setMontantBudget(BigDecimal.valueOf(150_000_000));
-                        budgetUseCase.definirBudget(req2);
-                    }
-                });
-            } catch (Exception e) {
-                log.debug("Erreur budget analytique {}: {}", finalAnnee, e.getMessage());
             }
 
             // D. Dotations aux Amortissements

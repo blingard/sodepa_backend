@@ -342,7 +342,6 @@ app:
           - /api/comptabilite/analytique/axes
           - /api/comptabilite/analytique/axes/**
           - /api/comptabilite/analytique/lignes/**
-          - /api/comptabilite/analytique/budgets
           - /api/comptabilite/analytique/cles
           - /api/comptabilite/analytique/cles/**
         methods:

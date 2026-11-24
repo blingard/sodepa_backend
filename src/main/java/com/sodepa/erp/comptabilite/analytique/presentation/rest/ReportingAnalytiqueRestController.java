@@ -70,22 +70,4 @@ public class ReportingAnalytiqueRestController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-
-    /**
-     * Génère l'état comparatif Budgets vs Réels (Suivi budgétaire) d'une section analytique.
-     * 
-     * @param sectionId l'identifiant unique de la section analytique
-     * @param annee l'année d'exercice budgétaire
-     * @return le rapport comparatif de suivi budgétaire
-     */
-    @GetMapping("/sections/{sectionId}/suivi-budgetaire/{annee}")
-    public ResponseEntity<?> genererSuiviBudgetaire(
-            @PathVariable UUID sectionId,
-            @PathVariable int annee) {
-        try {
-            return ResponseEntity.ok(reportingAnalytiqueUseCase.genererSuiviBudgetaire(sectionId, annee));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
 }

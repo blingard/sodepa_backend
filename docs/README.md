@@ -151,8 +151,6 @@ npm start
 | **MDM** | `GET /api/mdm/familles` | Liste des familles de données de référence |
 | **MDM** | `POST /api/mdm/fiches` | Création / soumission d'une nouvelle fiche versionnée |
 | **MDM** | `GET /api/mdm/dashboard` | Tableau de bord de gouvernance (complétude, doublons, SLA) |
-| **Tiers** | `GET /api/tiers-unifies` | Consultation et recherche 360° des tiers partenaires |
-| **Tiers** | `POST /api/tiers-unifies` | Création de tiers avec contrôle NIU et RIB CEMAC |
 | **Technique** | `GET /api/referentiel-technique/especes` | Référentiel des espèces et races pastorales |
 | **Technique** | `GET /api/referentiel-technique/catalogue-produits` | Catalogue des produits et 5ème quartier |
 | **Technique** | `GET /api/referentiel-technique/sanitaire-veterinaire` | Protocoles sanitaires et délais d'attente lait/viande |
