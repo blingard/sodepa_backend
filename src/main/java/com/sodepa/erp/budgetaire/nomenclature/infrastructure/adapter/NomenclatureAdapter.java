@@ -1,7 +1,9 @@
 package com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.CodeReferentiel;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
-import com.sodepa.erp.budgetaire.nomenclature.application.UsageNomenclature;
+import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
@@ -13,7 +15,6 @@ import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.NiveauProg
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.DemandeNomenclatureEvent;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.repo.ElementProgrammatiqueRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
@@ -26,11 +27,9 @@ import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.utils.Permissions;
-import com.sodepa.erp.workflow.application.WorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -39,17 +38,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -73,23 +69,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class NomenclatureAdapter {
 
-    /** Taille de page maximale, comme partout dans l'API. */
-    static final int TAILLE_PAGE_MAX = 100;
-
-    /**
-     * Caractères admis dans un code. Ce n'est pas un masque de codification :
-     * le plan réel de la SODEPA n'est pas encore connu (Q-01, H-01). On écarte
-     * seulement ce qui casserait un export ou une recherche (espaces, accents,
-     * barres obliques).
-     */
-    private static final Pattern FORME_CODE = Pattern.compile("[A-Z0-9][A-Z0-9._-]{0,29}");
-
     private final ElementProgrammatiqueRepository elementRepository;
-    private final MakerCheckerRequestJpaRepo demandeRepository;
-    private final WorkflowService workflowService;
+    private final CircuitReferentielBudgetaire circuit;
     private final UtilsService utilsService;
     private final UserRepository utilisateurRepository;
-    private final UsageNomenclature usageNomenclature;
+    private final UsageReferentiels usageReferentiels;
     private final Clock horloge;
 
     /**
@@ -209,34 +193,13 @@ public class NomenclatureAdapter {
     public void decider(DeciderDemandeNomenclatureInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_NOMENCLATURE);
 
-        MakerCheckerRequestEntity demande = demandeRepository.findById(input.requestId())
-                .filter(d -> d.getEntityName() == MakerCheckerEntityName.BUDGET_NOMENCLATURE)
-                .orElseThrow(() -> new RessourceIntrouvableException(
-                        "Aucune demande sur la nomenclature budgétaire ne porte cet identifiant."));
-
-        if (demande.getStatus() != MakerCheckerStatus.PENDING) {
-            throw new ConflitMetierException("DEMANDE_DEJA_TRANCHEE", "Cette demande a déjà été traitée.");
+        CircuitReferentielBudgetaire.DecisionOuverte decision = circuit.ouvrirDecision(
+                MakerCheckerEntityName.BUDGET_NOMENCLATURE, input.requestId(), input.decision(), input.notes(),
+                "Aucune demande sur la nomenclature budgétaire ne porte cet identifiant.");
+        if (decision.acceptee()) {
+            appliquer(decision.demande(), decision.validateur());
         }
-        MakerCheckerStatus decision = input.decision();
-        if (decision != MakerCheckerStatus.ACCEPTED && decision != MakerCheckerStatus.REJECTED) {
-            throw new RequeteInvalideException("DECISION_INVALIDE", "La décision doit être une validation ou un rejet.");
-        }
-        if (decision == MakerCheckerStatus.REJECTED && (input.notes() == null || input.notes().isBlank())) {
-            throw new RequeteInvalideException("MOTIF_OBLIGATOIRE", "Indiquez le motif du rejet.");
-        }
-
-        String validateur = utilsService.getCurrentUserData().userId();
-        if (validateur.equals(demande.getMakerId())) {
-            throw new ConflitMetierException("VALIDATEUR_EST_AUTEUR",
-                    "Vous ne pouvez pas valider votre propre demande : un second utilisateur doit la traiter.");
-        }
-
-        workflowService.validate(demande.getId(), demande.getCreatedAt(), demande.getExpiredAt());
-
-        if (decision == MakerCheckerStatus.ACCEPTED) {
-            appliquer(demande, validateur);
-        }
-        workflowService.update(demande.getId(), decision, input.notes(), validateur);
+        circuit.cloturer(decision, input.notes());
     }
 
     // ─── Lectures ───────────────────────────────────────────────────────────
@@ -293,11 +256,7 @@ public class NomenclatureAdapter {
     public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_NOMENCLATURE);
 
-        String moi = utilsService.getCurrentUserData().userId();
-        int taille = pageable.isPaged() ? Math.min(Math.max(pageable.getPageSize(), 1), TAILLE_PAGE_MAX) : TAILLE_PAGE_MAX;
-        return workflowService.findAllToValideByOther(
-                PageRequest.of(pageable.getPageNumber(), taille, Sort.by(Sort.Direction.DESC, "createdAt")),
-                MakerCheckerEntityName.BUDGET_NOMENCLATURE, MakerCheckerStatus.PENDING, moi);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_NOMENCLATURE, pageable);
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -398,18 +357,9 @@ public class NomenclatureAdapter {
         return niveau;
     }
 
-    /** Code en majuscules, sans espaces autour, dans les caractères admis. */
+    /** Code en majuscules, sans espaces autour, dans les caractères admis (voir {@link CodeReferentiel}). */
     static String codeValide(String code) {
-        if (code == null || code.isBlank()) {
-            throw new RequeteInvalideException("CODE_OBLIGATOIRE", "Indiquez le code de l'élément.");
-        }
-        String normalise = code.strip().toUpperCase(Locale.ROOT);
-        if (!FORME_CODE.matcher(normalise).matches()) {
-            throw new RequeteInvalideException("CODE_INVALIDE",
-                    "Le code ne doit contenir que des lettres sans accent, des chiffres et les séparateurs "
-                            + "« - », « . » ou « _ », sans espace, et 30 caractères au plus.");
-        }
-        return normalise;
+        return CodeReferentiel.valide(code);
     }
 
     private static String libelleValide(String libelle) {
@@ -491,7 +441,7 @@ public class NomenclatureAdapter {
             throw new ConflitMetierException("ELEMENT_A_DES_ENFANTS_ACTIFS",
                     "L'élément " + element.getCode() + " a encore des éléments actifs : désactivez-les d'abord.");
         }
-        if (usageNomenclature.estUtilise(element.getId())) {
+        if (usageReferentiels.elementUtilise(element.getId())) {
             throw new ConflitMetierException("ELEMENT_UTILISE",
                     "L'élément " + element.getCode() + " porte des lignes d'un exercice en cours d'exécution : "
                             + "il ne pourra être désactivé qu'après la clôture de l'exercice.");
@@ -511,23 +461,12 @@ public class NomenclatureAdapter {
      * validées l'une après l'autre sans que personne voie l'autre.
      */
     private void refuserSiDemandeEnAttente(UUID elementId, String code) {
-        Instant maintenant = horloge.instant();
-        boolean enAttente = demandeRepository
-                .findByEntityPkAndEntityNameAndStatusOrderByCreatedAtDesc(
-                        elementId.toString(), MakerCheckerEntityName.BUDGET_NOMENCLATURE, MakerCheckerStatus.PENDING)
-                .stream()
-                .anyMatch(d -> d.getExpiredAt() == null || d.getExpiredAt().isAfter(maintenant));
-        if (enAttente) {
-            throw new ConflitMetierException("NOMENCLATURE_DEMANDE_EN_ATTENTE",
-                    "Une demande sur l'élément " + code + " attend déjà sa validation.");
-        }
+        circuit.refuserSiDemandeEnAttente(MakerCheckerEntityName.BUDGET_NOMENCLATURE, elementId, "NOMENCLATURE_DEMANDE_EN_ATTENTE",
+                "Une demande sur l'élément " + code + " attend déjà sa validation.");
     }
 
     private SubmissionOutput soumettre(UUID elementId, DemandeNomenclatureEvent demande, String code) {
-        UUID demandeId = workflowService.submitChange(
-                MakerCheckerEntityName.BUDGET_NOMENCLATURE,
-                elementId.toString(),
-                demande.versCharge(),
+        UUID demandeId = circuit.soumettre(MakerCheckerEntityName.BUDGET_NOMENCLATURE, elementId, demande.versCharge(),
                 demande.operation().typeMakerChecker());
         log.info("Nomenclature : {} de l'élément {} soumise (demande {}).", demande.operation(), code, demandeId);
         return new SubmissionOutput(demandeId, elementId);

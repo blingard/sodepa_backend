@@ -207,6 +207,22 @@ public enum Permissions {
     INIT_UPDATE_BUDGET_STRUCTURE,
     /** Valider ou rejeter une demande portant sur une structure budgétaire. */
     VALIDATE_OR_REJECT_BUDGET_STRUCTURE,
+    /** Lire les natures budgétaires et leur compte SYSCOHADA. */
+    GET_BUDGET_NATURE_INFO,
+    /** Demander la création d'une nature budgétaire (chef du Service du Budget). */
+    INIT_CREATE_BUDGET_NATURE,
+    /** Demander la modification, la désactivation ou la réactivation d'une nature budgétaire. */
+    INIT_UPDATE_BUDGET_NATURE,
+    /** Valider ou rejeter une demande portant sur une nature budgétaire. */
+    VALIDATE_OR_REJECT_BUDGET_NATURE,
+    /** Lire les sources de financement. */
+    GET_BUDGET_SOURCE_FINANCEMENT_INFO,
+    /** Demander la création d'une source de financement (chef du Service du Budget). */
+    INIT_CREATE_BUDGET_SOURCE_FINANCEMENT,
+    /** Demander la modification, la désactivation ou la réactivation d'une source de financement. */
+    INIT_UPDATE_BUDGET_SOURCE_FINANCEMENT,
+    /** Valider ou rejeter une demande portant sur une source de financement. */
+    VALIDATE_OR_REJECT_BUDGET_SOURCE_FINANCEMENT,
 
     // Workflow Universel
     WORKFLOW_READ,

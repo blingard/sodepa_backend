@@ -1,7 +1,8 @@
 package com.sodepa.erp.budgetaire.structure;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
-import com.sodepa.erp.budgetaire.structure.application.UsageStructure;
+import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.structure.application.inputs.ChangerEtatStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.CreerStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
@@ -93,7 +94,7 @@ class StructureBudgetaireAdapterTest {
     @Mock private MakerCheckerRequestJpaRepo demandeRepository;
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
-    @Mock private UsageStructure usageStructure;
+    @Mock private UsageReferentiels usageReferentiels;
 
     private StructureBudgetaireAdapter adapter;
 
@@ -111,7 +112,8 @@ class StructureBudgetaireAdapterTest {
     @BeforeEach
     void preparer() {
         adapter = new StructureBudgetaireAdapter(structureRepository, uniteRepository, posteRepository,
-                affectationRepository, demandeRepository, workflowService, utilsService, usageStructure, HORLOGE);
+                affectationRepository, new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE),
+                utilsService, usageReferentiels, HORLOGE);
 
         unite("CA", "Conseil d'Administration", "/CA/");
         dg = unite("DG", "Direction Générale", "/CA/DG/");
@@ -375,7 +377,7 @@ class StructureBudgetaireAdapterTest {
         void refuseUneStructureUtilisee() {
             StructureBudgetaireEntity s = structure(ranch, posteDirRanch, safcRanch, true);
             when(structureRepository.findById(s.getId())).thenReturn(Optional.of(s));
-            when(usageStructure.estUtilisee(s.getId())).thenReturn(true);
+            when(usageReferentiels.structureUtilisee(s.getId())).thenReturn(true);
 
             ConflitMetierException e = assertThrows(ConflitMetierException.class,
                     () -> adapter.initDesactiver(new ChangerEtatStructureInput(s.getId(), "Cession du ranch")));

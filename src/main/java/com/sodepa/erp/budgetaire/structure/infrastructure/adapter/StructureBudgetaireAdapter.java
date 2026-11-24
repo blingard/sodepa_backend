@@ -1,7 +1,8 @@
 package com.sodepa.erp.budgetaire.structure.infrastructure.adapter;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
-import com.sodepa.erp.budgetaire.structure.application.UsageStructure;
+import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.structure.application.inputs.ChangerEtatStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.CreerStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
@@ -21,7 +22,6 @@ import com.sodepa.erp.organigramme.infrastructure.repo.AffectationPosteRepositor
 import com.sodepa.erp.organigramme.infrastructure.repo.PosteRepository;
 import com.sodepa.erp.organigramme.infrastructure.repo.UniteOrganisationnelleRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
@@ -32,14 +32,11 @@ import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.PageRecord;
-import com.sodepa.erp.utils.PageableRecord;
 import com.sodepa.erp.utils.Permissions;
-import com.sodepa.erp.workflow.application.WorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -48,7 +45,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -83,17 +79,13 @@ import java.util.stream.Collectors;
 @Slf4j
 public class StructureBudgetaireAdapter {
 
-    /** Taille de page maximale, comme partout dans l'API. */
-    static final int TAILLE_PAGE_MAX = 100;
-
     private final StructureBudgetaireRepository structureRepository;
     private final UniteOrganisationnelleRepository uniteRepository;
     private final PosteRepository posteRepository;
     private final AffectationPosteRepository affectationRepository;
-    private final MakerCheckerRequestJpaRepo demandeRepository;
-    private final WorkflowService workflowService;
+    private final CircuitReferentielBudgetaire circuit;
     private final UtilsService utilsService;
-    private final UsageStructure usageStructure;
+    private final UsageReferentiels usageReferentiels;
     private final Clock horloge;
 
     /** Identifiant d'une structure, déduit de son unité. */
@@ -195,34 +187,13 @@ public class StructureBudgetaireAdapter {
     public void decider(DeciderDemandeStructureInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_STRUCTURE);
 
-        MakerCheckerRequestEntity demande = demandeRepository.findById(input.requestId())
-                .filter(d -> d.getEntityName() == MakerCheckerEntityName.BUDGET_STRUCTURE)
-                .orElseThrow(() -> new RessourceIntrouvableException(
-                        "Aucune demande sur une structure budgétaire ne porte cet identifiant."));
-
-        if (demande.getStatus() != MakerCheckerStatus.PENDING) {
-            throw new ConflitMetierException("DEMANDE_DEJA_TRANCHEE", "Cette demande a déjà été traitée.");
+        CircuitReferentielBudgetaire.DecisionOuverte decision = circuit.ouvrirDecision(
+                MakerCheckerEntityName.BUDGET_STRUCTURE, input.requestId(), input.decision(), input.notes(),
+                "Aucune demande sur une structure budgétaire ne porte cet identifiant.");
+        if (decision.acceptee()) {
+            appliquer(decision.demande(), decision.validateur());
         }
-        MakerCheckerStatus decision = input.decision();
-        if (decision != MakerCheckerStatus.ACCEPTED && decision != MakerCheckerStatus.REJECTED) {
-            throw new RequeteInvalideException("DECISION_INVALIDE", "La décision doit être une validation ou un rejet.");
-        }
-        if (decision == MakerCheckerStatus.REJECTED && (input.notes() == null || input.notes().isBlank())) {
-            throw new RequeteInvalideException("MOTIF_OBLIGATOIRE", "Indiquez le motif du rejet.");
-        }
-
-        String validateur = utilsService.getCurrentUserData().userId();
-        if (validateur.equals(demande.getMakerId())) {
-            throw new ConflitMetierException("VALIDATEUR_EST_AUTEUR",
-                    "Vous ne pouvez pas valider votre propre demande : un second utilisateur doit la traiter.");
-        }
-
-        workflowService.validate(demande.getId(), demande.getCreatedAt(), demande.getExpiredAt());
-
-        if (decision == MakerCheckerStatus.ACCEPTED) {
-            appliquer(demande, validateur);
-        }
-        workflowService.update(demande.getId(), decision, input.notes(), validateur);
+        circuit.cloturer(decision, input.notes());
     }
 
     // ─── Lectures ───────────────────────────────────────────────────────────
@@ -232,10 +203,7 @@ public class StructureBudgetaireAdapter {
     public PageRecord<StructureBudgetaireOutput> lister(ListerStructuresInput input) {
         utilsService.hasPermission(Permissions.GET_BUDGET_STRUCTURE_INFO);
 
-        Pageable pageable = input.pageable();
-        int taille = pageable.isPaged() ? Math.min(Math.max(pageable.getPageSize(), 1), TAILLE_PAGE_MAX) : TAILLE_PAGE_MAX;
-        Pageable page = PageRequest.of(pageable.isPaged() ? pageable.getPageNumber() : 0, taille,
-                Sort.by(Sort.Direction.ASC, "creeLe"));
+        Pageable page = CircuitReferentielBudgetaire.page(input.pageable(), Sort.by(Sort.Direction.ASC, "creeLe"));
         Page<StructureBudgetaireEntity> structures = input.inclureInactives()
                 ? structureRepository.findAll(page)
                 : structureRepository.findAllByActifTrue(page);
@@ -249,7 +217,7 @@ public class StructureBudgetaireAdapter {
                 UniteOrganisationnelleEntity::getId);
         Map<UUID, PosteEntity> postes = parId(posteRepository.findAllById(
                 structures.map(StructureBudgetaireEntity::getOrdonnateurPosteId).toSet()), PosteEntity::getId);
-        return versPageRecord(structures.map(s -> sortie(s, unites, postes)));
+        return CircuitReferentielBudgetaire.versPageRecord(structures.map(s -> sortie(s, unites, postes)));
     }
 
     /** Fiche d'une structure, avec le titulaire actuel du poste d'ordonnateur. */
@@ -270,11 +238,7 @@ public class StructureBudgetaireAdapter {
     public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_STRUCTURE);
 
-        String moi = utilsService.getCurrentUserData().userId();
-        int taille = pageable.isPaged() ? Math.min(Math.max(pageable.getPageSize(), 1), TAILLE_PAGE_MAX) : TAILLE_PAGE_MAX;
-        return workflowService.findAllToValideByOther(
-                PageRequest.of(pageable.getPageNumber(), taille, Sort.by(Sort.Direction.DESC, "createdAt")),
-                MakerCheckerEntityName.BUDGET_STRUCTURE, MakerCheckerStatus.PENDING, moi);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_STRUCTURE, pageable);
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -457,7 +421,7 @@ public class StructureBudgetaireAdapter {
 
     /** Une structure qui porte du budget en cours d'exécution ne se désactive pas. */
     private void controlerDesactivable(StructureBudgetaireEntity structure, UniteOrganisationnelleEntity unite) {
-        if (usageStructure.estUtilisee(structure.getId())) {
+        if (usageReferentiels.structureUtilisee(structure.getId())) {
             throw new ConflitMetierException("STRUCTURE_UTILISEE",
                     "La structure " + unite.getIntitule() + " porte des lignes d'un exercice en cours d'exécution : "
                             + "elle ne pourra être désactivée qu'après la clôture de l'exercice.");
@@ -484,23 +448,12 @@ public class StructureBudgetaireAdapter {
 
     /** Une seule demande à la fois par structure, comme pour la nomenclature. */
     private void refuserSiDemandeEnAttente(UUID structureId, UniteOrganisationnelleEntity unite) {
-        Instant maintenant = horloge.instant();
-        boolean enAttente = demandeRepository
-                .findByEntityPkAndEntityNameAndStatusOrderByCreatedAtDesc(
-                        structureId.toString(), MakerCheckerEntityName.BUDGET_STRUCTURE, MakerCheckerStatus.PENDING)
-                .stream()
-                .anyMatch(d -> d.getExpiredAt() == null || d.getExpiredAt().isAfter(maintenant));
-        if (enAttente) {
-            throw new ConflitMetierException("STRUCTURE_DEMANDE_EN_ATTENTE",
-                    "Une demande sur la structure " + unite.getIntitule() + " attend déjà sa validation.");
-        }
+        circuit.refuserSiDemandeEnAttente(MakerCheckerEntityName.BUDGET_STRUCTURE, structureId, "STRUCTURE_DEMANDE_EN_ATTENTE",
+                "Une demande sur la structure " + unite.getIntitule() + " attend déjà sa validation.");
     }
 
     private SubmissionOutput soumettre(UUID structureId, DemandeStructureEvent demande, UniteOrganisationnelleEntity unite) {
-        UUID demandeId = workflowService.submitChange(
-                MakerCheckerEntityName.BUDGET_STRUCTURE,
-                structureId.toString(),
-                demande.versCharge(),
+        UUID demandeId = circuit.soumettre(MakerCheckerEntityName.BUDGET_STRUCTURE, structureId, demande.versCharge(),
                 demande.operation().typeMakerChecker());
         log.info("Structures budgétaires : {} de {} soumise (demande {}).", demande.operation(), unite.getCode(), demandeId);
         return new SubmissionOutput(demandeId, structureId);
@@ -593,26 +546,5 @@ public class StructureBudgetaireAdapter {
     private static ConflitMetierException structureExistante(UniteOrganisationnelleEntity unite) {
         return new ConflitMetierException("STRUCTURE_EXISTANTE",
                 "L'unité " + unite.getIntitule() + " est déjà déclarée comme structure budgétaire.");
-    }
-
-    private static <T> PageRecord<T> versPageRecord(Page<T> page) {
-        return new PageRecord<>(
-                page.getContent(),
-                page.isEmpty(),
-                page.isFirst(),
-                page.isLast(),
-                page.getNumber(),
-                page.getNumberOfElements(),
-                new PageableRecord(
-                        page.getPageable().getOffset(),
-                        page.getPageable().getPageNumber(),
-                        page.getPageable().getPageSize(),
-                        true,
-                        page.getSort(),
-                        false),
-                page.getSize(),
-                page.getSort(),
-                page.getTotalElements(),
-                page.getTotalPages());
     }
 }

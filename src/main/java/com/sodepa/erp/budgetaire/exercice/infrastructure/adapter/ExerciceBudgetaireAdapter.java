@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.exercice.infrastructure.adapter;
 
+import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.CreerExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.outputs.ExerciceBudgetaireOutput;
@@ -8,7 +9,6 @@ import com.sodepa.erp.budgetaire.exercice.infrastructure.entities.ExerciceBudget
 import com.sodepa.erp.budgetaire.exercice.infrastructure.event.CreationExerciceEvent;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.repo.ExerciceBudgetaireRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
@@ -17,16 +17,11 @@ import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 import com.sodepa.erp.share.erreurs.RessourceIntrouvableException;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
-import com.sodepa.erp.utils.MakerCheckerStatus;
 import com.sodepa.erp.utils.PageRecord;
-import com.sodepa.erp.utils.PageableRecord;
 import com.sodepa.erp.utils.Permissions;
-import com.sodepa.erp.workflow.application.WorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -34,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Year;
 import java.util.UUID;
@@ -63,12 +57,8 @@ public class ExerciceBudgetaireAdapter {
     /** Plus ancien exercice accepté : en deçà, c'est une faute de frappe. */
     static final int PREMIERE_ANNEE = 2000;
 
-    /** Taille de page maximale, comme partout dans l'API. */
-    static final int TAILLE_PAGE_MAX = 100;
-
     private final ExerciceBudgetaireRepository exerciceRepository;
-    private final MakerCheckerRequestJpaRepo demandeRepository;
-    private final WorkflowService workflowService;
+    private final CircuitReferentielBudgetaire circuit;
     private final UtilsService utilsService;
     private final Clock horloge;
 
@@ -102,22 +92,12 @@ public class ExerciceBudgetaireAdapter {
         }
 
         UUID exerciceId = identifiantPour(annee);
-        Instant maintenant = horloge.instant();
-        boolean demandeEnAttente = demandeRepository
-                .findByEntityPkAndEntityNameAndStatusOrderByCreatedAtDesc(
-                        exerciceId.toString(), MakerCheckerEntityName.BUDGET_EXERCICE, MakerCheckerStatus.PENDING)
-                .stream()
-                .anyMatch(d -> d.getExpiredAt() == null || d.getExpiredAt().isAfter(maintenant));
-        if (demandeEnAttente) {
-            throw new ConflitMetierException("EXERCICE_DEMANDE_EN_ATTENTE",
-                    "Une demande de création de l'exercice " + annee + " attend déjà sa validation.");
-        }
+        circuit.refuserSiDemandeEnAttente(MakerCheckerEntityName.BUDGET_EXERCICE, exerciceId,
+                "EXERCICE_DEMANDE_EN_ATTENTE",
+                "Une demande de création de l'exercice " + annee + " attend déjà sa validation.");
 
-        UUID demandeId = workflowService.submitChange(
-                MakerCheckerEntityName.BUDGET_EXERCICE,
-                exerciceId.toString(),
-                new CreationExerciceEvent(annee).versCharge(),
-                MakerCheckerOperationType.CREATE);
+        UUID demandeId = circuit.soumettre(MakerCheckerEntityName.BUDGET_EXERCICE, exerciceId,
+                new CreationExerciceEvent(annee).versCharge(), MakerCheckerOperationType.CREATE);
         log.info("Création de l'exercice budgétaire {} soumise (demande {}).", annee, demandeId);
         return new SubmissionOutput(demandeId, exerciceId);
     }
@@ -135,34 +115,13 @@ public class ExerciceBudgetaireAdapter {
     public void decider(DeciderDemandeExerciceInput input) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_EXERCICE);
 
-        MakerCheckerRequestEntity demande = demandeRepository.findById(input.requestId())
-                .filter(d -> d.getEntityName() == MakerCheckerEntityName.BUDGET_EXERCICE)
-                .orElseThrow(() -> new RessourceIntrouvableException(
-                        "Aucune demande sur un exercice budgétaire ne porte cet identifiant."));
-
-        if (demande.getStatus() != MakerCheckerStatus.PENDING) {
-            throw new ConflitMetierException("DEMANDE_DEJA_TRANCHEE", "Cette demande a déjà été traitée.");
+        CircuitReferentielBudgetaire.DecisionOuverte decision = circuit.ouvrirDecision(
+                MakerCheckerEntityName.BUDGET_EXERCICE, input.requestId(), input.decision(), input.notes(),
+                "Aucune demande sur un exercice budgétaire ne porte cet identifiant.");
+        if (decision.acceptee()) {
+            creer(decision.demande(), decision.validateur());
         }
-        MakerCheckerStatus decision = input.decision();
-        if (decision != MakerCheckerStatus.ACCEPTED && decision != MakerCheckerStatus.REJECTED) {
-            throw new RequeteInvalideException("DECISION_INVALIDE", "La décision doit être une validation ou un rejet.");
-        }
-        if (decision == MakerCheckerStatus.REJECTED && (input.notes() == null || input.notes().isBlank())) {
-            throw new RequeteInvalideException("MOTIF_OBLIGATOIRE", "Indiquez le motif du rejet.");
-        }
-
-        String validateur = utilsService.getCurrentUserData().userId();
-        if (validateur.equals(demande.getMakerId())) {
-            throw new ConflitMetierException("VALIDATEUR_EST_AUTEUR",
-                    "Vous ne pouvez pas valider votre propre demande : un second utilisateur doit la traiter.");
-        }
-
-        workflowService.validate(demande.getId(), demande.getCreatedAt(), demande.getExpiredAt());
-
-        if (decision == MakerCheckerStatus.ACCEPTED) {
-            creer(demande, validateur);
-        }
-        workflowService.update(demande.getId(), decision, input.notes(), validateur);
+        circuit.cloturer(decision, input.notes());
     }
 
     /** Liste des exercices, du plus récent au plus ancien. */
@@ -170,9 +129,9 @@ public class ExerciceBudgetaireAdapter {
     public PageRecord<ExerciceBudgetaireOutput> lister(Pageable pageable) {
         utilsService.hasPermission(Permissions.GET_BUDGET_EXERCICE_INFO);
 
-        Pageable parAnnee = PageRequest.of(
-                pageable.getPageNumber(), taille(pageable), Sort.by(Sort.Direction.DESC, "annee"));
-        return versPageRecord(exerciceRepository.findAll(parAnnee).map(ExerciceBudgetaireOutput::depuis));
+        Pageable parAnnee = CircuitReferentielBudgetaire.page(pageable, Sort.by(Sort.Direction.DESC, "annee"));
+        return CircuitReferentielBudgetaire.versPageRecord(
+                exerciceRepository.findAll(parAnnee).map(ExerciceBudgetaireOutput::depuis));
     }
 
     /** Un exercice, désigné par son année. */
@@ -194,10 +153,7 @@ public class ExerciceBudgetaireAdapter {
     public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_EXERCICE);
 
-        String moi = utilsService.getCurrentUserData().userId();
-        return workflowService.findAllToValideByOther(
-                PageRequest.of(pageable.getPageNumber(), taille(pageable), Sort.by(Sort.Direction.DESC, "createdAt")),
-                MakerCheckerEntityName.BUDGET_EXERCICE, MakerCheckerStatus.PENDING, moi);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_EXERCICE, pageable);
     }
 
     // ─── Règles internes ────────────────────────────────────────────────────
@@ -257,28 +213,4 @@ public class ExerciceBudgetaireAdapter {
         return new ConflitMetierException("EXERCICE_EXISTANT", "L'exercice " + annee + " existe déjà");
     }
 
-    private static int taille(Pageable pageable) {
-        return pageable.isPaged() ? Math.min(Math.max(pageable.getPageSize(), 1), TAILLE_PAGE_MAX) : TAILLE_PAGE_MAX;
-    }
-
-    private static <T> PageRecord<T> versPageRecord(Page<T> page) {
-        return new PageRecord<>(
-                page.getContent(),
-                page.isEmpty(),
-                page.isFirst(),
-                page.isLast(),
-                page.getNumber(),
-                page.getNumberOfElements(),
-                new PageableRecord(
-                        page.getPageable().getOffset(),
-                        page.getPageable().getPageNumber(),
-                        page.getPageable().getPageSize(),
-                        true,
-                        page.getSort(),
-                        false),
-                page.getSize(),
-                page.getSort(),
-                page.getTotalElements(),
-                page.getTotalPages());
-    }
 }
