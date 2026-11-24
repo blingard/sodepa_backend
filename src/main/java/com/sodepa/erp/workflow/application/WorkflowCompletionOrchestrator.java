@@ -1,6 +1,8 @@
 package com.sodepa.erp.workflow.application;
 
 import com.sodepa.erp.achats.application.AchatsService;
+import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
+import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.*;
 import com.sodepa.erp.formation.application.FormationService;
@@ -45,6 +47,7 @@ public class WorkflowCompletionOrchestrator {
     private MakerCheckerRequestJpaRepo makerCheckerRepo;
 
     @Autowired @Lazy private AchatsService achatsService;
+    @Autowired @Lazy private ExerciceBudgetaireAdapter exerciceBudgetaireAdapter;
     @Autowired @Lazy private BankAdapter bankAdapter;
     @Autowired @Lazy private CompteAdapter compteAdapter;
     @Autowired @Lazy private ImmobilisationAdapter immobilisationAdapter;
@@ -202,6 +205,10 @@ public class WorkflowCompletionOrchestrator {
                     case MARCHE_DOSSIER -> achatsService.validateOrRejectMarcheDossier(input);
                     case MARCHE_RECEPTION_PV -> achatsService.validateOrRejectPvReception(input);
                     case LIQUIDATION_FACTURE -> achatsService.validateOrRejectLiquidationFacture(input);
+                    // Exercice budgétaire (US-BUD-101) : sans ce cas, la branche par défaut
+                    // marquait la demande acceptée sans créer l'exercice.
+                    case BUDGET_EXERCICE -> exerciceBudgetaireAdapter.decider(
+                            new DeciderDemandeExerciceInput(req.getId(), decision, notes));
                     case UNITE_ORGANISATIONNELLE -> organigrammeAdapter.validateOrRejectUnite(input);
                     case POSTE -> organigrammeAdapter.validateOrRejectPoste(input);
                     case AFFECTATION_POSTE -> organigrammeAdapter.validateOrRejectAffectation(input);

@@ -184,6 +184,14 @@ public enum Permissions {
     /** Clôture de l’exercice budgétaire — DAF/DG uniquement */
     BUDGET_CLOTURE_EXERCICE,
 
+    // Gestion budgétaire reconstruite (paquet budgetaire, US-BUD-1xx)
+    /** Lire les exercices budgétaires et leur état. */
+    GET_BUDGET_EXERCICE_INFO,
+    /** Demander la création d'un exercice budgétaire (chef du Service du Budget). */
+    INIT_CREATE_BUDGET_EXERCICE,
+    /** Valider ou rejeter une demande portant sur un exercice budgétaire. */
+    VALIDATE_OR_REJECT_BUDGET_EXERCICE,
+
     // Workflow Universel
     WORKFLOW_READ,
     WORKFLOW_CONFIG,

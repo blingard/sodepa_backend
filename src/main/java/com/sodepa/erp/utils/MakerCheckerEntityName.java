@@ -17,5 +17,6 @@ public enum MakerCheckerEntityName {
      * @Enumerated(STRING) : une demande déjà enregistrée avec ces valeurs ne se chargerait plus.
      * À retirer une fois ces lignes purgées.
      */
-    BUDGET_PLAN, BUDGET_ENGAGEMENT, BUDGET_REALLOCATION
+    BUDGET_PLAN, BUDGET_ENGAGEMENT, BUDGET_REALLOCATION,
+    BUDGET_EXERCICE
 }
