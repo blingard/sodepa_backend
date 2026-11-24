@@ -1,0 +1,38 @@
+databaseChangeLog:
+  # Changelog 36.0 — tables de l'ancien paquet `budget/`, supprimé.
+  #
+  # Le module budgétaire est reconstruit dans `budgetaire/` d'après la procédure
+  # de la SODEPA (docs/budget/specification-fonctionnelle-budget.md). L'ancien
+  # paquet mêlait le budget (plans, lignes, engagements, réallocations,
+  # campagne, budget collaboratif, référentiels) à la trésorerie prévisionnelle,
+  # aux financements, à un second rapprochement bancaire, à la couverture de
+  # change, à la piste `audit_trail` et aux seuils d'achat. Plus aucune entité
+  # ne lit ces tables.
+  #
+  # - Le rapprochement bancaire réel vit dans `comptabilite/generale`, sur
+  #   `releves_bancaires` et `lignes_releve_bancaire` : il n'est pas touché.
+  # - L'audit transverse (`audit/`, DuckDB et ClickHouse) remplace `audit_trail`,
+  #   que seul l'ancien budget écrivait.
+  # - Les seuils d'achat reviendront dans la table datée de US-BUD-112.
+  # - Aucune table conservée n'a de clé étrangère vers ce groupe : `CASCADE`
+  #   n'emporte que les contraintes internes au groupe.
+  #
+  # Irréversible : la restauration passe par une sauvegarde de la base.
+  - changeSet:
+      id: 36.0-01-supprimer-tables-ancien-budget
+      author: sodepa-erp
+      comment: Tables de l'ancien paquet budget/, sans entité depuis sa suppression.
+      changes:
+        - sql:
+            sql: >-
+              DROP TABLE IF EXISTS
+              budget_reallocation, budget_engagement, budget_item_periode, budget_item, budget_plan,
+              budget_demande, budget_reunion, budget_groupe_travail, budget_campagne,
+              budget_programmes, budget_activites, budget_sources_financement, budget_natures_depenses,
+              echeance_financement, ligne_financement, engagement_hors_bilan, ligne_decouvert,
+              prevision_tresorerie, ligne_releve_bancaire, releve_bancaire, contrat_couverture,
+              audit_trail, achat_seuils_config
+              CASCADE
+      rollback:
+        - sql:
+            sql: "SELECT 1 -- tables non recréées, restaurer depuis une sauvegarde"
