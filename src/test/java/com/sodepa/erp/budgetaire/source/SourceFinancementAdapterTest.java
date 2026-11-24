@@ -20,6 +20,7 @@ import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ApiException;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
+import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
@@ -66,6 +67,7 @@ class SourceFinancementAdapterTest {
     @Mock private MakerCheckerRequestJpaRepo demandeRepository;
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
+    @Mock private UserRepository utilisateurRepository;
     @Mock private UsageReferentiels usageReferentiels;
 
     private SourceFinancementAdapter adapter;
@@ -73,7 +75,7 @@ class SourceFinancementAdapterTest {
     @BeforeEach
     void preparer() {
         adapter = new SourceFinancementAdapter(sourceRepository,
-                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE),
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, utilisateurRepository, HORLOGE),
                 utilsService, usageReferentiels, HORLOGE);
         lenient().when(demandeRepository.findByEntityPkAndEntityNameAndStatusOrderByCreatedAtDesc(anyString(), any(), any()))
                 .thenReturn(List.of());

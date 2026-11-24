@@ -1,7 +1,8 @@
 package com.sodepa.erp.budgetaire.exercice.application.usecase;
 
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
+import com.sodepa.erp.budgetaire.exercice.application.outputs.ExerciceBudgetaireOutput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.utils.UseCase;
 import lombok.RequiredArgsConstructor;
@@ -17,12 +18,12 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ListerDemandesExerciceEnAttenteUseCase
-        implements UseCase<Pageable, PageRecord<MakerCheckerSmartOutput>> {
+        implements UseCase<Pageable, PageRecord<DemandeBudgetaireOutput<ExerciceBudgetaireOutput>>> {
 
     private final ExerciceBudgetaireAdapter adapter;
 
     @Override
-    public PageRecord<MakerCheckerSmartOutput> execute(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<ExerciceBudgetaireOutput>> execute(Pageable pageable) {
         return adapter.demandesEnAttente(pageable);
     }
 }

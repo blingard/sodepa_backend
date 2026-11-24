@@ -33,7 +33,7 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 public class SourceFinancementEntity {
 
     /** Identifiant, dérivé du code (voir {@code SourceFinancementAdapter}). */

@@ -4,7 +4,9 @@ import com.sodepa.erp.budgetaire.commun.ChangerEtatInput;
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.CodeReferentiel;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
+import com.sodepa.erp.budgetaire.commun.ProjectionDemande;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.source.application.inputs.CreerSourceInput;
 import com.sodepa.erp.budgetaire.source.application.inputs.ListerSourcesInput;
@@ -15,7 +17,6 @@ import com.sodepa.erp.budgetaire.source.infrastructure.entities.TypeSourceFinanc
 import com.sodepa.erp.budgetaire.source.infrastructure.event.DemandeSourceEvent;
 import com.sodepa.erp.budgetaire.source.infrastructure.repo.SourceFinancementRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
@@ -168,11 +169,28 @@ public class SourceFinancementAdapter {
         return SourceFinancementOutput.depuis(trouver(id));
     }
 
-    /** Demandes en attente que l'appelant peut trancher (les siennes exclues). */
+    /** Demandes en attente que l'appelant peut trancher (les siennes exclues), avec leur contenu. */
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<SourceFinancementOutput>> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_SOURCE_FINANCEMENT);
-        return circuit.demandesEnAttente(TYPE, pageable);
+        return circuit.demandesEnAttente(TYPE, pageable, this::projeter);
+    }
+
+    /**
+     * La source telle que la demande la laisserait, et telle qu'elle est.
+     * Aucune règle n'est rejouée : elles le seront à la validation.
+     */
+    private ProjectionDemande<SourceFinancementOutput> projeter(MakerCheckerRequestEntity demande) {
+        DemandeSourceEvent charge = DemandeSourceEvent.depuisCharge(demande.getPayload());
+        UUID sourceId = UUID.fromString(demande.getEntityPk());
+        if (charge.operation() == OperationReferentiel.CREER) {
+            return ProjectionDemande.creation(SourceFinancementOutput.depuis(nouvelleSource(demande, charge, sourceId)));
+        }
+        SourceFinancementEntity source = trouver(sourceId);
+        SourceFinancementEntity projetee = source.toBuilder().build();
+        reporter(projetee, charge);
+        return new ProjectionDemande<>(charge.operation(), charge.motif(), SourceFinancementOutput.depuis(projetee),
+                SourceFinancementOutput.depuis(source));
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -189,22 +207,16 @@ public class SourceFinancementAdapter {
         switch (charge.operation()) {
             case MODIFIER -> {
                 exigerActive(source);
-                source.setLibelle(charge.libelle());
-                source.setBailleur(bailleurValide(source.getType(), charge.bailleur()));
+                bailleurValide(source.getType(), charge.bailleur());
             }
             case DESACTIVER -> {
                 exigerActive(source);
                 controlerDesactivable(source);
-                source.setActif(false);
-                source.setMotifDesactivation(charge.motif());
             }
-            case REACTIVER -> {
-                exigerInactive(source);
-                source.setActif(true);
-                source.setMotifDesactivation(null);
-            }
+            case REACTIVER -> exigerInactive(source);
             default -> throw new IllegalStateException("Opération déjà traitée : " + charge.operation());
         }
+        reporter(source, charge);
         source.setModifiePar(demande.getMakerId());
         source.setModifieLe(horloge.instant());
         try {
@@ -221,25 +233,55 @@ public class SourceFinancementAdapter {
         if (sourceRepository.existsByCode(charge.code())) {
             throw codeExistant(charge.code());
         }
-        SourceFinancementEntity source = SourceFinancementEntity.builder()
-                .id(sourceId)
-                .code(charge.code())
-                .libelle(charge.libelle())
-                .type(charge.type())
-                .bailleur(bailleurValide(charge.type(), charge.bailleur()))
-                .actif(true)
-                .demandeCreationId(demande.getId())
-                .creePar(demande.getMakerId())
-                .creeLe(demande.getCreatedAt())
-                .validePar(validateur)
-                .valideLe(horloge.instant())
-                .build();
+        bailleurValide(charge.type(), charge.bailleur());
+        SourceFinancementEntity source = nouvelleSource(demande, charge, sourceId);
+        source.setValidePar(validateur);
+        source.setValideLe(horloge.instant());
         try {
             sourceRepository.saveAndFlush(source);
         } catch (DataIntegrityViolationException e) {
             throw codeExistant(charge.code());
         }
         log.info("Sources de financement : {} créée (demande {}).", charge.code(), demande.getId());
+    }
+
+    /** La source que crée la demande, avant validation ; sert aussi à l'aperçu du valideur. */
+    private static SourceFinancementEntity nouvelleSource(MakerCheckerRequestEntity demande, DemandeSourceEvent charge,
+                                                          UUID sourceId) {
+        return SourceFinancementEntity.builder()
+                .id(sourceId)
+                .code(charge.code())
+                .libelle(charge.libelle())
+                .type(charge.type())
+                .bailleur(facultatif(charge.bailleur()))
+                .actif(true)
+                .demandeCreationId(demande.getId())
+                .creePar(demande.getMakerId())
+                .creeLe(demande.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * Reporte sur la source ce que change une demande autre qu'une création.
+     * Partagé par l'application et l'aperçu : le valideur voit exactement ce
+     * qui sera écrit.
+     */
+    private static void reporter(SourceFinancementEntity source, DemandeSourceEvent charge) {
+        switch (charge.operation()) {
+            case MODIFIER -> {
+                source.setLibelle(charge.libelle());
+                source.setBailleur(facultatif(charge.bailleur()));
+            }
+            case DESACTIVER -> {
+                source.setActif(false);
+                source.setMotifDesactivation(charge.motif());
+            }
+            case REACTIVER -> {
+                source.setActif(true);
+                source.setMotifDesactivation(null);
+            }
+            default -> throw new IllegalStateException("Opération sans report : " + charge.operation());
+        }
     }
 
     // ─── Règles ─────────────────────────────────────────────────────────────

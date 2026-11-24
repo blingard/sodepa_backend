@@ -3,9 +3,12 @@ package com.sodepa.erp.budgetaire.nature;
 import com.sodepa.erp.budgetaire.commun.ChangerEtatInput;
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
+import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nature.application.inputs.CreerNatureInput;
 import com.sodepa.erp.budgetaire.nature.application.inputs.ModifierNatureInput;
+import com.sodepa.erp.budgetaire.nature.application.outputs.NatureBudgetaireOutput;
 import com.sodepa.erp.budgetaire.nature.infrastructure.adapter.NatureBudgetaireAdapter;
 import com.sodepa.erp.budgetaire.nature.infrastructure.entities.NatureBudgetaireEntity;
 import com.sodepa.erp.budgetaire.nature.infrastructure.entities.RegleCompteNature;
@@ -24,9 +27,12 @@ import com.sodepa.erp.share.erreurs.AccesRefuseException;
 import com.sodepa.erp.share.erreurs.ApiException;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
+import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
+import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
+import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.utils.Permissions;
 import com.sodepa.erp.workflow.application.WorkflowService;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +43,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -55,10 +64,12 @@ import static com.sodepa.erp.budgetaire.nature.infrastructure.entities.SensBudge
 import static com.sodepa.erp.budgetaire.nature.infrastructure.entities.SensBudgetaire.RECETTE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -82,6 +93,7 @@ class NatureBudgetaireAdapterTest {
     @Mock private MakerCheckerRequestJpaRepo demandeRepository;
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
+    @Mock private UserRepository utilisateurRepository;
     @Mock private UsageReferentiels usageReferentiels;
 
     private NatureBudgetaireAdapter adapter;
@@ -91,7 +103,7 @@ class NatureBudgetaireAdapterTest {
     @BeforeEach
     void preparer() {
         adapter = new NatureBudgetaireAdapter(natureRepository, compteRepository,
-                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE),
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, utilisateurRepository, HORLOGE),
                 utilsService, usageReferentiels, HORLOGE);
         ventes = compte("701", "Ventes de marchandises");
         achats = compte("601", "Achats de marchandises");
@@ -333,6 +345,101 @@ class NatureBudgetaireAdapterTest {
                     new DeciderDemandeInput(demande.getId(), MakerCheckerStatus.ACCEPTED, null)));
 
             assertCode("VALIDATEUR_EST_AUTEUR", e);
+        }
+    }
+
+    @Nested
+    @DisplayName("Demandes en attente")
+    class DemandesEnAttente {
+
+        private PageRecord<DemandeBudgetaireOutput<NatureBudgetaireOutput>> lister(MakerCheckerRequestEntity... demandes) {
+            connecte(VALIDATEUR);
+            when(demandeRepository.findAllByEntityNameAndStatusAndMakerIdNot(eq(MakerCheckerEntityName.BUDGET_NATURE),
+                    eq(MakerCheckerStatus.PENDING), eq(VALIDATEUR), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(demandes), PageRequest.of(0, 20), demandes.length));
+            return adapter.demandesEnAttente(PageRequest.of(0, 20));
+        }
+
+        @Test
+        @DisplayName("Création : la nature proposée, compte résolu, sans fiche en vigueur, avec le nom de l'auteur")
+        void montreUneCreation() {
+            UUID natureId = NatureBudgetaireAdapter.identifiantPour("VENTES-BOVINS");
+            MakerCheckerRequestEntity demande = demande(natureId, DemandeNatureEvent.creation(
+                    "VENTES-BOVINS", "Ventes de bovins", PRODUITS, RECETTE, ventes.getId()));
+            when(utilisateurRepository.findAllById(Set.of(UUID.fromString(CHEF_BUDGET)))).thenReturn(List.of(
+                    UtilisateurEntity.builder().id(UUID.fromString(CHEF_BUDGET)).prenom("Awa").nom("Mbarga").build()));
+
+            DemandeBudgetaireOutput<NatureBudgetaireOutput> d = lister(demande).content().getFirst();
+
+            verify(utilsService).hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_NATURE);
+            assertEquals(demande.getId(), d.id());
+            assertEquals(OperationReferentiel.CREER, d.operation());
+            assertEquals("Awa Mbarga", d.auteurNom());
+            assertNull(d.actuel());
+            NatureBudgetaireOutput proposee = d.proposition();
+            assertEquals(natureId, proposee.id());
+            assertEquals("VENTES-BOVINS", proposee.code());
+            assertEquals("701", proposee.compteCode());
+            assertEquals("Ventes de marchandises", proposee.compteIntitule());
+            assertTrue(proposee.actif());
+            assertNull(proposee.validePar());
+        }
+
+        @Test
+        @DisplayName("Modification : le libellé proposé face au libellé en vigueur, sans toucher à la nature")
+        void montreUneModification() {
+            NatureBudgetaireEntity enVigueur = nature("VENTES-BOVINS", true);
+            when(natureRepository.findById(enVigueur.getId())).thenReturn(Optional.of(enVigueur));
+            MakerCheckerRequestEntity demande = demande(enVigueur.getId(),
+                    DemandeNatureEvent.modification("Ventes de bovins sur pied"));
+
+            DemandeBudgetaireOutput<NatureBudgetaireOutput> d = lister(demande).content().getFirst();
+
+            assertEquals(OperationReferentiel.MODIFIER, d.operation());
+            assertEquals("Ventes de bovins sur pied", d.proposition().libelle());
+            assertEquals("Ventes de bovins", d.actuel().libelle());
+            assertEquals("701", d.proposition().compteCode());
+            assertEquals("Ventes de bovins", enVigueur.getLibelle());
+            assertNull(d.auteurNom());
+            verify(natureRepository, never()).saveAndFlush(any());
+        }
+
+        @Test
+        @DisplayName("Réactivation : distinguée d'une modification, que le type maker-checker confond")
+        void distingueUneReactivation() {
+            NatureBudgetaireEntity desactivee = nature("VENTES-BOVINS", false);
+            desactivee.setMotifDesactivation("Doublon");
+            when(natureRepository.findById(desactivee.getId())).thenReturn(Optional.of(desactivee));
+            MakerCheckerRequestEntity demande = demande(desactivee.getId(),
+                    DemandeNatureEvent.changementEtat(OperationReferentiel.REACTIVER, "Reprise des ventes"));
+
+            DemandeBudgetaireOutput<NatureBudgetaireOutput> d = lister(demande).content().getFirst();
+
+            assertEquals(MakerCheckerOperationType.UPDATE, d.checkerOperationType());
+            assertEquals(OperationReferentiel.REACTIVER, d.operation());
+            assertEquals("Reprise des ventes", d.motif());
+            assertTrue(d.proposition().actif());
+            assertNull(d.proposition().motifDesactivation());
+            assertFalse(d.actuel().actif());
+        }
+
+        @Test
+        @DisplayName("Charge illisible : la demande reste listée, sans aperçu, pour pouvoir être rejetée")
+        void garderUneDemandeIllisible() {
+            MakerCheckerRequestEntity illisible = demande(UUID.randomUUID(),
+                    DemandeNatureEvent.modification("Libellé"));
+            illisible.setPayload(Map.of("operation", "INCONNUE"));
+            UUID natureId = NatureBudgetaireAdapter.identifiantPour("VENTES-BOVINS");
+            MakerCheckerRequestEntity lisible = demande(natureId, DemandeNatureEvent.creation(
+                    "VENTES-BOVINS", "Ventes de bovins", PRODUITS, RECETTE, ventes.getId()));
+
+            List<DemandeBudgetaireOutput<NatureBudgetaireOutput>> demandes = lister(illisible, lisible).content();
+
+            assertEquals(2, demandes.size());
+            assertEquals(illisible.getId(), demandes.get(0).id());
+            assertNull(demandes.get(0).operation());
+            assertNull(demandes.get(0).proposition());
+            assertEquals(OperationReferentiel.CREER, demandes.get(1).operation());
         }
     }
 }
