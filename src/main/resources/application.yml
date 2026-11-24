@@ -185,7 +185,6 @@ app:
       - name: sodepa-audit
         path-patterns:
           - /api/auth/audit/**
-          - /api/audit/**
         methods:
           - GET
         limit: 20
@@ -253,22 +252,6 @@ app:
         methods:
           - GET
         limit: 120
-        duration-seconds: 60
-        key-type: AUTHENTICATED_ENDPOINT
-        failure-policy: FAIL_CLOSED
-      # ── Budget / Engagements / Collaboratif (write operations) ──
-      - name: sodepa-budget-write
-        path-patterns:
-          - /api/budget/plans
-          - /api/budget/plans/**
-          - /api/budget/reallocations
-          - /api/budget/engagements
-          - /api/budget/engagements/**
-          - /api/budget/collaboratif/**
-        methods:
-          - POST
-          - PUT
-        limit: 15
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
@@ -345,22 +328,9 @@ app:
         path-patterns:
           - /api/comptabilite/reporting/**
           - /api/comptabilite/analytique/reporting/**
-          - /api/reporting/**
         methods:
           - GET
         limit: 20
-        duration-seconds: 60
-        key-type: AUTHENTICATED_ENDPOINT
-        failure-policy: FAIL_CLOSED
-      # ── Trésorerie (write) ──
-      - name: sodepa-tresorerie-write
-        path-patterns:
-          - /api/tresorerie/previsions
-          - /api/tresorerie/change/couverture
-          - /api/tresorerie/rapprochement/**
-        methods:
-          - POST
-        limit: 15
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
@@ -368,27 +338,6 @@ app:
       - name: sodepa-tresorerie-read
         path-patterns:
           - /api/tresorerie/**
-        methods:
-          - GET
-        limit: 30
-        duration-seconds: 60
-        key-type: AUTHENTICATED_ENDPOINT
-        failure-policy: FAIL_CLOSED
-      # ── Financement ──
-      - name: sodepa-financement-write
-        path-patterns:
-          - /api/financement
-          - /api/financement/echeances/**
-          - /api/financement/hors-bilan
-        methods:
-          - POST
-        limit: 15
-        duration-seconds: 60
-        key-type: AUTHENTICATED_ENDPOINT
-        failure-policy: FAIL_CLOSED
-      - name: sodepa-financement-read
-        path-patterns:
-          - /api/financement/**
         methods:
           - GET
         limit: 30

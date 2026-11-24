@@ -7,7 +7,6 @@ import com.sodepa.erp.workflow.presentation.responses.WorkflowCurrentDataRespons
 import com.sodepa.erp.user.application.BootstrapInitializationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sodepa.erp.budget.infrastructure.repo.AuditTrailRepository;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.user.UserAdapterInterface;
 import com.sodepa.erp.share.*;
@@ -50,7 +49,6 @@ public class UserAdapter implements UserAdapterInterface {
     private final ObjectMapper objectMapper;
     private final UtilsService utilsService;
     private final KeycloakProvisioningPort keycloakProvisioningPort;
-    private final AuditTrailRepository auditTrailRepository;
     private final BootstrapInitializationService bootstrapInitializationService;
     private final UserManagementEnginePort userManagementEnginePort;
 
