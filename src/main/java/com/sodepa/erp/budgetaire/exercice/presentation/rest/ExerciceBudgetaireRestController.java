@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.exercice.presentation.rest;
 
+import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.CreerExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.outputs.ExerciceBudgetaireOutput;
@@ -9,7 +10,6 @@ import com.sodepa.erp.budgetaire.exercice.application.usecase.DeciderDemandeExer
 import com.sodepa.erp.budgetaire.exercice.application.usecase.ListerDemandesExerciceEnAttenteUseCase;
 import com.sodepa.erp.budgetaire.exercice.application.usecase.ListerExercicesUseCase;
 import com.sodepa.erp.budgetaire.exercice.presentation.requests.CreerExerciceRequest;
-import com.sodepa.erp.budgetaire.exercice.presentation.requests.DeciderDemandeRequest;
 import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;

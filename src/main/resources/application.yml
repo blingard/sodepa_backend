@@ -213,6 +213,27 @@ app:
         duration-seconds: 60
         key-type: AUTHENTICATED_ENDPOINT
         failure-policy: FAIL_CLOSED
+      # ── Gestion budgétaire reconstruite : nomenclature (US-BUD-104) ──
+      # La saisie d'un plan de codification enchaîne les créations : la limite
+      # d'écriture est plus haute que pour les exercices.
+      - name: sodepa-budget-nomenclature-write
+        path-patterns:
+          - /api/budget/nomenclature/**
+        methods:
+          - POST
+        limit: 60
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
+      - name: sodepa-budget-nomenclature-read
+        path-patterns:
+          - /api/budget/nomenclature/**
+        methods:
+          - GET
+        limit: 120
+        duration-seconds: 60
+        key-type: AUTHENTICATED_ENDPOINT
+        failure-policy: FAIL_CLOSED
       # ── Comptabilité générale (write: écritures, rapprochement, clôture) ──
       - name: sodepa-compta-generale-write
         path-patterns:
