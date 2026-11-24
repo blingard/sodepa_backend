@@ -5,6 +5,8 @@ import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerc
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter.NomenclatureAdapter;
+import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
+import com.sodepa.erp.budgetaire.structure.infrastructure.adapter.StructureBudgetaireAdapter;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.*;
 import com.sodepa.erp.formation.application.FormationService;
@@ -51,6 +53,7 @@ public class WorkflowCompletionOrchestrator {
     @Autowired @Lazy private AchatsService achatsService;
     @Autowired @Lazy private ExerciceBudgetaireAdapter exerciceBudgetaireAdapter;
     @Autowired @Lazy private NomenclatureAdapter nomenclatureAdapter;
+    @Autowired @Lazy private StructureBudgetaireAdapter structureBudgetaireAdapter;
     @Autowired @Lazy private BankAdapter bankAdapter;
     @Autowired @Lazy private CompteAdapter compteAdapter;
     @Autowired @Lazy private ImmobilisationAdapter immobilisationAdapter;
@@ -214,6 +217,8 @@ public class WorkflowCompletionOrchestrator {
                             new DeciderDemandeExerciceInput(req.getId(), decision, notes));
                     case BUDGET_NOMENCLATURE -> nomenclatureAdapter.decider(
                             new DeciderDemandeNomenclatureInput(req.getId(), decision, notes));
+                    case BUDGET_STRUCTURE -> structureBudgetaireAdapter.decider(
+                            new DeciderDemandeStructureInput(req.getId(), decision, notes));
                     case UNITE_ORGANISATIONNELLE -> organigrammeAdapter.validateOrRejectUnite(input);
                     case POSTE -> organigrammeAdapter.validateOrRejectPoste(input);
                     case AFFECTATION_POSTE -> organigrammeAdapter.validateOrRejectAffectation(input);

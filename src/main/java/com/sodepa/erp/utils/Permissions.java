@@ -199,6 +199,14 @@ public enum Permissions {
     INIT_UPDATE_BUDGET_NOMENCLATURE,
     /** Valider ou rejeter une demande portant sur la nomenclature budgétaire. */
     VALIDATE_OR_REJECT_BUDGET_NOMENCLATURE,
+    /** Lire les structures budgétaires, leur ordonnateur et leur service d'engagement. */
+    GET_BUDGET_STRUCTURE_INFO,
+    /** Demander la déclaration d'une unité comme structure budgétaire (chef du Service du Budget). */
+    INIT_CREATE_BUDGET_STRUCTURE,
+    /** Demander la modification, la désactivation ou la réactivation d'une structure budgétaire. */
+    INIT_UPDATE_BUDGET_STRUCTURE,
+    /** Valider ou rejeter une demande portant sur une structure budgétaire. */
+    VALIDATE_OR_REJECT_BUDGET_STRUCTURE,
 
     // Workflow Universel
     WORKFLOW_READ,

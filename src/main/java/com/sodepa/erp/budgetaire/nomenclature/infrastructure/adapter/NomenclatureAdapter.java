@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter;
 
+import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.nomenclature.application.UsageNomenclature;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
@@ -10,7 +11,6 @@ import com.sodepa.erp.budgetaire.nomenclature.application.outputs.NoeudNomenclat
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.ElementProgrammatiqueEntity;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.NiveauProgrammatique;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.DemandeNomenclatureEvent;
-import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.OperationNomenclature;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.repo.ElementProgrammatiqueRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
 import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
@@ -173,7 +173,7 @@ public class NomenclatureAdapter {
 
         refuserSiDemandeEnAttente(element.getId(), element.getCode());
         return soumettre(element.getId(),
-                DemandeNomenclatureEvent.changementEtat(OperationNomenclature.DESACTIVER, motif), element.getCode());
+                DemandeNomenclatureEvent.changementEtat(OperationReferentiel.DESACTIVER, motif), element.getCode());
     }
 
     /** Soumet la réactivation d'un élément désactivé. */
@@ -190,7 +190,7 @@ public class NomenclatureAdapter {
 
         refuserSiDemandeEnAttente(element.getId(), element.getCode());
         return soumettre(element.getId(),
-                DemandeNomenclatureEvent.changementEtat(OperationNomenclature.REACTIVER, facultatif(input.motif())),
+                DemandeNomenclatureEvent.changementEtat(OperationReferentiel.REACTIVER, facultatif(input.motif())),
                 element.getCode());
     }
 
@@ -305,7 +305,7 @@ public class NomenclatureAdapter {
     private void appliquer(MakerCheckerRequestEntity demande, String validateur) {
         DemandeNomenclatureEvent charge = DemandeNomenclatureEvent.depuisCharge(demande.getPayload());
         UUID elementId = UUID.fromString(demande.getEntityPk());
-        if (charge.operation() == OperationNomenclature.CREER) {
+        if (charge.operation() == OperationReferentiel.CREER) {
             creer(demande, charge, elementId, validateur);
             return;
         }

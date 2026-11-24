@@ -1,9 +1,9 @@
-package com.sodepa.erp.budgetaire.nomenclature.infrastructure.event;
+package com.sodepa.erp.budgetaire.commun;
 
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 
 /**
- * Opération demandée sur un élément de la nomenclature.
+ * Opération demandée sur un référentiel budgétaire (nomenclature, structures…).
  *
  * <p>
  * Le maker-checker ne connaît que quatre types d'opération ; la réactivation
@@ -11,7 +11,7 @@ import com.sodepa.erp.utils.MakerCheckerOperationType;
  * maker-checker n'en est que le reflet, pour les écrans et l'audit.
  * </p>
  */
-public enum OperationNomenclature {
+public enum OperationReferentiel {
 
     CREER(MakerCheckerOperationType.CREATE),
     MODIFIER(MakerCheckerOperationType.UPDATE),
@@ -20,7 +20,7 @@ public enum OperationNomenclature {
 
     private final MakerCheckerOperationType typeMakerChecker;
 
-    OperationNomenclature(MakerCheckerOperationType typeMakerChecker) {
+    OperationReferentiel(MakerCheckerOperationType typeMakerChecker) {
         this.typeMakerChecker = typeMakerChecker;
     }
 

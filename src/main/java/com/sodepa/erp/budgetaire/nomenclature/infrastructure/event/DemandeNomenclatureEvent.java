@@ -1,5 +1,6 @@
 package com.sodepa.erp.budgetaire.nomenclature.infrastructure.event;
 
+import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.NiveauProgrammatique;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 
@@ -33,7 +34,7 @@ import java.util.UUID;
  * @param motif         motif (désactivation, réactivation)
  */
 public record DemandeNomenclatureEvent(
-        OperationNomenclature operation,
+        OperationReferentiel operation,
         NiveauProgrammatique niveau,
         String code,
         String libelle,
@@ -45,16 +46,16 @@ public record DemandeNomenclatureEvent(
 
     public static DemandeNomenclatureEvent creation(NiveauProgrammatique niveau, String code, String libelle,
                                                     String description, UUID parentId, UUID responsableId) {
-        return new DemandeNomenclatureEvent(OperationNomenclature.CREER, niveau, code, libelle, description,
+        return new DemandeNomenclatureEvent(OperationReferentiel.CREER, niveau, code, libelle, description,
                 parentId, responsableId, null);
     }
 
     public static DemandeNomenclatureEvent modification(String libelle, String description, UUID responsableId) {
-        return new DemandeNomenclatureEvent(OperationNomenclature.MODIFIER, null, null, libelle, description,
+        return new DemandeNomenclatureEvent(OperationReferentiel.MODIFIER, null, null, libelle, description,
                 null, responsableId, null);
     }
 
-    public static DemandeNomenclatureEvent changementEtat(OperationNomenclature operation, String motif) {
+    public static DemandeNomenclatureEvent changementEtat(OperationReferentiel operation, String motif) {
         return new DemandeNomenclatureEvent(operation, null, null, null, null, null, null, motif);
     }
 
@@ -81,7 +82,7 @@ public record DemandeNomenclatureEvent(
             String parent = texte(charge, "parentId");
             String responsable = texte(charge, "responsableId");
             return new DemandeNomenclatureEvent(
-                    OperationNomenclature.valueOf(texte(charge, "operation")),
+                    OperationReferentiel.valueOf(texte(charge, "operation")),
                     niveau == null ? null : NiveauProgrammatique.valueOf(niveau),
                     texte(charge, "code"),
                     texte(charge, "libelle"),
