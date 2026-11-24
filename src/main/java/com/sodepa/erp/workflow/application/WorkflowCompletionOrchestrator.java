@@ -1,7 +1,6 @@
 package com.sodepa.erp.workflow.application;
 
 import com.sodepa.erp.achats.application.AchatsService;
-import com.sodepa.erp.budget.application.inputs.RejeterInput;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
@@ -11,9 +10,6 @@ import com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter.Nomenclatur
 import com.sodepa.erp.budgetaire.source.infrastructure.adapter.SourceFinancementAdapter;
 import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
 import com.sodepa.erp.budgetaire.structure.infrastructure.adapter.StructureBudgetaireAdapter;
-import com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter;
-import com.sodepa.erp.budget.infrastructure.adapter.RapprochementAdapter;
-import com.sodepa.erp.budget.infrastructure.repo.BudgetEngagementRepository;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.*;
 import com.sodepa.erp.formation.application.FormationService;
@@ -58,14 +54,11 @@ public class WorkflowCompletionOrchestrator {
     private MakerCheckerRequestJpaRepo makerCheckerRepo;
 
     @Autowired @Lazy private AchatsService achatsService;
-    @Autowired @Lazy private BudgetPlanAdapter budgetPlanAdapter;
     @Autowired @Lazy private ExerciceBudgetaireAdapter exerciceBudgetaireAdapter;
     @Autowired @Lazy private NomenclatureAdapter nomenclatureAdapter;
     @Autowired @Lazy private StructureBudgetaireAdapter structureBudgetaireAdapter;
     @Autowired @Lazy private NatureBudgetaireAdapter natureBudgetaireAdapter;
     @Autowired @Lazy private SourceFinancementAdapter sourceFinancementAdapter;
-    @Autowired @Lazy private RapprochementAdapter budgetRapprochementAdapter;
-    @Autowired @Lazy private BudgetEngagementRepository budgetEngagementRepository;
     @Autowired @Lazy private BankAdapter bankAdapter;
     @Autowired @Lazy private CompteAdapter compteAdapter;
     @Autowired @Lazy private ImmobilisationAdapter immobilisationAdapter;
@@ -223,9 +216,6 @@ public class WorkflowCompletionOrchestrator {
                     case MARCHE_DOSSIER -> achatsService.validateOrRejectMarcheDossier(input);
                     case MARCHE_RECEPTION_PV -> achatsService.validateOrRejectPvReception(input);
                     case LIQUIDATION_FACTURE -> achatsService.validateOrRejectLiquidationFacture(input);
-                    case BUDGET_PLAN -> budgetPlanAdapter.validateOrRejectBudgetPlan(input);
-                    case BUDGET_REALLOCATION -> budgetPlanAdapter.validateOrRejectReallocation(input);
-                    case BUDGET_ENGAGEMENT -> budgetPlanAdapter.validateOrRejectEngagement(input);
                     // Exercice budgétaire (US-BUD-101) : sans ce cas, la branche par défaut
                     // marquait la demande acceptée sans créer l'exercice.
                     case BUDGET_EXERCICE -> exerciceBudgetaireAdapter.decider(
@@ -332,22 +322,6 @@ public class WorkflowCompletionOrchestrator {
                     } catch (Exception e) {
                         log.warn("Orchestrateur Workflow : finalisation écriture {} ignorée ({})", id, e.getMessage());
                     }
-                });
-                yield true;
-            }
-            case "PRE_ENGAGEMENT_BUDGET" -> {
-                runWithElevatedSecurityContext(effectiveCheckerId, () -> {
-                    budgetEngagementRepository.findById(id).ifPresent(eng -> {
-                        if (approved) {
-                            eng.setStatutWorkflow("APPROVED");
-                            eng.setApprobateurCourantRole(null);
-                            budgetEngagementRepository.save(eng);
-                        } else {
-                            budgetRapprochementAdapter.rejeterEngagement(
-                                    new RejeterInput(eng.getNumeroEngagement(), motif, effectiveCheckerId)
-                            );
-                        }
-                    });
                 });
                 yield true;
             }

@@ -7,7 +7,7 @@ import java.util.UUID;
  * ou clôturée au terme de toutes ses étapes avec succès.
  * <p>
  * Ce mécanisme événementiel asynchrone / découplé permet aux modules applicatifs abonnés
- * (ex: {@code RhWorkflowEventListener}, {@code ValiderEtapeWorkflowUseCase} dans le Budget, Achats)
+ * (ex: {@code RhWorkflowEventListener}, Achats)
  * de déclencher leurs effets de bord métier respectifs (ex: validation comptable définitive,
  * passage du statut d'engagement à VALIDÉ, génération automatique d'un bon de commande signé).
  * </p>
