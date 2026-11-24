@@ -1,7 +1,5 @@
 package com.sodepa.erp.fiscalite.infrastructure.seeder;
 
-import com.sodepa.erp.budget.infrastructure.entities.*;
-import com.sodepa.erp.budget.infrastructure.repo.*;
 import com.sodepa.erp.comptabilite.generale.infrastructure.adapter.ExerciceComptableService;
 import com.sodepa.erp.comptabilite.generale.infrastructure.entities.SchemaEcritureComptableEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.ExerciceComptableRepository;
@@ -40,10 +38,6 @@ public class Ref04FiscaliteBudgetSeeder implements CommandLineRunner {
     private final ExerciceComptableRepository exerciceRepository;
     private final ExerciceComptableService exerciceService;
     private final SchemaEcritureComptableRepository schemaRepository;
-    private final BudgetProgrammeRepository programmeRepository;
-    private final BudgetActiviteRepository activiteRepository;
-    private final BudgetSourceFinancementRepository sourceRepository;
-    private final BudgetNatureDepenseRepository natureRepository;
     private final MoyenPaiementRepository moyenPaiementRepository;
 
     @Override
@@ -52,7 +46,6 @@ public class Ref04FiscaliteBudgetSeeder implements CommandLineRunner {
         seedFiscaliteEtRegimes();
         seedTableUniqueSeuils();
         seedExerciceEtSchemasComptables();
-        seedNomencleéatureBudgetaire();
         seedMoyensPaiementEtMobileMoney();
     }
 
@@ -172,64 +165,6 @@ public class Ref04FiscaliteBudgetSeeder implements CommandLineRunner {
                             .codeJournal("BANQUE").typeOperation("APPRO_REGIE")
                             .compteDebitCode("5711").compteCreditCode("5211").actif(true).build()
             ));
-        }
-    }
-
-    private void seedNomencleéatureBudgetaire() {
-        if (programmeRepository.count() == 0) {
-            programmeRepository.saveAll(List.of(
-                    BudgetProgrammeEntity.builder().code("PROG-01").intitule("Développement de la Production Pastorale et Génétique Bovine")
-                            .objectifStrategique("Accroître le cheptel bovin et améliorer le potentiel génétique dans les ranches de Dumbo, Jakiri, Faro et Ndokayo")
-                            .responsableProgramme("Directeur de la Production et de la Commercialisation (DPC)").actif(true).build(),
-                    BudgetProgrammeEntity.builder().code("PROG-02").intitule("Modernisation de l'Abattage Industriel et de la Chaîne du Froid")
-                            .objectifStrategique("Optimiser le rendement d'abattage et la conservation frigorifique à Yaoundé, Douala et Ngaoundéré")
-                            .responsableProgramme("Directeur de la Production et de la Commercialisation (DPC)").actif(true).build(),
-                    BudgetProgrammeEntity.builder().code("PROG-03").intitule("Gouvernance, Pilotage Administratif, Financier et Transformation Numérique")
-                            .objectifStrategique("Assurer l'équilibre financier, la maîtrise des risques et la digitalisation intégrée ERP SODEPA")
-                            .responsableProgramme("Directeur Administratif et Financier (DAF)").actif(true).build()
-            ));
-        }
-
-        if (activiteRepository.count() == 0) {
-            activiteRepository.saveAll(List.of(
-                    BudgetActiviteEntity.builder().code("ACT-01-01").intitule("Suivi sanitaire, prophylaxie et alimentation du cheptel")
-                            .programmeCode("PROG-01").actif(true).build(),
-                    BudgetActiviteEntity.builder().code("ACT-01-02").intitule("Aménagement des pâturages et hydraulique pastorale")
-                            .programmeCode("PROG-01").actif(true).build(),
-                    BudgetActiviteEntity.builder().code("ACT-02-01").intitule("Exploitation et maintenance des chaînes d'abattage et chambres froides")
-                            .programmeCode("PROG-02").actif(true).build(),
-                    BudgetActiviteEntity.builder().code("ACT-03-01").intitule("Administration générale, RH, Finance et Systèmes d'Information")
-                            .programmeCode("PROG-03").actif(true).build()
-            ));
-        }
-
-        if (sourceRepository.count() == 0) {
-            sourceRepository.saveAll(List.of(
-                    BudgetSourceFinancementEntity.builder().code("FONDS_PROPRES_SODEPA").intitule("Recettes propres d'exploitation SODEPA")
-                            .typeSource("FONDS_PROPRES").bailleurNom("SODEPA").devise("XAF").actif(true).build(),
-                    BudgetSourceFinancementEntity.builder().code("SUBVENTION_MINEPIA_BIP").intitule("Subvention d'investissement de l'État (MINEPIA / BIP)")
-                            .typeSource("SUBVENTION_ETAT").bailleurNom("État du Cameroun — MINEPIA").devise("XAF").actif(true).build(),
-                    BudgetSourceFinancementEntity.builder().code("FIN_EXT_BANQUE_MONDIALE").intitule("Financement extérieur projets d'élevage (PRODEL / BM)")
-                            .typeSource("FINANCEMENT_EXTERIEUR").bailleurNom("Banque Mondiale / MINEPIA").devise("XAF").actif(true).build()
-            ));
-        }
-
-        if (natureRepository.count() == 0) {
-            natureRepository.saveAll(List.of(
-                    BudgetNatureDepenseEntity.builder().code("NAT_INTRANTS_VET").intitule("Achats de produits vétérinaires, vaccins et aliments bétail")
-                            .categorie("FONCTIONNEMENT").prefixeCompteSyscohada("60").actif(true).build(),
-                    BudgetNatureDepenseEntity.builder().code("NAT_SERVICES_EXT").intitule("Transports, entretien, maintenance et services extérieurs")
-                            .categorie("FONCTIONNEMENT").prefixeCompteSyscohada("61").actif(true).build(),
-                    BudgetNatureDepenseEntity.builder().code("NAT_AUTRES_SERVICES").intitule("Honoraires, télécommunications, missions et prestations externes")
-                            .categorie("FONCTIONNEMENT").prefixeCompteSyscohada("62").actif(true).build(),
-                    BudgetNatureDepenseEntity.builder().code("NAT_CHARGES_PERSONNEL").intitule("Salaires, primes et charges sociales du personnel SODEPA")
-                            .categorie("FONCTIONNEMENT").prefixeCompteSyscohada("66").actif(true).build(),
-                    BudgetNatureDepenseEntity.builder().code("NAT_INV_EQUIPEMENT").intitule("Acquisitions d'équipements pastoraux, frigorifiques et industriels")
-                            .categorie("INVESTISSEMENT").prefixeCompteSyscohada("24").actif(true).build(),
-                    BudgetNatureDepenseEntity.builder().code("NAT_INV_INFRA").intitule("Bâtiments, parcs de contention, forages et infrastructures")
-                            .categorie("INVESTISSEMENT").prefixeCompteSyscohada("23").actif(true).build()
-            ));
-            log.info("Nomencleéature budgétaire SODEPA initialisée (F-REF-018 / CA-REF-018-01 & 02).");
         }
     }
 

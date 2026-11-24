@@ -6,8 +6,6 @@ import com.sodepa.erp.achats.infrastructure.entities.*;
 import com.sodepa.erp.achats.infrastructure.repo.*;
 import com.sodepa.erp.achats.presentation.requests.*;
 import com.sodepa.erp.achats.presentation.responses.*;
-import com.sodepa.erp.budget.infrastructure.entities.AchatSeuilConfigEntity;
-import com.sodepa.erp.budget.infrastructure.repo.AchatSeuilConfigRepository;
 import com.sodepa.erp.comptabilite.generale.application.inputs.ValidateOrRejectSubmissionInput;
 import com.sodepa.erp.configuration.parametres.application.ParametreConfigurationService;
 import com.sodepa.erp.ged.infrastructure.entities.DocumentGedEntity;
@@ -69,7 +67,6 @@ public class AchatsService {
     private final MarcheDossierRepository marcheDossierRepository;
     private final MarcheDossierLigneRepository marcheDossierLigneRepository;
     private final MarcheReceptionPvRepository marcheReceptionPvRepository;
-    private final AchatSeuilConfigRepository seuilConfigRepository;
     private final EmployeRepository employeRepository;
     private final UniteOrganisationnelleRepository uniteOrganisationnelleRepository;
     private final ParametreConfigurationService configService;
