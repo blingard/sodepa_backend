@@ -1,9 +1,5 @@
 package com.sodepa.erp.configuration;
 
-import com.sodepa.erp.budget.application.inputs.*;
-import com.sodepa.erp.budget.application.usecase.*;
-import com.sodepa.erp.budget.infrastructure.entities.*;
-import com.sodepa.erp.budget.infrastructure.repo.*;
 import com.sodepa.erp.comptabilite.analytique.application.usecase.*;
 import com.sodepa.erp.comptabilite.analytique.infrastructure.entities.*;
 import com.sodepa.erp.comptabilite.analytique.infrastructure.repo.*;
@@ -76,21 +72,11 @@ public class TestDataSeeder implements CommandLineRunner {
     private final ImmobilisationAdapter immobilisationAdapter;
     private final CompteAdapter compteAdapter;
     private final EcritureAdapter ecritureAdapter;
-    private final com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter budgetPlanAdapter;
 
     // ── Usecases ──
     private final SaisirEcritureUseCase saisirEcritureUseCase;
     private final ValiderEcritureUseCase validerEcritureUseCase;
     private final SoumettreEcritureUseCase soumettreEcritureUseCase;
-    private final CreerBudgetPlanUseCase creerBudgetPlanUseCase;
-    private final AjouterItemPlanUseCase ajouterItemPlanUseCase;
-    private final SoumettrePlanUseCase soumettrePlanUseCase;
-    private final ApprouverPlanUseCase approuverPlanUseCase;
-    private final EnregistrerFinancementUseCase enregistrerFinancementUseCase;
-    private final AjouterPrevisionUseCase ajouterPrevisionUseCase;
-    private final EnregistrerCouvertureUseCase enregistrerCouvertureUseCase;
-    private final EnregistrerEngagementHorsBilanUseCase enregistrerEngagementHorsBilanUseCase;
-    private final EnregistrerEngagementUseCase enregistrerEngagementUseCase;
     private final CleRepartitionUseCase cleRepartitionUseCase;
     private final BudgetUseCase budgetUseCase;
     private final FiscalYearClosingAdapter fiscalYearClosingAdapter;
@@ -108,8 +94,6 @@ public class TestDataSeeder implements CommandLineRunner {
     private final AxeAnalytiqueRepository axeRepository;
     private final SectionAnalytiqueRepository sectionRepository;
     private final CleRepartitionRepository cleRepartitionRepository;
-    private final BudgetPlanRepository budgetPlanRepository;
-    private final LigneDecouvertRepository ligneDecouvertRepository;
 
     private static final UUID MAKER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID CHECKER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
@@ -130,7 +114,7 @@ public class TestDataSeeder implements CommandLineRunner {
         try {
             seedRefData();
             seedHistoricalData();
-            seedTreasuryData();
+            seedReleveBancaire();
             log.info("═══════════════════════════════════════════════════════════════");
             log.info("  Peuplement des données de test terminé avec succès ✓");
             log.info("═══════════════════════════════════════════════════════════════");
@@ -176,8 +160,6 @@ public class TestDataSeeder implements CommandLineRunner {
                     ((ImmobilisationAdapter) adapter).validateOrReject(validationInput);
                 } else if (adapter instanceof UserAdapter) {
                     ((UserAdapter) adapter).validateOrReject(validationInput);
-                } else if (adapter instanceof com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter) {
-                    ((com.sodepa.erp.budget.infrastructure.adapter.BudgetPlanAdapter) adapter).validateOrRejectBudgetPlan(validationInput);
                 }
             } catch (Exception e) {
                 log.warn("Impossible d'approuver la requête Maker-Checker {} : {}", req.getId(), e.getMessage());
@@ -324,33 +306,6 @@ public class TestDataSeeder implements CommandLineRunner {
         List<String> realSuppliers = List.of("FOU005", "FOU006", "FOU007", "FOU008");
 
         for (int annee = 2017; annee <= 2026; annee++) {
-            // A. Plans budgétaires annuels (Maker-Checker Use Cases)
-            if (budgetPlanRepository.findByAnnee(annee).isEmpty()) {
-                try {
-                    authenticate("admin_maker", MAKER_ID);
-                    creerBudgetPlanUseCase.execute(new CreerBudgetPlanInput(annee, "Budget Annuel SODEPA " + annee, MAKER_ID));
-                    approvePendingRequests(MakerCheckerEntityName.BUDGET_PLAN, budgetPlanAdapter);
-
-                    BudgetPlanEntity plan = budgetPlanRepository.findByAnnee(annee).get(0);
-                    UUID planId = plan.getId();
-
-                    // Ajouter les items budgétaires
-                    if (secNgd != null) {
-                        ajouterItemPlanUseCase.execute(new AjouterItemInput(planId, "601", secNgd.getId(), BigDecimal.valueOf(200_000_000)));
-                        ajouterItemPlanUseCase.execute(new AjouterItemInput(planId, "601", secDla.getId(), BigDecimal.valueOf(150_000_000)));
-                    }
-                    ajouterItemPlanUseCase.execute(new AjouterItemInput(planId, "661", null, BigDecimal.valueOf(300_000_000)));
-                    ajouterItemPlanUseCase.execute(new AjouterItemInput(planId, "701", null, BigDecimal.valueOf(200_000_000)));
-
-                    // Valider le plan
-                    soumettrePlanUseCase.execute(new SoumettrePlanUseCase.Input(planId, MAKER_ID));
-                    authenticate("admin_checker", CHECKER_ID);
-                    approuverPlanUseCase.execute(new ApprouverPlanUseCase.Input(planId, CHECKER_ID));
-                } catch (Exception e) {
-                    log.error("Échec création budget " + annee + " : " + e.getMessage());
-                }
-            }
-
             // B. Saisie & Validation d'Écritures Comptables (Utilise Saisir & Valider UseCases)
             int finalAnnee = annee;
             UUID journalHAId = journalIds.get("HA");
@@ -560,63 +515,11 @@ public class TestDataSeeder implements CommandLineRunner {
         }
     }
 
-    private void seedTreasuryData() {
-        log.info("  ↳ Trésorerie, Financements et Couvertures (Exercice 2026)...");
+    private void seedReleveBancaire() {
+        log.info("  ↳ Relevé bancaire (Exercice 2026)...");
         authenticate("admin_maker", MAKER_ID);
 
         UUID afrilandId = bankIds.get("AFB");
-        UUID sgcId = bankIds.get("SGC");
-        UUID provenderieId = tiersIds.get("FOU006");
-        UUID cfaoId = tiersIds.get("FOU003");
-
-        // 1. Prévisions de trésorerie (Use Cases)
-        try {
-            ajouterPrevisionUseCase.execute(new CreerPrevisionInput(LocalDate.of(2026, 9, 15), "ENCAISSEMENT", "CLIENT", "Vente viande bovine", BigDecimal.valueOf(15_000_000)));
-            ajouterPrevisionUseCase.execute(new CreerPrevisionInput(LocalDate.of(2026, 10, 10), "ENCAISSEMENT", "CLIENT", "Règlement Casino Douala", BigDecimal.valueOf(8_500_000)));
-            ajouterPrevisionUseCase.execute(new CreerPrevisionInput(LocalDate.of(2026, 9, 28), "DECAISSEMENT", "SALAIRE", "Salaires personnel sept 2026", BigDecimal.valueOf(12_000_000)));
-            ajouterPrevisionUseCase.execute(new CreerPrevisionInput(LocalDate.of(2026, 10, 5), "DECAISSEMENT", "FOURNISSEUR", "Provenderie du Cameroun S.A.", BigDecimal.valueOf(25_000_000)));
-        } catch (Exception e) {}
-
-        // 2. Financements (Emprunts)
-        try {
-            if (afrilandId != null) {
-                enregistrerFinancementUseCase.execute(new CreerFinancementInput(
-                        afrilandId, "Prêt équipement Ranch Ngaoundéré", "PRET", BigDecimal.valueOf(100_000_000),
-                        BigDecimal.valueOf(6.50), LocalDate.of(2025, 1, 15), 60, "RESTANT", MAKER_ID
-                ));
-            }
-            if (sgcId != null) {
-                enregistrerFinancementUseCase.execute(new CreerFinancementInput(
-                        sgcId, "Crédit-bail camion frigorifique", "LEASING", BigDecimal.valueOf(45_000_000),
-                        BigDecimal.valueOf(8.00), LocalDate.of(2024, 6, 1), 48, "RESTANT", MAKER_ID
-                ));
-            }
-        } catch (Exception e) {}
-
-        // 3. Découverts bancaires
-        try {
-            if (afrilandId != null && ligneDecouvertRepository.findByBanqueId(afrilandId).isEmpty()) {
-                ligneDecouvertRepository.save(LigneDecouvertEntity.builder()
-                        .banqueId(afrilandId).intitule("Facilité découvert Afriland").plafond(BigDecimal.valueOf(50_000_000))
-                        .tauxInteret(BigDecimal.valueOf(12.00)).soldeUtilise(BigDecimal.valueOf(15_000_000))
-                        .dateDebut(LocalDate.of(2026, 1, 1)).dateFin(LocalDate.of(2026, 12, 31)).alerteSeuilPourcent(BigDecimal.valueOf(80.00)).build());
-            }
-        } catch (Exception e) {}
-
-        // 4. Contrats de couverture (Use Cases)
-        try {
-            enregistrerCouvertureUseCase.execute(new CouvertureInput("FWD-2026-001", "EUR", BigDecimal.valueOf(150_000), BigDecimal.valueOf(655.957), LocalDate.of(2026, 3, 1), LocalDate.of(2026, 9, 30)));
-        } catch (Exception e) {}
-
-        // 5. Engagements hors-bilan (Use Cases)
-        try {
-            if (provenderieId != null) {
-                enregistrerEngagementHorsBilanUseCase.execute(new CreerHorsBilanInput("CAUTIONNEMENT", "Caution bancaire Afriland - Marché MINADER", provenderieId, BigDecimal.valueOf(25_000_000), LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 14)));
-            }
-            if (cfaoId != null) {
-                enregistrerEngagementHorsBilanUseCase.execute(new CreerHorsBilanInput("GARANTIE_BANCAIRE", "Garantie CFAO Motors", cfaoId, BigDecimal.valueOf(15_000_000), LocalDate.of(2026, 4, 1), LocalDate.of(2026, 12, 31)));
-            }
-        } catch (Exception e) {}
 
         // 6. Relevé bancaire Afriland (Comptabilité générale)
         try {

@@ -197,7 +197,7 @@ public class WorkflowRestController {
     /**
      * Recherche l'instance de workflow active associée à un objet métier particulier (bon de commande, budget, recrutement).
      *
-     * @param entityName nom de l'objet métier (ex: 'BudgetPlanEntity', 'DossierAchatEntity')
+     * @param entityName nom de l'objet métier (ex: 'DossierAchatEntity')
      * @param entityId identifiant unique de l'objet concerné
      * @return l'instance de workflow active si existante, ou réponse 204 (No Content)
      */

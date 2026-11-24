@@ -11,12 +11,6 @@ import com.sodepa.erp.authorisation.infrastructure.entities.ProfilFonctionnelEnt
 import com.sodepa.erp.authorisation.infrastructure.repo.AffectationProfilUtilisateurRepository;
 import com.sodepa.erp.authorisation.infrastructure.repo.ProfilFonctionnelRepository;
 import com.sodepa.erp.authorisation.infrastructure.repo.RegleSodRepository;
-import com.sodepa.erp.budget.application.outputs.KpiReportOutput;
-import com.sodepa.erp.budget.application.outputs.TftOhadaReportOutput;
-import com.sodepa.erp.budget.infrastructure.adapter.PilotageAdapter;
-import com.sodepa.erp.budget.infrastructure.adapter.ReportingFinancierAdapter;
-import com.sodepa.erp.budget.infrastructure.repo.AuditTrailRepository;
-import com.sodepa.erp.budget.infrastructure.repo.EngagementHorsBilanRepository;
 import com.sodepa.erp.paie.application.PaieCalculateurService;
 import com.sodepa.erp.paie.application.PaieService;
 import com.sodepa.erp.paie.infrastructure.entities.BulletinPaieEntity;
@@ -24,8 +18,6 @@ import com.sodepa.erp.paie.infrastructure.repo.*;
 import com.sodepa.erp.rh.infrastructure.entities.EmployeEntity;
 import com.sodepa.erp.rh.infrastructure.repo.EmployeRepository;
 import com.sodepa.erp.share.CodeSequenceService;
-import com.sodepa.erp.comptabilite.generale.infrastructure.repo.LigneEcritureRepository;
-import com.sodepa.erp.comptabilite.generale.infrastructure.repo.TiersRepository;
 import com.sodepa.erp.configuration.RequestTrackingEvent;
 import com.sodepa.erp.configuration.ratelimit.EndpointRateLimitInterceptor;
 import com.sodepa.erp.configuration.ratelimit.EndpointThrottleProperties;
@@ -46,7 +38,6 @@ import com.sodepa.erp.share.erreurs.AccesRefuseException;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
 import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.Permissions;
-import com.sodepa.erp.utils.StatutEcriture;
 import com.sodepa.erp.utils.UserManagementEngine;
 import com.sodepa.erp.workflow.application.WorkflowSnapshotMerger;
 import com.sodepa.erp.workflow.application.WorkflowStateService;
@@ -80,9 +71,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class SecurityResilienceHardeningTest {
 
-    @Mock private LigneEcritureRepository ligneEcritureRepository;
-    @Mock private EngagementHorsBilanRepository engagementHorsBilanRepository;
-    @Mock private TiersRepository tiersRepository;
 
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private EndpointThrottleService mockThrottleService;
@@ -107,39 +95,6 @@ class SecurityResilienceHardeningTest {
     @AfterEach
     void clearSecurity() {
         SecurityContextHolder.clearContext();
-    }
-
-    @Test
-    @DisplayName("P0 Robustesse : ReportingFinancierAdapter préserve le signe négatif d'un déficit net")
-    void shouldPreserveNegativeSignOnNetDeficitAndPositiveOnProfit() {
-        ReportingFinancierAdapter adapter = new ReportingFinancierAdapter(
-                ligneEcritureRepository, engagementHorsBilanRepository, tiersRepository);
-
-        // Cas déficit : Charges (6) = 12 000 000 > Produits (7) = 5 000 000 -> Résultat net = -7 000 000
-        List<Object[]> agregatsDeficit = List.of(
-                new Object[]{"701100", BigDecimal.ZERO, new BigDecimal("5000000")},
-                new Object[]{"601100", new BigDecimal("12000000"), BigDecimal.ZERO},
-                new Object[]{"101100", BigDecimal.ZERO, new BigDecimal("100000000")},
-                new Object[]{"521100", new BigDecimal("50000000"), BigDecimal.ZERO}
-        );
-        when(ligneEcritureRepository.sumMovementsByCompteCodeForStatut(StatutEcriture.VALIDE))
-                .thenReturn(agregatsDeficit);
-
-        KpiReportOutput deficit = adapter.genererRapportKpis();
-        assertEquals(0, new BigDecimal("-7000000").compareTo(deficit.resultatNet()));
-        assertTrue(deficit.roe().compareTo(BigDecimal.ZERO) < 0);
-
-        // Cas bénéfice : Produits (7) = 15 000 000 > Charges (6) = 9 000 000 -> Résultat net = +6 000 000
-        List<Object[]> agregatsBenefice = List.of(
-                new Object[]{"701100", BigDecimal.ZERO, new BigDecimal("15000000")},
-                new Object[]{"601100", new BigDecimal("9000000"), BigDecimal.ZERO}
-        );
-        when(ligneEcritureRepository.sumMovementsByCompteCodeForStatut(StatutEcriture.VALIDE))
-                .thenReturn(agregatsBenefice);
-
-        KpiReportOutput profit = adapter.genererRapportKpis();
-        assertEquals(0, new BigDecimal("6000000").compareTo(profit.resultatNet()));
-        assertTrue(profit.roe().compareTo(BigDecimal.ZERO) > 0);
     }
 
     @Test
@@ -424,8 +379,8 @@ class SecurityResilienceHardeningTest {
     }
 
     @Test
-    @DisplayName("P1 Concurrence & P0 Dispo : CodeSequenceService sans collision + PilotageAdapter par agrégats SQL")
-    void shouldAllocateUniqueCodesAndComputeTftFromSqlAggregates() throws Exception {
+    @DisplayName("P1 Concurrence : CodeSequenceService sans collision")
+    void shouldAllocateUniqueCodesWithoutCollision() throws Exception {
         // Même séquence partagée sur 16 threads concurrents : aucune collision
         Set<Long> sharedAllocated = Collections.synchronizedSet(new HashSet<>());
         List<Thread> racing = new ArrayList<>();
@@ -438,22 +393,6 @@ class SecurityResilienceHardeningTest {
         for (Thread t : racing) t.join();
         assertEquals(16, sharedAllocated.size());
         assertTrue(sharedAllocated.stream().allMatch(v -> v >= 51L));
-
-        // PilotageAdapter TFT OHADA via agrégats SQL
-        AuditTrailRepository auditRepo = mock(AuditTrailRepository.class);
-        PilotageAdapter pilotage = new PilotageAdapter(ligneEcritureRepository, auditRepo);
-        when(ligneEcritureRepository.sumMovementsBeforeDateForStatut(eq(StatutEcriture.VALIDE), any()))
-                .thenReturn(List.<Object[]>of(new Object[]{"521100", new BigDecimal("1000000"), BigDecimal.ZERO}));
-        when(ligneEcritureRepository.sumMovementsBetweenDatesForStatut(eq(StatutEcriture.VALIDE), any(), any()))
-                .thenReturn(List.of(
-                        new Object[]{"701100", BigDecimal.ZERO, new BigDecimal("500000")},
-                        new Object[]{"601100", new BigDecimal("200000"), BigDecimal.ZERO},
-                        new Object[]{"521100", new BigDecimal("300000"), BigDecimal.ZERO}
-                ));
-        TftOhadaReportOutput tft = pilotage.genererTftOhada(2026);
-        assertEquals(0, new BigDecimal("300000").compareTo(tft.fluxActivitesOperationnelles()));
-        assertEquals(0, new BigDecimal("1000000").compareTo(tft.tresorerieDebutExercice()));
-        assertEquals(0, new BigDecimal("1300000").compareTo(tft.tresorerieFinExercice()));
     }
 
     @Test
