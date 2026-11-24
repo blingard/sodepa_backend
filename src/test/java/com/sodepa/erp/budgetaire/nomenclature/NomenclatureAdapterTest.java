@@ -94,7 +94,7 @@ class NomenclatureAdapterTest {
     @BeforeEach
     void preparer() {
         adapter = new NomenclatureAdapter(elementRepository,
-                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE), utilsService,
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, utilisateurRepository, HORLOGE), utilsService,
                 utilisateurRepository, usageReferentiels, HORLOGE);
     }
 

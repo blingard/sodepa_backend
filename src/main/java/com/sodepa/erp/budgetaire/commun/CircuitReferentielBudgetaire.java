@@ -2,11 +2,12 @@ package com.sodepa.erp.budgetaire.commun;
 
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
 import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 import com.sodepa.erp.share.erreurs.RessourceIntrouvableException;
+import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
+import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
@@ -14,6 +15,7 @@ import com.sodepa.erp.utils.PageRecord;
 import com.sodepa.erp.utils.PageableRecord;
 import com.sodepa.erp.workflow.application.WorkflowService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,8 +24,12 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * Circuit maker-checker commun aux objets du module budgétaire (exercices,
@@ -44,6 +50,7 @@ import java.util.UUID;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class CircuitReferentielBudgetaire {
 
     /** Taille de page maximale, comme partout dans l'API. */
@@ -52,6 +59,7 @@ public class CircuitReferentielBudgetaire {
     private final MakerCheckerRequestJpaRepo demandeRepository;
     private final WorkflowService workflowService;
     private final UtilsService utilsService;
+    private final UserRepository utilisateurRepository;
     private final Clock horloge;
 
     /**
@@ -128,12 +136,92 @@ public class CircuitReferentielBudgetaire {
         workflowService.update(decision.demande().getId(), decision.decision(), notes, decision.validateur());
     }
 
-    /** Demandes en attente que l'appelant peut trancher : les siennes sont écartées. */
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(MakerCheckerEntityName type, Pageable pageable) {
+    /**
+     * Demandes en attente que l'appelant peut trancher, avec leur contenu.
+     *
+     * <p>
+     * Les siennes sont écartées : il ne pourrait que se les voir refuser. Les
+     * demandes sont relues avec leur charge, que {@code projeter} traduit en
+     * fiche proposée et fiche en vigueur ; le valideur voit ainsi ce qu'il
+     * approuve.
+     * </p>
+     *
+     * <p>
+     * Une demande dont la charge ne se relit plus reste listée, sans aperçu :
+     * elle doit pouvoir être rejetée, et une seule demande abîmée ne doit pas
+     * rendre toute la file illisible.
+     * </p>
+     *
+     * @param projeter traduction d'une demande par le référentiel qu'elle vise
+     */
+    public <T> PageRecord<DemandeBudgetaireOutput<T>> demandesEnAttente(
+            MakerCheckerEntityName type, Pageable pageable,
+            Function<MakerCheckerRequestEntity, ProjectionDemande<T>> projeter) {
         String moi = utilsService.getCurrentUserData().userId();
-        return workflowService.findAllToValideByOther(
-                PageRequest.of(numero(pageable), taille(pageable), Sort.by(Sort.Direction.DESC, "createdAt")),
-                type, MakerCheckerStatus.PENDING, moi);
+        Page<MakerCheckerRequestEntity> demandes = demandeRepository.findAllByEntityNameAndStatusAndMakerIdNot(
+                type, MakerCheckerStatus.PENDING, moi,
+                PageRequest.of(numero(pageable), taille(pageable), Sort.by(Sort.Direction.DESC, "createdAt")));
+        Map<String, String> auteurs = nomsDesAuteurs(demandes.getContent());
+        return versPageRecord(demandes.map(d -> enveloppe(d, projection(d, projeter), auteurs.get(d.getMakerId()))));
+    }
+
+    private static <T> ProjectionDemande<T> projection(MakerCheckerRequestEntity demande,
+                                                       Function<MakerCheckerRequestEntity, ProjectionDemande<T>> projeter) {
+        try {
+            return projeter.apply(demande);
+        } catch (RuntimeException e) {
+            log.warn("Demande {} sur {} affichée sans aperçu : {}", demande.getId(), demande.getEntityName(),
+                    e.getMessage());
+            return new ProjectionDemande<>(null, null, null, null);
+        }
+    }
+
+    private static <T> DemandeBudgetaireOutput<T> enveloppe(MakerCheckerRequestEntity d, ProjectionDemande<T> projection,
+                                                            String auteurNom) {
+        return new DemandeBudgetaireOutput<>(
+                d.getId(),
+                d.getEntityName(),
+                d.getEntityPk(),
+                d.getStatus(),
+                d.getCheckerOperationType(),
+                projection.operation(),
+                d.getMakerId(),
+                auteurNom,
+                d.getCreatedAt(),
+                d.getExpiredAt(),
+                projection.motif(),
+                projection.proposition(),
+                projection.actuel());
+    }
+
+    /**
+     * Prénom et nom des auteurs, en une requête. Un auteur introuvable, ou dont
+     * l'identifiant n'est pas un UUID (compte technique), reste sans nom.
+     */
+    private Map<String, String> nomsDesAuteurs(Iterable<MakerCheckerRequestEntity> demandes) {
+        Set<UUID> ids = new HashSet<>();
+        for (MakerCheckerRequestEntity d : demandes) {
+            try {
+                ids.add(UUID.fromString(d.getMakerId()));
+            } catch (IllegalArgumentException | NullPointerException e) {
+                // Pas un utilisateur de l'ERP : on garde l'identifiant brut.
+            }
+        }
+        Map<String, String> noms = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (UtilisateurEntity u : utilisateurRepository.findAllById(ids)) {
+                noms.put(u.getId().toString(), nomComplet(u));
+            }
+        }
+        return noms;
+    }
+
+    /** « Prénom Nom », sans « null » si l'un des deux manque. */
+    public static String nomComplet(UtilisateurEntity u) {
+        String prenom = u.getPrenom() == null ? "" : u.getPrenom();
+        String nom = u.getNom() == null ? "" : u.getNom();
+        String complet = (prenom + " " + nom).strip();
+        return complet.isEmpty() ? null : complet;
     }
 
     // ─── Pagination ─────────────────────────────────────────────────────────

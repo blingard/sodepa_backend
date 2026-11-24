@@ -1,7 +1,9 @@
 package com.sodepa.erp.budgetaire.structure.infrastructure.adapter;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
+import com.sodepa.erp.budgetaire.commun.ProjectionDemande;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.structure.application.inputs.ChangerEtatStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.CreerStructureInput;
@@ -22,7 +24,6 @@ import com.sodepa.erp.organigramme.infrastructure.repo.AffectationPosteRepositor
 import com.sodepa.erp.organigramme.infrastructure.repo.PosteRepository;
 import com.sodepa.erp.organigramme.infrastructure.repo.UniteOrganisationnelleRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
@@ -225,20 +226,33 @@ public class StructureBudgetaireAdapter {
     public StructureBudgetaireOutput consulter(UUID id) {
         utilsService.hasPermission(Permissions.GET_BUDGET_STRUCTURE_INFO);
 
-        StructureBudgetaireEntity structure = trouver(id);
-        Map<UUID, UniteOrganisationnelleEntity> unites = parId(uniteRepository.findAllById(
-                Set.of(structure.getUniteId(), structure.getServiceEngagementUniteId())), UniteOrganisationnelleEntity::getId);
-        Map<UUID, PosteEntity> postes = parId(posteRepository.findAllById(Set.of(structure.getOrdonnateurPosteId())),
-                PosteEntity::getId);
-        return sortie(structure, unites, postes);
+        return fiche(trouver(id));
     }
 
-    /** Demandes en attente que l'appelant peut trancher (les siennes exclues). */
+    /** Demandes en attente que l'appelant peut trancher (les siennes exclues), avec leur contenu. */
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<StructureBudgetaireOutput>> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_STRUCTURE);
 
-        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_STRUCTURE, pageable);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_STRUCTURE, pageable, this::projeter);
+    }
+
+    /**
+     * La structure telle que la demande la laisserait, et telle qu'elle est,
+     * avec l'unité, le poste d'ordonnateur, son titulaire et le service
+     * d'engagement résolus. Aucune règle n'est rejouée : elles le seront à la
+     * validation.
+     */
+    private ProjectionDemande<StructureBudgetaireOutput> projeter(MakerCheckerRequestEntity demande) {
+        DemandeStructureEvent charge = DemandeStructureEvent.depuisCharge(demande.getPayload());
+        UUID structureId = UUID.fromString(demande.getEntityPk());
+        if (charge.operation() == OperationReferentiel.CREER) {
+            return ProjectionDemande.creation(fiche(nouvelleStructure(demande, charge, structureId)));
+        }
+        StructureBudgetaireEntity structure = trouver(structureId);
+        StructureBudgetaireEntity projetee = structure.toBuilder().build();
+        reporter(projetee, charge);
+        return new ProjectionDemande<>(charge.operation(), charge.motif(), fiche(projetee), fiche(structure));
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -259,22 +273,15 @@ public class StructureBudgetaireAdapter {
                 uniteActive(unite);
                 controlerOrdonnateur(unite, charge.ordonnateurPosteId());
                 controlerService(unite, charge.serviceEngagementUniteId(), structure.getId());
-                structure.setOrdonnateurPosteId(charge.ordonnateurPosteId());
-                structure.setServiceEngagementUniteId(charge.serviceEngagementUniteId());
             }
             case DESACTIVER -> {
                 exigerActive(structure, unite);
                 controlerDesactivable(structure, unite);
-                structure.setActif(false);
-                structure.setMotifDesactivation(charge.motif());
             }
-            case REACTIVER -> {
-                controlerReactivable(structure, unite);
-                structure.setActif(true);
-                structure.setMotifDesactivation(null);
-            }
+            case REACTIVER -> controlerReactivable(structure, unite);
             default -> throw new IllegalStateException("Opération déjà traitée : " + charge.operation());
         }
+        reporter(structure, charge);
         structure.setModifiePar(demande.getMakerId());
         structure.setModifieLe(horloge.instant());
         try {
@@ -297,24 +304,53 @@ public class StructureBudgetaireAdapter {
         controlerService(unite, charge.serviceEngagementUniteId(), structureId);
         controlerEnglobement(unite, structureId);
 
-        StructureBudgetaireEntity structure = StructureBudgetaireEntity.builder()
-                .id(structureId)
-                .uniteId(unite.getId())
-                .ordonnateurPosteId(charge.ordonnateurPosteId())
-                .serviceEngagementUniteId(charge.serviceEngagementUniteId())
-                .actif(true)
-                .demandeCreationId(demande.getId())
-                .creePar(demande.getMakerId())
-                .creeLe(demande.getCreatedAt())
-                .validePar(validateur)
-                .valideLe(horloge.instant())
-                .build();
+        StructureBudgetaireEntity structure = nouvelleStructure(demande, charge, structureId);
+        structure.setValidePar(validateur);
+        structure.setValideLe(horloge.instant());
         try {
             structureRepository.saveAndFlush(structure);
         } catch (DataIntegrityViolationException e) {
             throw structureExistante(unite);
         }
         log.info("Structures budgétaires : {} déclarée (demande {}).", unite.getCode(), demande.getId());
+    }
+
+    /** La structure que crée la demande, avant validation ; sert aussi à l'aperçu du valideur. */
+    private static StructureBudgetaireEntity nouvelleStructure(MakerCheckerRequestEntity demande,
+                                                               DemandeStructureEvent charge, UUID structureId) {
+        return StructureBudgetaireEntity.builder()
+                .id(structureId)
+                .uniteId(charge.uniteId())
+                .ordonnateurPosteId(charge.ordonnateurPosteId())
+                .serviceEngagementUniteId(charge.serviceEngagementUniteId())
+                .actif(true)
+                .demandeCreationId(demande.getId())
+                .creePar(demande.getMakerId())
+                .creeLe(demande.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * Reporte sur la structure ce que change une demande autre qu'une
+     * création. Partagé par l'application et l'aperçu : le valideur voit
+     * exactement ce qui sera écrit.
+     */
+    private static void reporter(StructureBudgetaireEntity structure, DemandeStructureEvent charge) {
+        switch (charge.operation()) {
+            case MODIFIER -> {
+                structure.setOrdonnateurPosteId(charge.ordonnateurPosteId());
+                structure.setServiceEngagementUniteId(charge.serviceEngagementUniteId());
+            }
+            case DESACTIVER -> {
+                structure.setActif(false);
+                structure.setMotifDesactivation(charge.motif());
+            }
+            case REACTIVER -> {
+                structure.setActif(true);
+                structure.setMotifDesactivation(null);
+            }
+            default -> throw new IllegalStateException("Opération sans report : " + charge.operation());
+        }
     }
 
     // ─── Règles ─────────────────────────────────────────────────────────────
@@ -494,6 +530,20 @@ public class StructureBudgetaireAdapter {
         return uniteRepository.findById(structure.getUniteId())
                 .orElseThrow(() -> new RessourceIntrouvableException(
                         "L'unité de cette structure n'existe plus dans l'organigramme."));
+    }
+
+    /** Fiche d'une structure, avec ses unités et son poste d'ordonnateur résolus. */
+    private StructureBudgetaireOutput fiche(StructureBudgetaireEntity structure) {
+        Set<UUID> uniteIds = new HashSet<>();
+        uniteIds.add(structure.getUniteId());
+        if (structure.getServiceEngagementUniteId() != null) {
+            uniteIds.add(structure.getServiceEngagementUniteId());
+        }
+        Map<UUID, UniteOrganisationnelleEntity> unites = parId(uniteRepository.findAllById(uniteIds),
+                UniteOrganisationnelleEntity::getId);
+        Map<UUID, PosteEntity> postes = structure.getOrdonnateurPosteId() == null ? Map.of()
+                : parId(posteRepository.findAllById(Set.of(structure.getOrdonnateurPosteId())), PosteEntity::getId);
+        return sortie(structure, unites, postes);
     }
 
     private StructureBudgetaireOutput sortie(StructureBudgetaireEntity s, Map<UUID, UniteOrganisationnelleEntity> unites,

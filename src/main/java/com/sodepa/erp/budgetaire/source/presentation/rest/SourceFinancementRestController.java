@@ -4,6 +4,7 @@ import com.sodepa.erp.budgetaire.commun.ChangerEtatInput;
 import com.sodepa.erp.budgetaire.commun.ChangerEtatRequest;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.source.application.inputs.CreerSourceInput;
 import com.sodepa.erp.budgetaire.source.application.inputs.ListerSourcesInput;
 import com.sodepa.erp.budgetaire.source.application.inputs.ModifierSourceInput;
@@ -19,7 +20,6 @@ import com.sodepa.erp.budgetaire.source.application.usecase.ReactiverSourceUseCa
 import com.sodepa.erp.budgetaire.source.infrastructure.entities.TypeSourceFinancement;
 import com.sodepa.erp.budgetaire.source.presentation.requests.CreerSourceRequest;
 import com.sodepa.erp.budgetaire.source.presentation.requests.ModifierSourceRequest;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;
 import io.swagger.v3.oas.annotations.Operation;
@@ -112,7 +112,8 @@ public class SourceFinancementRestController {
     @Operation(summary = "Demandes sur les sources de financement en attente de décision")
     @GetMapping("/pending")
     @ResponseStatus(HttpStatus.OK)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(@PageableDefault(size = 20) Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<SourceFinancementOutput>> demandesEnAttente(
+            @PageableDefault(size = 20) Pageable pageable) {
         return listerDemandesSourceEnAttenteUseCase.execute(pageable);
     }
 

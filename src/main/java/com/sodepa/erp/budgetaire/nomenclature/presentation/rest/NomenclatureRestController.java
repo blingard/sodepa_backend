@@ -2,6 +2,7 @@ package com.sodepa.erp.budgetaire.nomenclature.presentation.rest;
 
 import com.sodepa.erp.budgetaire.commun.ChangerEtatRequest;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.DeciderDemandeNomenclatureInput;
@@ -18,7 +19,6 @@ import com.sodepa.erp.budgetaire.nomenclature.application.usecase.ModifierElemen
 import com.sodepa.erp.budgetaire.nomenclature.application.usecase.ReactiverElementUseCase;
 import com.sodepa.erp.budgetaire.nomenclature.presentation.requests.CreerElementRequest;
 import com.sodepa.erp.budgetaire.nomenclature.presentation.requests.ModifierElementRequest;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;
 import io.swagger.v3.oas.annotations.Operation;
@@ -119,7 +119,8 @@ public class NomenclatureRestController {
     @Operation(summary = "Demandes sur la nomenclature en attente de décision")
     @GetMapping("/pending")
     @ResponseStatus(HttpStatus.OK)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(@PageableDefault(size = 20) Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<ElementProgrammatiqueOutput>> demandesEnAttente(
+            @PageableDefault(size = 20) Pageable pageable) {
         return listerDemandesNomenclatureEnAttenteUseCase.execute(pageable);
     }
 

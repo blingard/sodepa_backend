@@ -2,7 +2,9 @@ package com.sodepa.erp.budgetaire.nomenclature.infrastructure.adapter;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.CodeReferentiel;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
+import com.sodepa.erp.budgetaire.commun.ProjectionDemande;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.ChangerEtatElementInput;
 import com.sodepa.erp.budgetaire.nomenclature.application.inputs.CreerElementInput;
@@ -15,7 +17,6 @@ import com.sodepa.erp.budgetaire.nomenclature.infrastructure.entities.NiveauProg
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.event.DemandeNomenclatureEvent;
 import com.sodepa.erp.budgetaire.nomenclature.infrastructure.repo.ElementProgrammatiqueRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
@@ -240,7 +241,11 @@ public class NomenclatureAdapter {
     public ElementProgrammatiqueOutput consulter(UUID id) {
         utilsService.hasPermission(Permissions.GET_BUDGET_NOMENCLATURE_INFO);
 
-        ElementProgrammatiqueEntity element = trouver(id);
+        return fiche(trouver(id));
+    }
+
+    /** Fiche d'un élément, avec le code de son parent et le nom de son responsable. */
+    private ElementProgrammatiqueOutput fiche(ElementProgrammatiqueEntity element) {
         String parentCode = element.getParentId() == null ? null
                 : elementRepository.findById(element.getParentId()).map(ElementProgrammatiqueEntity::getCode).orElse(null);
         return ElementProgrammatiqueOutput.depuis(element, parentCode,
@@ -248,15 +253,32 @@ public class NomenclatureAdapter {
     }
 
     /**
-     * Demandes en attente que l'appelant peut trancher.
+     * Demandes en attente que l'appelant peut trancher, avec leur contenu.
      *
      * <p>Les siennes sont écartées : il ne pourrait que se les voir refuser.</p>
      */
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<ElementProgrammatiqueOutput>> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_NOMENCLATURE);
 
-        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_NOMENCLATURE, pageable);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_NOMENCLATURE, pageable, this::projeter);
+    }
+
+    /**
+     * L'élément tel que la demande le laisserait, et tel qu'il est, avec le
+     * code du parent et le nom du responsable résolus. Aucune règle n'est
+     * rejouée : elles le seront à la validation.
+     */
+    private ProjectionDemande<ElementProgrammatiqueOutput> projeter(MakerCheckerRequestEntity demande) {
+        DemandeNomenclatureEvent charge = DemandeNomenclatureEvent.depuisCharge(demande.getPayload());
+        UUID elementId = UUID.fromString(demande.getEntityPk());
+        if (charge.operation() == OperationReferentiel.CREER) {
+            return ProjectionDemande.creation(fiche(nouvelElement(demande, charge, elementId)));
+        }
+        ElementProgrammatiqueEntity element = trouver(elementId);
+        ElementProgrammatiqueEntity projete = element.toBuilder().build();
+        reporter(projete, charge);
+        return new ProjectionDemande<>(charge.operation(), charge.motif(), fiche(projete), fiche(element));
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -274,9 +296,6 @@ public class NomenclatureAdapter {
             case MODIFIER -> {
                 exigerActif(element);
                 controlerResponsable(element.getNiveau(), charge.responsableId());
-                element.setLibelle(charge.libelle());
-                element.setDescription(charge.description());
-                element.setResponsableId(charge.responsableId());
             }
             case DESACTIVER -> {
                 if (!element.isActif()) {
@@ -284,8 +303,6 @@ public class NomenclatureAdapter {
                             "L'élément " + element.getCode() + " est déjà désactivé.");
                 }
                 controlerDesactivable(element);
-                element.setActif(false);
-                element.setMotifDesactivation(charge.motif());
             }
             case REACTIVER -> {
                 if (element.isActif()) {
@@ -293,11 +310,10 @@ public class NomenclatureAdapter {
                             "L'élément " + element.getCode() + " est déjà actif.");
                 }
                 controlerParentActif(element);
-                element.setActif(true);
-                element.setMotifDesactivation(null);
             }
             default -> throw new IllegalStateException("Opération déjà traitée : " + charge.operation());
         }
+        reporter(element, charge);
         element.setModifiePar(demande.getMakerId());
         element.setModifieLe(horloge.instant());
         try {
@@ -318,7 +334,23 @@ public class NomenclatureAdapter {
         controlerParent(charge.niveau(), charge.parentId());
         controlerResponsable(charge.niveau(), charge.responsableId());
 
-        ElementProgrammatiqueEntity element = ElementProgrammatiqueEntity.builder()
+        ElementProgrammatiqueEntity element = nouvelElement(demande, charge, elementId);
+        element.setValidePar(validateur);
+        element.setValideLe(horloge.instant());
+        try {
+            // Écriture immédiate : une validation concurrente du même code échoue
+            // ici, sur la contrainte d'unicité, et non au commit en 500.
+            elementRepository.saveAndFlush(element);
+        } catch (DataIntegrityViolationException e) {
+            throw codeExistant(charge.code());
+        }
+        log.info("Nomenclature : {} {} créé (demande {}).", charge.niveau(), charge.code(), demande.getId());
+    }
+
+    /** L'élément que crée la demande, avant validation ; sert aussi à l'aperçu du valideur. */
+    private static ElementProgrammatiqueEntity nouvelElement(MakerCheckerRequestEntity demande,
+                                                             DemandeNomenclatureEvent charge, UUID elementId) {
+        return ElementProgrammatiqueEntity.builder()
                 .id(elementId)
                 .code(charge.code())
                 .libelle(charge.libelle())
@@ -330,17 +362,31 @@ public class NomenclatureAdapter {
                 .demandeCreationId(demande.getId())
                 .creePar(demande.getMakerId())
                 .creeLe(demande.getCreatedAt())
-                .validePar(validateur)
-                .valideLe(horloge.instant())
                 .build();
-        try {
-            // Écriture immédiate : une validation concurrente du même code échoue
-            // ici, sur la contrainte d'unicité, et non au commit en 500.
-            elementRepository.saveAndFlush(element);
-        } catch (DataIntegrityViolationException e) {
-            throw codeExistant(charge.code());
+    }
+
+    /**
+     * Reporte sur l'élément ce que change une demande autre qu'une création.
+     * Partagé par l'application et l'aperçu : le valideur voit exactement ce
+     * qui sera écrit.
+     */
+    private static void reporter(ElementProgrammatiqueEntity element, DemandeNomenclatureEvent charge) {
+        switch (charge.operation()) {
+            case MODIFIER -> {
+                element.setLibelle(charge.libelle());
+                element.setDescription(charge.description());
+                element.setResponsableId(charge.responsableId());
+            }
+            case DESACTIVER -> {
+                element.setActif(false);
+                element.setMotifDesactivation(charge.motif());
+            }
+            case REACTIVER -> {
+                element.setActif(true);
+                element.setMotifDesactivation(null);
+            }
+            default -> throw new IllegalStateException("Opération sans report : " + charge.operation());
         }
-        log.info("Nomenclature : {} {} créé (demande {}).", charge.niveau(), charge.code(), demande.getId());
     }
 
     // ─── Règles ─────────────────────────────────────────────────────────────

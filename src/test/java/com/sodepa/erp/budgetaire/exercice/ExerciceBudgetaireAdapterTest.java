@@ -1,11 +1,15 @@
 package com.sodepa.erp.budgetaire.exercice;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
+import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.CreerExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
+import com.sodepa.erp.budgetaire.exercice.application.outputs.ExerciceBudgetaireOutput;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.adapter.ExerciceBudgetaireAdapter;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.entities.EtatExercice;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.entities.ExerciceBudgetaireEntity;
+import com.sodepa.erp.budgetaire.exercice.infrastructure.event.CreationExerciceEvent;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.repo.ExerciceBudgetaireRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
 import com.sodepa.erp.share.MakerCheckerRequestJpaRepo;
@@ -17,6 +21,7 @@ import com.sodepa.erp.share.erreurs.ApiException;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 import com.sodepa.erp.share.erreurs.RessourceIntrouvableException;
+import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
@@ -49,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -81,13 +87,14 @@ class ExerciceBudgetaireAdapterTest {
     @Mock private MakerCheckerRequestJpaRepo demandeRepository;
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
+    @Mock private UserRepository utilisateurRepository;
 
     private ExerciceBudgetaireAdapter adapter;
 
     @BeforeEach
     void preparer() {
         adapter = new ExerciceBudgetaireAdapter(exerciceRepository,
-                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE), utilsService, HORLOGE);
+                new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, utilisateurRepository, HORLOGE), utilsService, HORLOGE);
     }
 
     private void connecte(String userId) {
@@ -315,5 +322,39 @@ class ExerciceBudgetaireAdapterTest {
                 .createdAt(HORLOGE.instant().minus(1, ChronoUnit.HOURS))
                 .expiredAt(expiration)
                 .build();
+    }
+
+    @Nested
+    @DisplayName("Demandes en attente")
+    class DemandesEnAttente {
+
+        @Test
+        @DisplayName("Création : l'exercice qui naîtra, en préparation, du 1er janvier au 31 décembre")
+        void montreLExercicePropose() {
+            UUID exerciceId = ExerciceBudgetaireAdapter.identifiantPour(2027);
+            MakerCheckerRequestEntity demande = MakerCheckerRequestEntity.builder()
+                    .id(UUID.randomUUID()).entityName(MakerCheckerEntityName.BUDGET_EXERCICE)
+                    .entityPk(exerciceId.toString()).makerId(CHEF_BUDGET).status(MakerCheckerStatus.PENDING)
+                    .payload(new CreationExerciceEvent(2027).versCharge())
+                    .checkerOperationType(MakerCheckerOperationType.CREATE)
+                    .createdAt(HORLOGE.instant()).expiredAt(HORLOGE.instant().plusSeconds(86_400)).build();
+            connecte(VALIDATEUR);
+            when(demandeRepository.findAllByEntityNameAndStatusAndMakerIdNot(eq(MakerCheckerEntityName.BUDGET_EXERCICE),
+                    eq(MakerCheckerStatus.PENDING), eq(VALIDATEUR), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(demande), PageRequest.of(0, 20), 1));
+
+            DemandeBudgetaireOutput<ExerciceBudgetaireOutput> d =
+                    adapter.demandesEnAttente(PageRequest.of(0, 20)).content().getFirst();
+
+            assertEquals(OperationReferentiel.CREER, d.operation());
+            assertNull(d.actuel());
+            assertEquals(exerciceId, d.proposition().id());
+            assertEquals(2027, d.proposition().annee());
+            assertEquals(EtatExercice.EN_PREPARATION, d.proposition().etat());
+            assertEquals(LocalDate.of(2027, 1, 1), d.proposition().dateDebut());
+            assertEquals(LocalDate.of(2027, 12, 31), d.proposition().dateFin());
+            assertEquals(CHEF_BUDGET, d.proposition().creePar());
+            assertNull(d.proposition().validePar());
+        }
     }
 }

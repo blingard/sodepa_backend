@@ -1,6 +1,8 @@
 package com.sodepa.erp.budgetaire.exercice.infrastructure.adapter;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
+import com.sodepa.erp.budgetaire.commun.ProjectionDemande;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.CreerExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.inputs.DeciderDemandeExerciceInput;
 import com.sodepa.erp.budgetaire.exercice.application.outputs.ExerciceBudgetaireOutput;
@@ -9,7 +11,6 @@ import com.sodepa.erp.budgetaire.exercice.infrastructure.entities.ExerciceBudget
 import com.sodepa.erp.budgetaire.exercice.infrastructure.event.CreationExerciceEvent;
 import com.sodepa.erp.budgetaire.exercice.infrastructure.repo.ExerciceBudgetaireRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
@@ -145,15 +146,21 @@ public class ExerciceBudgetaireAdapter {
     }
 
     /**
-     * Demandes en attente que l'appelant peut trancher.
+     * Demandes en attente que l'appelant peut trancher, avec l'exercice proposé.
      *
      * <p>Les siennes sont écartées : il ne pourrait que se les voir refuser.</p>
      */
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<ExerciceBudgetaireOutput>> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_EXERCICE);
 
-        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_EXERCICE, pageable);
+        return circuit.demandesEnAttente(MakerCheckerEntityName.BUDGET_EXERCICE, pageable, this::projeter);
+    }
+
+    /** Un exercice ne connaît que la création : la projection est l'exercice qui naîtra. */
+    private ProjectionDemande<ExerciceBudgetaireOutput> projeter(MakerCheckerRequestEntity demande) {
+        int annee = CreationExerciceEvent.depuisCharge(demande.getPayload()).annee();
+        return ProjectionDemande.creation(ExerciceBudgetaireOutput.depuis(nouvelExercice(demande, annee)));
     }
 
     // ─── Règles internes ────────────────────────────────────────────────────
@@ -164,18 +171,9 @@ public class ExerciceBudgetaireAdapter {
             throw exerciceExistant(annee);
         }
 
-        ExerciceBudgetaireEntity exercice = ExerciceBudgetaireEntity.builder()
-                .id(UUID.fromString(demande.getEntityPk()))
-                .annee(annee)
-                .etat(EtatExercice.EN_PREPARATION)
-                .dateDebut(LocalDate.of(annee, 1, 1))
-                .dateFin(LocalDate.of(annee, 12, 31))
-                .demandeCreationId(demande.getId())
-                .creePar(demande.getMakerId())
-                .creeLe(demande.getCreatedAt())
-                .validePar(validateur)
-                .valideLe(horloge.instant())
-                .build();
+        ExerciceBudgetaireEntity exercice = nouvelExercice(demande, annee);
+        exercice.setValidePar(validateur);
+        exercice.setValideLe(horloge.instant());
         try {
             // Écriture immédiate : une validation concurrente de la même année
             // échoue ici, sur la contrainte d'unicité, et non au commit en 500.
@@ -184,6 +182,24 @@ public class ExerciceBudgetaireAdapter {
             throw exerciceExistant(annee);
         }
         log.info("Exercice budgétaire {} créé à l'état {} (demande {}).", annee, exercice.getEtat(), demande.getId());
+    }
+
+    /**
+     * L'exercice que crée la demande, avant validation : dates et état initial
+     * sont fixés ici. Sert à la création et à l'aperçu du valideur, qui voit
+     * ainsi exactement ce qui naîtra.
+     */
+    private static ExerciceBudgetaireEntity nouvelExercice(MakerCheckerRequestEntity demande, int annee) {
+        return ExerciceBudgetaireEntity.builder()
+                .id(UUID.fromString(demande.getEntityPk()))
+                .annee(annee)
+                .etat(EtatExercice.EN_PREPARATION)
+                .dateDebut(LocalDate.of(annee, 1, 1))
+                .dateFin(LocalDate.of(annee, 12, 31))
+                .demandeCreationId(demande.getId())
+                .creePar(demande.getMakerId())
+                .creeLe(demande.getCreatedAt())
+                .build();
     }
 
     /**

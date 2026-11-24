@@ -4,7 +4,9 @@ import com.sodepa.erp.budgetaire.commun.ChangerEtatInput;
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
 import com.sodepa.erp.budgetaire.commun.CodeReferentiel;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
+import com.sodepa.erp.budgetaire.commun.ProjectionDemande;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.nature.application.inputs.CreerNatureInput;
 import com.sodepa.erp.budgetaire.nature.application.inputs.ListerNaturesInput;
@@ -19,7 +21,6 @@ import com.sodepa.erp.budgetaire.nature.infrastructure.repo.NatureBudgetaireRepo
 import com.sodepa.erp.comptabilite.generale.infrastructure.entities.CompteEntity;
 import com.sodepa.erp.comptabilite.generale.infrastructure.repo.CompteRepository;
 import com.sodepa.erp.share.MakerCheckerRequestEntity;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.share.UtilsService;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
@@ -186,11 +187,30 @@ public class NatureBudgetaireAdapter {
         return sortie(nature, compteRepository.findById(nature.getCompteId()).orElse(null));
     }
 
-    /** Demandes en attente que l'appelant peut trancher (les siennes exclues). */
+    /** Demandes en attente que l'appelant peut trancher (les siennes exclues), avec leur contenu. */
     @Transactional(readOnly = true)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<NatureBudgetaireOutput>> demandesEnAttente(Pageable pageable) {
         utilsService.hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_NATURE);
-        return circuit.demandesEnAttente(TYPE, pageable);
+        return circuit.demandesEnAttente(TYPE, pageable, this::projeter);
+    }
+
+    /**
+     * La nature telle que la demande la laisserait, et telle qu'elle est.
+     * Aucune règle n'est rejouée : elles le seront à la validation.
+     */
+    private ProjectionDemande<NatureBudgetaireOutput> projeter(MakerCheckerRequestEntity demande) {
+        DemandeNatureEvent charge = DemandeNatureEvent.depuisCharge(demande.getPayload());
+        UUID natureId = UUID.fromString(demande.getEntityPk());
+        if (charge.operation() == OperationReferentiel.CREER) {
+            CompteEntity compte = compteRepository.findById(charge.compteId()).orElse(null);
+            return ProjectionDemande.creation(sortie(nouvelleNature(demande, charge, natureId), compte));
+        }
+        NatureBudgetaireEntity nature = trouver(natureId);
+        CompteEntity compte = compteRepository.findById(nature.getCompteId()).orElse(null);
+        NatureBudgetaireEntity projetee = nature.toBuilder().build();
+        reporter(projetee, charge);
+        return new ProjectionDemande<>(charge.operation(), charge.motif(), sortie(projetee, compte),
+                sortie(nature, compte));
     }
 
     // ─── Application d'une demande validée ──────────────────────────────────
@@ -205,23 +225,15 @@ public class NatureBudgetaireAdapter {
 
         NatureBudgetaireEntity nature = trouver(natureId);
         switch (charge.operation()) {
-            case MODIFIER -> {
-                exigerActive(nature);
-                nature.setLibelle(charge.libelle());
-            }
+            case MODIFIER -> exigerActive(nature);
             case DESACTIVER -> {
                 exigerActive(nature);
                 controlerDesactivable(nature);
-                nature.setActif(false);
-                nature.setMotifDesactivation(charge.motif());
             }
-            case REACTIVER -> {
-                controlerReactivable(nature);
-                nature.setActif(true);
-                nature.setMotifDesactivation(null);
-            }
+            case REACTIVER -> controlerReactivable(nature);
             default -> throw new IllegalStateException("Opération déjà traitée : " + charge.operation());
         }
+        reporter(nature, charge);
         nature.setModifiePar(demande.getMakerId());
         nature.setModifieLe(horloge.instant());
         try {
@@ -242,26 +254,52 @@ public class NatureBudgetaireAdapter {
                         "Le compte de cette nature a été retiré du plan comptable depuis la demande."));
         controlerCompte(charge.section(), charge.sens(), compte);
 
-        NatureBudgetaireEntity nature = NatureBudgetaireEntity.builder()
-                .id(natureId)
-                .code(charge.code())
-                .libelle(charge.libelle())
-                .section(charge.section())
-                .sens(charge.sens())
-                .compteId(compte.getId())
-                .actif(true)
-                .demandeCreationId(demande.getId())
-                .creePar(demande.getMakerId())
-                .creeLe(demande.getCreatedAt())
-                .validePar(validateur)
-                .valideLe(horloge.instant())
-                .build();
+        NatureBudgetaireEntity nature = nouvelleNature(demande, charge, natureId);
+        nature.setValidePar(validateur);
+        nature.setValideLe(horloge.instant());
         try {
             natureRepository.saveAndFlush(nature);
         } catch (DataIntegrityViolationException e) {
             throw codeExistant(charge.code());
         }
         log.info("Natures : {} créée sur le compte {} (demande {}).", charge.code(), compte.getCode(), demande.getId());
+    }
+
+    /** La nature que crée la demande, avant validation ; sert aussi à l'aperçu du valideur. */
+    private static NatureBudgetaireEntity nouvelleNature(MakerCheckerRequestEntity demande, DemandeNatureEvent charge,
+                                                         UUID natureId) {
+        return NatureBudgetaireEntity.builder()
+                .id(natureId)
+                .code(charge.code())
+                .libelle(charge.libelle())
+                .section(charge.section())
+                .sens(charge.sens())
+                .compteId(charge.compteId())
+                .actif(true)
+                .demandeCreationId(demande.getId())
+                .creePar(demande.getMakerId())
+                .creeLe(demande.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * Reporte sur la nature ce que change une demande autre qu'une création.
+     * Partagé par l'application et l'aperçu : le valideur voit exactement ce
+     * qui sera écrit.
+     */
+    private static void reporter(NatureBudgetaireEntity nature, DemandeNatureEvent charge) {
+        switch (charge.operation()) {
+            case MODIFIER -> nature.setLibelle(charge.libelle());
+            case DESACTIVER -> {
+                nature.setActif(false);
+                nature.setMotifDesactivation(charge.motif());
+            }
+            case REACTIVER -> {
+                nature.setActif(true);
+                nature.setMotifDesactivation(null);
+            }
+            default -> throw new IllegalStateException("Opération sans report : " + charge.operation());
+        }
     }
 
     // ─── Règles ─────────────────────────────────────────────────────────────

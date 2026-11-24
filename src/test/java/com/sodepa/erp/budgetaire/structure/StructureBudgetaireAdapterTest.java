@@ -1,6 +1,7 @@
 package com.sodepa.erp.budgetaire.structure;
 
 import com.sodepa.erp.budgetaire.commun.CircuitReferentielBudgetaire;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.commun.OperationReferentiel;
 import com.sodepa.erp.budgetaire.commun.UsageReferentiels;
 import com.sodepa.erp.budgetaire.structure.application.inputs.ChangerEtatStructureInput;
@@ -31,6 +32,7 @@ import com.sodepa.erp.share.erreurs.ApiException;
 import com.sodepa.erp.share.erreurs.ConflitMetierException;
 import com.sodepa.erp.share.erreurs.RequeteInvalideException;
 import com.sodepa.erp.user.infrastructure.entities.UtilisateurEntity;
+import com.sodepa.erp.user.infrastructure.repo.UserRepository;
 import com.sodepa.erp.utils.MakerCheckerEntityName;
 import com.sodepa.erp.utils.MakerCheckerOperationType;
 import com.sodepa.erp.utils.MakerCheckerStatus;
@@ -44,6 +46,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -64,6 +69,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -94,6 +100,7 @@ class StructureBudgetaireAdapterTest {
     @Mock private MakerCheckerRequestJpaRepo demandeRepository;
     @Mock private WorkflowService workflowService;
     @Mock private UtilsService utilsService;
+    @Mock private UserRepository utilisateurRepository;
     @Mock private UsageReferentiels usageReferentiels;
 
     private StructureBudgetaireAdapter adapter;
@@ -112,7 +119,7 @@ class StructureBudgetaireAdapterTest {
     @BeforeEach
     void preparer() {
         adapter = new StructureBudgetaireAdapter(structureRepository, uniteRepository, posteRepository,
-                affectationRepository, new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, HORLOGE),
+                affectationRepository, new CircuitReferentielBudgetaire(demandeRepository, workflowService, utilsService, utilisateurRepository, HORLOGE),
                 utilsService, usageReferentiels, HORLOGE);
 
         unite("CA", "Conseil d'Administration", "/CA/");
@@ -531,5 +538,57 @@ class StructureBudgetaireAdapterTest {
 
         when(affectationRepository.findByPosteIdAndStatut(posteDirRanch.getId(), StatutAffectation.ACTIF)).thenReturn(List.of());
         assertNull(adapter.consulter(s.getId()).ordonnateurTitulaireId());
+    }
+
+    // ─── Demandes en attente ────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Demandes en attente")
+    class DemandesEnAttente {
+
+        private DemandeBudgetaireOutput<StructureBudgetaireOutput> premiere(MakerCheckerRequestEntity demande) {
+            connecte(VALIDATEUR);
+            when(demandeRepository.findAllByEntityNameAndStatusAndMakerIdNot(eq(MakerCheckerEntityName.BUDGET_STRUCTURE),
+                    eq(MakerCheckerStatus.PENDING), eq(VALIDATEUR), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(demande), PageRequest.of(0, 20), 1));
+            return adapter.demandesEnAttente(PageRequest.of(0, 20)).content().getFirst();
+        }
+
+        @Test
+        @DisplayName("Déclaration : unité, poste d'ordonnateur et service d'engagement résolus en libellés")
+        void montreUneDeclaration() {
+            UUID structureId = StructureBudgetaireAdapter.identifiantPour(ranch.getId());
+            MakerCheckerRequestEntity demande = demande(CHEF_BUDGET, MakerCheckerStatus.PENDING, structureId,
+                    DemandeStructureEvent.creation(ranch.getId(), posteDirRanch.getId(), safcRanch.getId()));
+
+            DemandeBudgetaireOutput<StructureBudgetaireOutput> d = premiere(demande);
+
+            verify(utilsService).hasPermission(Permissions.VALIDATE_OR_REJECT_BUDGET_STRUCTURE);
+            assertEquals(OperationReferentiel.CREER, d.operation());
+            assertNull(d.actuel());
+            StructureBudgetaireOutput proposee = d.proposition();
+            assertEquals(structureId, proposee.id());
+            assertEquals("RANCH_NDOKAYO", proposee.uniteCode());
+            assertEquals("Ranch Pastoral de Ndokayo", proposee.uniteIntitule());
+            assertEquals("Directeur Ranch Pastoral de Ndokayo", proposee.ordonnateurPosteIntitule());
+            assertEquals("SAFC_NDOKAYO", proposee.serviceEngagementCode());
+            assertTrue(proposee.actif());
+        }
+
+        @Test
+        @DisplayName("Changement d'ordonnateur : nouveau poste proposé face au poste en vigueur")
+        void montreUnChangementDOrdonnateur() {
+            StructureBudgetaireEntity enVigueur = structure(sdfbm, posteSdfbm, serviceBudget, true);
+            when(structureRepository.findById(enVigueur.getId())).thenReturn(Optional.of(enVigueur));
+            MakerCheckerRequestEntity demande = demande(CHEF_BUDGET, MakerCheckerStatus.PENDING, enVigueur.getId(),
+                    DemandeStructureEvent.modification(posteDg.getId(), serviceBudget.getId()));
+
+            DemandeBudgetaireOutput<StructureBudgetaireOutput> d = premiere(demande);
+
+            assertEquals(OperationReferentiel.MODIFIER, d.operation());
+            assertEquals("Directeur Général", d.proposition().ordonnateurPosteIntitule());
+            assertEquals("Sous-Directeur FBM", d.actuel().ordonnateurPosteIntitule());
+            assertEquals(posteSdfbm.getId(), enVigueur.getOrdonnateurPosteId());
+        }
     }
 }

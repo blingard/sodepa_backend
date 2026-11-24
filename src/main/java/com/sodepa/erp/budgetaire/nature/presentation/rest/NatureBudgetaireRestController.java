@@ -4,6 +4,7 @@ import com.sodepa.erp.budgetaire.commun.ChangerEtatInput;
 import com.sodepa.erp.budgetaire.commun.ChangerEtatRequest;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeInput;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.nature.application.inputs.CreerNatureInput;
 import com.sodepa.erp.budgetaire.nature.application.inputs.ListerNaturesInput;
 import com.sodepa.erp.budgetaire.nature.application.inputs.ModifierNatureInput;
@@ -20,7 +21,6 @@ import com.sodepa.erp.budgetaire.nature.infrastructure.entities.SectionBudgetair
 import com.sodepa.erp.budgetaire.nature.infrastructure.entities.SensBudgetaire;
 import com.sodepa.erp.budgetaire.nature.presentation.requests.CreerNatureRequest;
 import com.sodepa.erp.budgetaire.nature.presentation.requests.ModifierNatureRequest;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;
 import io.swagger.v3.oas.annotations.Operation;
@@ -113,7 +113,8 @@ public class NatureBudgetaireRestController {
     @Operation(summary = "Demandes sur les natures en attente de décision")
     @GetMapping("/pending")
     @ResponseStatus(HttpStatus.OK)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(@PageableDefault(size = 20) Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<NatureBudgetaireOutput>> demandesEnAttente(
+            @PageableDefault(size = 20) Pageable pageable) {
         return listerDemandesNatureEnAttenteUseCase.execute(pageable);
     }
 

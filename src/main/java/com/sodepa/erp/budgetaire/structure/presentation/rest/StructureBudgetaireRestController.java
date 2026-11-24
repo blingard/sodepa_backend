@@ -2,6 +2,7 @@ package com.sodepa.erp.budgetaire.structure.presentation.rest;
 
 import com.sodepa.erp.budgetaire.commun.ChangerEtatRequest;
 import com.sodepa.erp.budgetaire.commun.DeciderDemandeRequest;
+import com.sodepa.erp.budgetaire.commun.DemandeBudgetaireOutput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.ChangerEtatStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.CreerStructureInput;
 import com.sodepa.erp.budgetaire.structure.application.inputs.DeciderDemandeStructureInput;
@@ -18,7 +19,6 @@ import com.sodepa.erp.budgetaire.structure.application.usecase.ModifierStructure
 import com.sodepa.erp.budgetaire.structure.application.usecase.ReactiverStructureUseCase;
 import com.sodepa.erp.budgetaire.structure.presentation.requests.CreerStructureRequest;
 import com.sodepa.erp.budgetaire.structure.presentation.requests.ModifierStructureRequest;
-import com.sodepa.erp.share.MakerCheckerSmartOutput;
 import com.sodepa.erp.share.SubmissionOutput;
 import com.sodepa.erp.utils.PageRecord;
 import io.swagger.v3.oas.annotations.Operation;
@@ -117,7 +117,8 @@ public class StructureBudgetaireRestController {
     @Operation(summary = "Demandes sur les structures en attente de décision")
     @GetMapping("/pending")
     @ResponseStatus(HttpStatus.OK)
-    public PageRecord<MakerCheckerSmartOutput> demandesEnAttente(@PageableDefault(size = 20) Pageable pageable) {
+    public PageRecord<DemandeBudgetaireOutput<StructureBudgetaireOutput>> demandesEnAttente(
+            @PageableDefault(size = 20) Pageable pageable) {
         return listerDemandesStructureEnAttenteUseCase.execute(pageable);
     }
 
